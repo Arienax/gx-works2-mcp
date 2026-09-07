@@ -276,6 +276,11 @@ def insert_series_contact_after(
     splits the single outgoing horizontal wire into two conductors, and preserves
     all still-unknown fields from the source contact/wire records.
 
+    If the existing downstream coil is too close to fit the cloned contact, the
+    controlled simple-rung case shifts that one coil to the right by exactly the
+    inserted contact's horizontal footprint. This preserves the original gap between
+    the source contact and the downstream coil instead of guessing a new layout.
+
     The controlled target is sample 48 ``X1 -> Y1`` becoming
     ``X1 -> X2 -> Y1``. More general autorouting is deliberately out of scope.
     """
@@ -343,10 +348,75 @@ def insert_series_contact_after(
     new_left_port = source.ports[0].absolute_point(new_bbox)
     new_right_port = source.ports[1].absolute_point(new_bbox)
     if not (
-        right_port.x < new_left_port.x < new_right_port.x < far_end.x
+        right_port.x < new_left_port.x < new_right_port.x
         and new_left_port.y == right_port.y
         and new_right_port.y == right_port.y
     ):
+        raise GXWFormatError("cloned contact geometry is not a verified horizontal placement")
+
+    nodes = [node for node in program.nodes]
+
+    # Real sample 48 keeps Y1 closer to X1 than the sample-51-derived synthetic
+    # baseline used in the first unit test. If the inserted contact would collide
+    # with that downstream endpoint, conservatively support only the simple case:
+    # exactly one downstream coil port at the far endpoint and no other explicit
+    # wire attached to that coil. Shift the coil by the inserted contact footprint,
+    # which preserves the original wire gap after the new contact.
+    if new_right_port.x >= far_end.x:
+        downstream_matches: list[tuple[int, StructuredNode, int]] = []
+        for index, node in enumerate(nodes):
+            if node is source:
+                continue
+            for port_index in range(len(node.ports)):
+                if node.port_point(port_index) == far_end:
+                    downstream_matches.append((index, node, port_index))
+
+        if len(downstream_matches) != 1:
+            raise GXWFormatError(
+                "not enough horizontal room and the downstream endpoint does not map "
+                "to exactly one movable node port"
+            )
+
+        downstream_index, downstream, downstream_port_index = downstream_matches[0]
+        if downstream.kind != NodeKind.COIL or downstream.kind_code != 0x05:
+            raise GXWFormatError(
+                "not enough horizontal room; automatic downstream shifting is "
+                "currently limited to one coil"
+            )
+        if downstream_port_index != 0:
+            raise GXWFormatError(
+                "controlled series insertion expects the outgoing wire to reach the "
+                "downstream coil's left port"
+            )
+
+        downstream_points = {
+            downstream.port_point(port_index)
+            for port_index in range(len(downstream.ports))
+        }
+        other_incident = [
+            wire
+            for wire in program.wires
+            if wire is not target_wire
+            and (wire.start in downstream_points or wire.end in downstream_points)
+        ]
+        if other_incident:
+            raise GXWFormatError(
+                "downstream coil has additional explicit wiring; automatic shifting "
+                "would require general rerouting"
+            )
+
+        shift_x = new_right_port.x - right_port.x
+        shifted_bbox = Rect(
+            downstream.bbox.left + shift_x,
+            downstream.bbox.top,
+            downstream.bbox.right + shift_x,
+            downstream.bbox.bottom,
+        )
+        shifted_downstream = replace(downstream, bbox=shifted_bbox)
+        nodes[downstream_index] = shifted_downstream
+        far_end = shifted_downstream.port_point(downstream_port_index)
+
+    if not (new_right_port.x < far_end.x and far_end.y == new_right_port.y):
         raise GXWFormatError(
             "not enough horizontal room on the existing wire for the cloned contact"
         )
@@ -372,7 +442,6 @@ def insert_series_contact_after(
         end=far_end,
     )
 
-    nodes = [node for node in program.nodes]
     nodes.append(clone)
     wires = [
         first_segment if wire is target_wire else wire
