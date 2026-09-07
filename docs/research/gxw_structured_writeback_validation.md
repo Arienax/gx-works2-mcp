@@ -4,7 +4,7 @@
 >
 > Date: 2026-09-07
 >
-> Scope: FX3U / GX Works2 Structured Ladder/FBD controlled sample 48 only. This note records an observed write-back result; it does not claim a general-purpose `.gxw` writer yet.
+> Scope: FX3U / GX Works2 Structured Ladder/FBD controlled sample 48 only. This note records observed write-back results; it does not claim a general-purpose `.gxw` writer yet.
 
 ## Purpose
 
@@ -19,11 +19,14 @@ GXW
   -> Structured Ladder/FBD node/wire parser
 ```
 
-The next unknown was whether GX Works2 would accept an externally modified Structured Ladder/FBD `Program.pou` after it was written back through both CFB layers.
+The next unknown was whether GX Works2 would accept externally modified Structured Ladder/FBD `Program.pou` data after it was written back through both CFB layers.
 
-This experiment tested the smallest possible mutation while keeping every stream and record size unchanged.
+Two controlled write-back experiments have now been validated:
 
-## Test case
+1. equal-length node-symbol mutation: `X1 -> X2`;
+2. variable-length node-symbol mutation: `X1 -> X100` while remaining within the stream's existing MiniFAT allocation.
+
+## Experiment 1: equal-length symbol mutation
 
 Source project:
 
@@ -55,9 +58,7 @@ The target contact symbol is stored directly in the Structured Ladder node recor
 
 This isolates the question of whether the saved editor model can be externally modified and accepted by GX Works2 without another mandatory source-level integrity update.
 
-## Write-back path
-
-The tested path was:
+### Write-back path
 
 ```text
 48_STRUCT_X1_Y1.gxw
@@ -74,11 +75,7 @@ The tested path was:
 
 The mutation was node-targeted rather than a whole-file/global byte replacement.
 
-## Observed GX Works2 result
-
-The generated project was opened directly in GX Works2.
-
-Observed behavior:
+### Observed GX Works2 result
 
 1. GX Works2 opened the patched `.gxw` successfully.
 2. The Structured Ladder/FBD editor displayed `X2` in place of the original `X1`.
@@ -89,85 +86,199 @@ Observed behavior:
 
 The save/reopen result is important because GX Works2 itself accepted and reserialized the externally modified project rather than merely rendering it once.
 
-## Established conclusion
+## Experiment 2: variable-length symbol mutation within existing allocation
 
-For the tested sample and equal-length node-symbol mutation:
-
-```text
-external Program.pou mutation
-  -> nested CFB write-back
-  -> outer GXW write-back
-  -> GX Works2 open
-  -> GX Works2 save
-  -> close
-  -> reopen
-```
-
-is a valid path.
-
-This is direct evidence that `*.Program.pou` is writable editor-source state for this Structured Ladder/FBD case, not merely a read-only cache or display artifact.
-
-It also shows that no additional undiscovered project-level source checksum/hash update was required for GX Works2 to open, save, and reopen this specific unchanged-size mutation.
-
-The conclusion must remain scope-limited. It does **not** yet prove that:
-
-- variable-length Program.pou mutations are valid;
-- records can be inserted or deleted safely;
-- arbitrary node/wire graphs can be generated from scratch;
-- nested or outer CFB streams can be resized without additional work;
-- all GX Works2 versions or PLC families behave identically;
-- compile-derived objects such as `MAIN.res` never require synchronization for later compile/runtime workflows.
-
-## Milestone status
-
-The Structured Ladder/FBD reverse-engineering status can now be separated into two capabilities:
-
-```text
-Read path: validated for the currently covered controlled samples
-
-Write path: validated only for same-size node-symbol mutation
-```
-
-The project is therefore no longer strictly read-only at the research level, but the production implementation should still treat general `.gxw` writing as experimental until variable-size serialization and CFB resizing are validated.
-
-## Next falsifiable write tests
-
-The next experiments should increase one variable at a time.
-
-### 1. Variable-length symbol
+The second experiment used the same source project but changed:
 
 ```text
 X1 -> X100
 ```
 
-This requires rebuilding at least:
+The generated output was:
+
+```text
+48_STRUCT_X100_Y1_PATCHED.gxw
+```
+
+The symbol encoding grows by four bytes:
+
+```text
+X1\0    = 6 bytes in UTF-16LE
+X100\0  = 10 bytes in UTF-16LE
+```
+
+The Structured `Program.pou` therefore grew:
+
+```text
+411 bytes -> 415 bytes
+```
+
+The serializer rebuilt the affected node and the known Program.pou length fields, including:
 
 ```text
 symbol_char_count
 node record_length
-Program.pou body_size
+body_size
 header[0x37]
 header[0x3B]
 header[0x47]
 ```
 
-and then handling any required CFB stream resizing.
+The record count and canvas height did not change.
 
-### 2. Record insertion
+### MiniFAT allocation observation
 
-Starting from the simple contact/coil graph, insert one new contact and the required conductor records. This tests:
+The target Program.pou stream is stored as a CFB mini stream. The CFB mini-sector size is 64 bytes.
+
+For this sample:
 
 ```text
-record_count
-record ordering
-node construction
-wire construction
-geometry
+original size: 411 bytes
+new size:      415 bytes
+mini sectors:  7
+capacity:      7 * 64 = 448 bytes
 ```
 
-### 3. Record deletion
+Both the original and modified stream fit in the same seven-mini-sector chain. Therefore this experiment did **not** require allocating another mini sector or rebuilding MiniFAT/FAT chains.
+
+The writer instead:
+
+1. serialized the new 415-byte Program.pou;
+2. verified that 415 bytes fit within the existing 448-byte allocation;
+3. rewrote the bytes through the existing mini-sector chain;
+4. updated the CFB directory entry's `stream_size` from 411 to 415;
+5. wrote the modified nested `_hdb` back into the outer GXW while preserving the outer allocation constraints.
+
+### Automated validation
+
+The writer and allocation-aware CFB replacement tests were run with:
+
+```text
+python -m pytest -q tests/test_gxw_structured_writer.py tests/test_gxw_container_writer.py
+```
+
+Observed result:
+
+```text
+17 passed
+```
+
+The patch tool reported:
+
+```text
+logical object: 1.Program.pou
+nested stream:  16
+symbol:         X1 -> X100
+size:           411 -> 415 bytes
+allocation:     mini, 448 bytes capacity (7 sectors)
+Parser check:   OK
+```
+
+### Observed GX Works2 result
+
+1. GX Works2 opened `48_STRUCT_X100_Y1_PATCHED.gxw` successfully on the first attempt.
+2. The Structured Ladder/FBD editor displayed `X100` at the target contact.
+3. The project was saved successfully in GX Works2.
+4. GX Works2 was closed.
+5. The saved project was reopened successfully.
+6. The edited project remained valid and still displayed the changed device after reopening.
+
+A GX Works2 Convert/Compile result was not recorded for this experiment, so compile validation is intentionally **not** claimed here.
+
+## Established conclusions
+
+For controlled sample 48, the following paths are now experimentally validated:
+
+```text
+same-size node symbol edit
+  -> Program.pou write-back
+  -> nested CFB write-back
+  -> outer GXW write-back
+  -> GX Works2 open/save/reopen
+```
+
+and:
+
+```text
+variable-size node symbol edit
+  -> StructuredProgram serialization
+  -> Program.pou size change
+  -> rewrite inside existing MiniFAT allocation
+  -> CFB directory stream_size update
+  -> nested CFB write-back
+  -> outer GXW write-back
+  -> GX Works2 open/save/reopen
+```
+
+These results establish that, for this controlled case:
+
+- `*.Program.pou` is writable Structured Ladder/FBD editor-source state;
+- variable-length node records can be externally rebuilt successfully;
+- the observed Program.pou header/body size relations are sufficient for this mutation;
+- no additional undiscovered source checksum/hash was required for GX Works2 to open, save, and reopen either tested mutation;
+- a mini-stream can be resized within its already allocated mini-sector chain by rewriting data and updating the directory `stream_size`.
+
+The conclusion remains deliberately scope-limited. It does **not** yet prove that:
+
+- records can be inserted or deleted safely;
+- arbitrary node/wire graphs can be generated from scratch;
+- a Program.pou stream can grow beyond its current MiniFAT/FAT allocation capacity;
+- MiniFAT or FAT chains can be extended safely;
+- all GX Works2 versions or PLC families behave identically;
+- compile-derived objects such as `MAIN.res` never require synchronization for later compile/runtime workflows;
+- Convert/Compile succeeds for the `X1 -> X100` generated file.
+
+## Milestone status
+
+The Structured Ladder/FBD reverse-engineering status is now:
+
+```text
+Read path:
+  validated for the currently covered controlled samples
+
+Write path:
+  same-size node-symbol mutation                         validated
+  variable-size node-symbol mutation within allocation validated
+  record insertion/deletion                             not yet validated
+  allocation growth / MiniFAT-FAT extension             not yet validated
+```
+
+The project is therefore beyond a byte-patch-only prototype: it now has an experimentally validated StructuredProgram serializer plus allocation-aware CFB stream write-back for the covered mutation class.
+
+## Next falsifiable write tests
+
+### 1. Record insertion
+
+Starting from sample 48:
+
+```text
+X1 -> Y1
+```
+
+produce a series contact graph such as:
+
+```text
+X1 -> X2 -> Y1
+```
+
+This should test one structural variable set at a time:
+
+```text
+new contact node record
+record_count
+record ordering
+wire construction / modification
+geometry
+Program.pou body rebuild
+```
+
+### 2. Record deletion
 
 Delete a known contact/wire set and verify that GX Works2 opens, saves, closes, and reopens the result.
+
+### 3. Allocation-boundary growth
+
+Construct a mutation whose new Program.pou exceeds the existing 448-byte allocation. This will force the first real mini-sector-chain growth test and should remain separate from the record-insertion experiment if possible.
 
 ### 4. General serializer round trip
 
@@ -180,7 +291,7 @@ raw Program.pou
   -> byte-for-byte identical Program.pou
 ```
 
-Only after that should semantic mutation be layered on top of the serializer.
+This remains the regression target before broader graph generation is treated as supported.
 
 ## Implementation implication
 
@@ -191,8 +302,9 @@ StructuredProgram serializer
     -> node/wire/header serialization
 
 CFB writer
-    -> nested Program.pou stream replacement/resizing
-    -> outer `_hdb` stream replacement/resizing
+    -> stream-byte replacement
+    -> directory stream_size updates
+    -> future allocation-chain growth
 ```
 
-The successful same-size experiment validates the boundary between these layers and provides a regression target for future general writer work.
+The two successful write-back experiments validate this boundary and provide regression targets for future structure-level writer work.
