@@ -57,6 +57,22 @@ def _fmt_diff(a: bytes | None, b: bytes | None) -> str:
     )
 
 
+def _logical_payload(
+    logical: dict[str, str],
+    nested: dict[str, bytes],
+    name: str,
+) -> tuple[bytes | None, str | None]:
+    """Resolve a logical object without failing on stale projectdatalist mappings."""
+
+    stream = logical.get(name)
+    if stream is None:
+        return None, None
+    payload = nested.get(stream)
+    if payload is None:
+        return None, f"mapped stream {stream} is missing from _hdb"
+    return payload, None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -77,6 +93,14 @@ def main() -> None:
     base_logical = _logical_map(base_resolver)
     donor_logical = _logical_map(donor_resolver)
 
+    # Build the raw nested-stream views first. projectdatalist.xml can retain stale
+    # logical mappings whose numeric stream no longer exists; comparison should
+    # report those mappings instead of aborting.
+    base_hdb = CompoundFile(base_outer.read_stream("_hdb"))
+    donor_hdb = CompoundFile(donor_outer.read_stream("_hdb"))
+    base_nested = _stream_bytes(base_hdb)
+    donor_nested = _stream_bytes(donor_hdb)
+
     print("GXW controlled-project comparison")
     print(f"BASE:  {args.base}")
     print(f"DONOR: {args.donor}")
@@ -85,9 +109,12 @@ def main() -> None:
     print("[1] Logical project objects")
     logical_changes: list[str] = []
     for name in sorted(set(base_logical) | set(donor_logical)):
-        a = base_resolver.read_logical_file(name) if name in base_logical else None
-        b = donor_resolver.read_logical_file(name) if name in donor_logical else None
+        a, a_note = _logical_payload(base_logical, base_nested, name)
+        b, b_note = _logical_payload(donor_logical, donor_nested, name)
         status = _fmt_diff(a, b)
+        notes = [note for note in (a_note, b_note) if note]
+        if notes:
+            status += "  [" + "; ".join(notes) + "]"
         if status != "IDENTICAL":
             logical_changes.append(name)
         if args.all or status != "IDENTICAL":
@@ -95,17 +122,16 @@ def main() -> None:
             b_stream = donor_logical.get(name, "-")
             print(f"  {name}  [{a_stream}->{b_stream}]  {status}")
 
-    base_hdb = CompoundFile(base_outer.read_stream("_hdb"))
-    donor_hdb = CompoundFile(donor_outer.read_stream("_hdb"))
-    base_nested = _stream_bytes(base_hdb)
-    donor_nested = _stream_bytes(donor_hdb)
     mapped_base = {stream: logical for logical, stream in base_logical.items()}
     mapped_donor = {stream: logical for logical, stream in donor_logical.items()}
 
     print()
     print("[2] Raw nested _hdb streams")
     raw_changes: list[str] = []
-    for stream in sorted(set(base_nested) | set(donor_nested), key=lambda value: (0, int(value)) if value.isdigit() else (1, value)):
+    for stream in sorted(
+        set(base_nested) | set(donor_nested),
+        key=lambda value: (0, int(value)) if value.isdigit() else (1, value),
+    ):
         a = base_nested.get(stream)
         b = donor_nested.get(stream)
         status = _fmt_diff(a, b)
@@ -140,9 +166,11 @@ def main() -> None:
     print()
     print("Next isolation rule:")
     print("  Ignore 1.Program.pou first: its transplant was already tested.")
-    print("  Prioritize changed logical or unmapped _hdb streams that differ between")
-    print("  the native sample 48 and native sample 51. Transplant candidates one at a")
-    print("  time into the sample-48 + donor-Program.pou hybrid until wires render.")
+    print("  Treat stale logical mappings to missing numeric streams as metadata noise")
+    print("  unless a later controlled experiment proves otherwise.")
+    print("  Prioritize changed logical or unmapped _hdb streams that actually exist in")
+    print("  both projects. Transplant candidates into the sample-48 + donor-Program.pou")
+    print("  hybrid until the GX Works2 wire rendering state follows the donor.")
 
 
 if __name__ == "__main__":
