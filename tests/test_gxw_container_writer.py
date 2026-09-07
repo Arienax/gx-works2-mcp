@@ -13,6 +13,7 @@ from src.gxw.container import (
 )
 from src.gxw.container_writer import (
     inspect_stream_allocation,
+    replace_stream_with_free_mini_growth,
     replace_stream_within_allocation,
 )
 from src.gxw.models import GXWFormatError
@@ -37,7 +38,7 @@ def _directory_entry(
         raw[: len(encoded)] = encoded
         struct.pack_into("<H", raw, 64, len(encoded))
     raw[66] = object_type
-    raw[67] = 1  # black tree node
+    raw[67] = 1
     struct.pack_into("<III", raw, 68, left, right, child)
     struct.pack_into("<I", raw, 116, start_sector)
     struct.pack_into("<Q", raw, 120, stream_size)
@@ -193,6 +194,34 @@ def test_ministream_growth_fails_when_existing_chain_is_too_small():
 
     with pytest.raises(GXWFormatError, match="holds only 448 bytes"):
         replace_stream_within_allocation(raw, "16", original_payload + b"X" * 38)
+
+
+def test_grow_ministream_by_linking_free_backed_mini_sectors():
+    original_payload = bytes(index % 251 for index in range(300))
+    raw = _build_mini_stream_cfb(original_payload)
+
+    before = inspect_stream_allocation(raw, "16")
+    assert before.chain_length == 5
+    assert before.allocation_capacity == 320
+
+    new_payload = original_payload + b"G" * 130
+    patched = replace_stream_with_free_mini_growth(raw, "16", new_payload)
+
+    assert len(patched) == len(raw)
+    reparsed = CompoundFile(patched)
+    assert reparsed.read_stream("16") == new_payload
+    after = inspect_stream_allocation(patched, "16")
+    assert after.stream_size == 430
+    assert after.chain_length == 7
+    assert after.allocation_capacity == 448
+
+
+def test_free_mini_growth_fails_when_root_ministream_has_no_backed_capacity():
+    original_payload = bytes(index % 251 for index in range(300))
+    raw = _build_mini_stream_cfb(original_payload)
+
+    with pytest.raises(GXWFormatError, match="root MiniStream growth is required"):
+        replace_stream_with_free_mini_growth(raw, "16", original_payload + b"Z" * 300)
 
 
 def test_grow_regular_stream_within_existing_fat_chain():
