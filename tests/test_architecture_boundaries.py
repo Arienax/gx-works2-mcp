@@ -33,6 +33,7 @@ def _transport_field_accesses(path):
 
 def test_plc_and_gx_core_do_not_import_model_or_vendor_clients():
     core_files = [
+        SOURCE_ROOT / "plc_core.py",
         SOURCE_ROOT / "plc_ir.py",
         SOURCE_ROOT / "plc_json_validator.py",
         SOURCE_ROOT / "plc_semantics.py",
@@ -49,6 +50,9 @@ def test_plc_and_gx_core_do_not_import_model_or_vendor_clients():
         "zhipuai",
         "model_provider",
         "plc_agent",
+        "mcp",
+        "mcp_types",
+        "integrations",
     }
 
     violations = []
@@ -94,3 +98,30 @@ def test_only_model_provider_imports_openai_sdk():
 def test_agent_and_api_do_not_parse_vendor_response_fields():
     assert _transport_field_accesses(SOURCE_ROOT / "api.py") == []
     assert _transport_field_accesses(SOURCE_ROOT / "plc_agent.py") == []
+
+
+def test_mcp_adapters_do_not_import_plc_or_desktop_implementations():
+    adapter_root = SOURCE_ROOT / "integrations" / "mcp"
+    forbidden = {
+        "plc_core", "plc_ir", "plc_json_validator", "plc_semantics",
+        "plc_static_analyzer", "plc_timing", "draw", "inspection_engine",
+        "knowledge_retriever", "gxworks2", "simulator", "pywinauto",
+        "qt_compat", "PyQt5", "PyQt6", "main", "plc_agent", "openai",
+    }
+    violations = [
+        f"{path.relative_to(ROOT)} -> {imported}"
+        for path in adapter_root.rglob("*.py")
+        for imported in _imports(path)
+        if imported.split(".", 1)[0] in forbidden
+    ]
+    assert violations == []
+    assert "tool_runtime" in _imports(adapter_root / "tool_adapter.py")
+    assert "tool_runtime" in _imports(adapter_root / "server.py")
+    assert "session_store" in _imports(adapter_root / "context_provider.py")
+
+
+def test_runtime_and_builtin_agent_do_not_depend_on_optional_mcp_sdk():
+    for name in ("tool_runtime.py", "plc_agent.py", "plc_agent_tools.py", "model_provider.py", "session_store.py"):
+        assert not {"mcp", "mcp_types", "integrations"}.intersection(
+            imported.split(".", 1)[0] for imported in _imports(SOURCE_ROOT / name)
+        )

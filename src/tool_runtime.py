@@ -1,4 +1,4 @@
-"""MCP-shaped tool boundary used by the Agent in the desktop process."""
+"""Shared deterministic tool boundary for desktop and external agents."""
 
 from __future__ import annotations
 
@@ -22,9 +22,19 @@ def _public_value(value: Any) -> Any:
             for key, item in value.items()
             if not str(key).startswith("_")
         }
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_public_value(item) for item in value]
     return copy.deepcopy(value)
+
+
+def public_tool_result_data(result: ToolResult) -> Mapping[str, Any]:
+    """Return the untruncated public projection, never UI-only candidate data.
+
+    ``ToolResult.data`` deliberately retains private fields for the desktop's
+    confirmation flow. Transport adapters must use this projection instead.
+    """
+
+    return _public_value(result.data)
 
 
 class InProcessToolRuntime:
@@ -67,4 +77,5 @@ __all__ = [
     "InProcessToolRuntime",
     "ToolRuntime",
     "build_default_tool_runtime",
+    "public_tool_result_data",
 ]
