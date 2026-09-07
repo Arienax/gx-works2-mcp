@@ -159,3 +159,47 @@ def test_insert_series_contact_reproduces_known_sample_51_topology():
         replace_node_symbol(gxworks_series, "M1", "X2")
     )
     assert rebuilt == expected
+
+
+def test_insert_series_contact_shifts_a_tight_downstream_coil():
+    simple, _ = _simple_x1_y1_baseline_from_sample_51()
+    x1, y1 = simple.nodes
+    rail, left_feed, direct = simple.wires
+
+    # Model the tighter direct-rung layout seen in the real sample-48 project:
+    # the downstream coil is too close for a contact at x=11..13. Moving the
+    # coil and wire endpoint left keeps the binary ABI unchanged while exercising
+    # the layout fallback.
+    tight_y1 = replace(
+        y1,
+        bbox=replace(y1.bbox, left=9, right=11),
+    )
+    tight_direct = replace(direct, end=replace(direct.end, x=9))
+    tight = replace(
+        simple,
+        nodes=(x1, tight_y1),
+        wires=(rail, left_feed, tight_direct),
+    )
+
+    modified = insert_series_contact_after(tight, "X1", "X2")
+    rebuilt = serialize_structured_pou(modified)
+    reparsed = parse_structured_pou(rebuilt, logical_name="1.Program.pou")
+
+    assert [node.symbol for node in reparsed.nodes] == ["X1", "X2", "Y1"]
+    assert [
+        (node.bbox.left, node.bbox.top, node.bbox.right, node.bbox.bottom)
+        for node in reparsed.nodes
+    ] == [
+        (6, 1, 8, 3),
+        (11, 1, 13, 3),
+        (14, 1, 16, 3),
+    ]
+    assert [
+        (wire.start.x, wire.start.y, wire.end.x, wire.end.y)
+        for wire in reparsed.wires
+    ] == [
+        (1, 0, 1, 5),
+        (1, 2, 6, 2),
+        (8, 2, 11, 2),
+        (13, 2, 14, 2),
+    ]
