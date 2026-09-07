@@ -46,8 +46,8 @@ GX Works2、GX Simulator2 与 MX Component 均为 Mitsubishi Electric 的商业�
 ### 安装
 
 ```powershell
-git clone https://github.com/Arienax/gx-works2-mcp.git
-cd gx-works2-mcp
+git clone https://github.com/Arienax/gxworks-agent.git
+cd gxworks-agent
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -401,7 +401,9 @@ GXWorks Agent 包含本地 FX3U 手册与工程知识检索。
 | Negative accuracy | 100% |
 | Mean latency | 58.2 ms |
 
-当前报告见 [`benchmarks/fx3u_rag_benchmark_report.json`](benchmarks/fx3u_rag_benchmark_report.json)。
+当前报告见：
+
+[`benchmarks/fx3u_rag_benchmark_report.json`](benchmarks/fx3u_rag_benchmark_report.json)
 
 > 这些是项目内部的知识检索 Benchmark，用于衡量 Retrieval 性能，不代表端到端 PLC 程序正确率，也不代表真实设备上的安全性。
 
@@ -475,7 +477,9 @@ Built-in Agent ─────┘
 
 GXWorks Agent 仓库包含一条针对 GX Works2 工程文件和结构化程序表示的持续逆向研究路线。
 
-研究文档位于 [`docs/research/`](docs/research/)。
+研究文档位于：
+
+[`docs/research/`](docs/research/)
 
 目前研究内容包括：
 
@@ -511,6 +515,8 @@ PLC IR
 当前首先需要解决的是确定性的工程解析能力。
 
 直接写入或重新构造 `.gxw` 是独立且风险更高的问题，因为 GX Works2 工程可能同时包含重复或派生状态、Metadata、Hash、Compiler State 以及其他一致性要求。
+
+因此：
 
 > **GXW 逆向目前属于研究内容，尚不是 GXWorks Agent 已支持的工程编辑 Backend。**
 
