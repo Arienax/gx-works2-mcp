@@ -89,7 +89,7 @@ API Key 保存在 Windows Credential Manager 中，不写入仓库配置文件�
 | Structured Text 生成 | 🧪 实验性 |
 | GX Simulator2 自动化测试 | 🧪 实验性 |
 | GXW / Structured Ladder 格式研究 | 🔬 研究中 |
-| 独立 MCP Server | 🚧 开发中 |
+| 独立 MCP Server（stdio） | ✅ 可用 |
 | Structured Ladder / FBD 编辑 | 📋 计划中 |
 | GX Works3 Adapter | 📋 计划中 |
 
@@ -432,44 +432,31 @@ DeepSeek 与智谱目前共享同一个 OpenAI-compatible Transport，而不是�
 
 **MCP 是 GXWorks Agent 的一种外部接口，而不是整个项目本身。**
 
-当前代码已经包含结构化 Tool Runtime，并使用统一的 ToolCall / ToolResult 对象和结构化 Tool Schema：
+独立 stdio 服务已实现，向外部客户端提供与内置 Agent 相同的十个高层工程工具。两条路径共用 ToolCall / ToolResult、工具 Schema 和 ToolRuntime：
 
 ```text
-Built-in Agent
-      ↓
- ModelProvider
-      ↓
- ToolRuntime
-      ↓
-   PLC Core
-      ↓
-GX Works2 Adapter
+Built-in Agent ↔ ModelProvider
+      │
+      └─────────────────────────────┐
+                                    ↓
+External MCP Client → MCP Server → ToolRuntime → PLC Core
 ```
 
-当前版本**尚未向外部 MCP Client 暴露独立的标准 MCP Server**。
+服务使用官方 Python MCP SDK，依赖独立、可选的 Python 3.10+ 环境。通过显式指定的 SessionStore 工作区、项目和版本读取已保存状态，无需启动桌面、加载模型凭据或调用模型。
 
-计划中的外部架构为：
+在仓库根目录的 PowerShell 中运行：
 
-```text
-Codex ──────────────┐
-Claude Code ────────┤
-Other AI Agents ────┼──→ MCP Interface
-                    │
-Built-in Agent ─────┘
-                           ↓
-                     GXWorks Agent
-                           ↓
-                        PLC Core
-                           ↓
-                       GX Works2
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-mcp.txt
+$env:PYTHONPATH = (Resolve-Path .\src).Path
+.\.venv\Scripts\python.exe -m integrations.mcp --stdio --workspace '<existing-workspace>' --project '<project-id>'
 ```
 
-计划支持：
+启动后，进程会在 stdin 等待 MCP 客户端连接。可在同一环境运行 `python scripts/mcp_smoke.py`，自动验证连接和工具调用。
 
-- stdio
-- Streamable HTTP
+`patch_program` 和 GX 导入请求仍返回 `confirmation_required`，只准备待确认提案。独立服务尚无批准/提交工具或桌面确认桥接，不暴露真实 PLC 写入、任意鼠标键盘操作或文件删除。
 
-这样 MCP 只是系统的一种接入方式，而底层 PLC 工程核心仍然可以直接由内置 Agent 使用。
+详见 [MCP 启动、上下文选择、工具和烟测](docs/integrations/mcp.md) 与 [Codex MCP 配置](docs/integrations/codex.md)。Streamable HTTP 和嵌入 Codex Harness / App Server 仍属于计划功能。
 
 ---
 
@@ -596,7 +583,7 @@ flowchart TD
 - **知识检索：** SQLite FTS5、BM25、Dense Retrieval、Hybrid Reranking
 - **LLM 集成：** Vendor-neutral `ModelProvider` + OpenAI-compatible Transport
 - **Agent Tool Interface：** Structured Tool Runtime
-- **External Agent Interface：** 独立 MCP Transport 开发中
+- **External Agent Interface：** 独立 stdio MCP Server
 
 ---
 
@@ -611,6 +598,7 @@ gxworks-agent/
 │  ├─ plc_agent.py             Tool-calling PLC Agent
 │  ├─ plc_agent_tools.py       工程工具定义
 │  ├─ tool_runtime.py          结构化 Agent Tool Boundary
+│  ├─ integrations/mcp/        独立 stdio MCP 适配层
 │  ├─ plc_core.py              与模型无关的 PLC 操作层
 │  ├─ plc_ir.py                PLC IR / Patch / Validation / Hash
 │  ├─ plc_json_validator.py    确定性 PLC 校验
@@ -623,6 +611,7 @@ gxworks-agent/
 ├─ benchmarks/                 FX3U 检索 Benchmark 与报告
 ├─ docs/
 │  ├─ localization.md
+│  ├─ integrations/            MCP 启动与 Codex 配置
 │  └─ research/                GXW / Structured Program 研究
 │
 └─ tests/
@@ -664,8 +653,8 @@ gxworks-agent/
 ## Agent 接口
 
 - [x] 内部 Structured Tool Runtime
-- [ ] 独立 MCP Server
-- [ ] stdio Transport
+- [x] 独立 MCP Server
+- [x] stdio Transport
 - [ ] Streamable HTTP Transport
 - [ ] Codex Harness / App Server 集成
 - [ ] DeepSeek Harness 集成
@@ -688,7 +677,7 @@ GXWorks Agent 仍处于持续开发阶段。
 - GX Simulator2 自动化仍属于实验性能力
 - Structured Ladder / FBD 编辑尚未实现
 - GXW Parser / Serializer 仍处于研究阶段
-- 独立 MCP Transport 尚未实现
+- MCP 已支持 stdio；HTTP Transport 与桌面确认桥接尚未实现
 - GX Works2 GUI 自动化可能受软件版本、界面语言与窗口状态影响
 - Simulator 验证不能替代真实设备调试与验收
 

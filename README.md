@@ -89,7 +89,7 @@ API keys are stored in Windows Credential Manager rather than repository configu
 | Structured Text generation | 🧪 Experimental |
 | GX Simulator2 automated testing | 🧪 Experimental |
 | GXW / Structured Ladder format research | 🔬 Research |
-| Standalone MCP server | 🚧 In development |
+| Standalone MCP server (stdio) | ✅ Working |
 | Structured Ladder / FBD editing | 📋 Planned |
 | GX Works3 adapter | 📋 Planned |
 
@@ -431,44 +431,31 @@ The engineering core is intentionally separated from the model provider so PLC s
 
 **MCP is an interface to GXWorks Agent, not the identity of the entire project.**
 
-The current codebase already contains a structured Tool Runtime with canonical ToolCall / ToolResult objects and structured tool schemas:
+The standalone stdio server exposes the same ten high-level engineering tools as the built-in Agent. Both paths share canonical ToolCall / ToolResult objects, tool schemas, and ToolRuntime:
 
 ```text
-Built-in Agent
-      ↓
- ModelProvider
-      ↓
- ToolRuntime
-      ↓
-   PLC Core
-      ↓
-GX Works2 Adapter
+Built-in Agent ↔ ModelProvider
+      │
+      └─────────────────────────────┐
+                                    ↓
+External MCP Client → MCP Server → ToolRuntime → PLC Core
 ```
 
-The current release does **not yet expose a standalone standards-compliant MCP server** for external MCP clients.
+The server uses the official Python MCP SDK and a separate optional Python 3.10+ environment. It reads an explicitly selected saved SessionStore project/version without starting the desktop, loading model credentials, or contacting a model.
 
-The planned external interface is:
+From the checkout root in PowerShell:
 
-```text
-Codex ──────────────┐
-Claude Code ────────┤
-Other AI Agents ────┼──→ MCP Interface
-                    │
-Built-in Agent ─────┘
-                           ↓
-                     GXWorks Agent
-                           ↓
-                        PLC Core
-                           ↓
-                       GX Works2
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-mcp.txt
+$env:PYTHONPATH = (Resolve-Path .\src).Path
+.\.venv\Scripts\python.exe -m integrations.mcp --stdio --workspace '<existing-workspace>' --project '<project-id>'
 ```
 
-Planned transports:
+The process waits for an MCP client on stdin. For an automatic connection check, run `python scripts/mcp_smoke.py` in the same environment.
 
-- stdio
-- Streamable HTTP
+`patch_program` and GX import requests remain `confirmation_required`: the server prepares proposals but has no approval/commit tool or desktop confirmation bridge. It does not expose physical PLC writes, arbitrary mouse/keyboard operations, or filesystem deletion.
 
-This allows MCP to remain one integration layer while the underlying PLC engineering core can also be used directly by the built-in Agent.
+See [MCP setup, context selection, tools, and smoke tests](docs/integrations/mcp.md) and [Codex MCP configuration](docs/integrations/codex.md). Streamable HTTP and embedding Codex Harness / App Server remain planned integrations.
 
 ---
 
@@ -591,7 +578,7 @@ The architecture separates AI reasoning from deterministic PLC engineering opera
 - **Knowledge retrieval:** SQLite FTS5, BM25, dense retrieval, hybrid reranking
 - **LLM integration:** vendor-neutral `ModelProvider` with OpenAI-compatible transport
 - **Agent tool interface:** structured Tool Runtime
-- **External Agent interface:** standalone MCP transport under development
+- **External Agent interface:** standalone MCP server over stdio
 
 ---
 
@@ -606,6 +593,7 @@ gxworks-agent/
 │  ├─ plc_agent.py             Tool-calling PLC Agent
 │  ├─ plc_agent_tools.py       Engineering tool definitions
 │  ├─ tool_runtime.py          Structured Agent tool boundary
+│  ├─ integrations/mcp/        Standalone stdio MCP adapter
 │  ├─ plc_core.py              Model-independent PLC operations
 │  ├─ plc_ir.py                PLC IR / Patch / Validation / Hash
 │  ├─ plc_json_validator.py    Deterministic PLC validation
@@ -618,6 +606,7 @@ gxworks-agent/
 ├─ benchmarks/                 FX3U retrieval benchmarks and reports
 ├─ docs/
 │  ├─ localization.md
+│  ├─ integrations/            MCP setup and Codex configuration
 │  └─ research/                GXW / structured-program research
 │
 └─ tests/
@@ -659,8 +648,8 @@ gxworks-agent/
 ## Agent Interfaces
 
 - [x] Internal structured Tool Runtime
-- [ ] Standalone MCP server
-- [ ] stdio transport
+- [x] Standalone MCP server
+- [x] stdio transport
 - [ ] Streamable HTTP transport
 - [ ] Codex Harness / App Server integration
 - [ ] DeepSeek Harness integration
@@ -683,7 +672,7 @@ Current limitations include:
 - GX Simulator2 automation remains experimental
 - Structured Ladder / FBD editing is not implemented
 - GXW parsing / serialization remains research work
-- standalone MCP transport is not implemented
+- MCP supports stdio; HTTP transport and desktop approval delivery are not implemented
 - GX Works2 GUI automation can depend on software version, interface language, and window state
 - simulator validation does not replace real-machine commissioning
 

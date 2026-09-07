@@ -9,7 +9,6 @@ import threading
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
-from config_manager import get_api_key, get_model_profile, load_full_config
 from i18n import get_language, response_language_instruction
 
 
@@ -590,6 +589,10 @@ def create_provider(
 
 
 def get_active_provider(config: Optional[Mapping[str, Any]] = None) -> ModelProvider:
+    # Canonical ToolCall/ToolResult imports must not initialize Windows
+    # credentials or desktop model settings in an external tool server.
+    from config_manager import get_api_key, get_model_profile, load_full_config
+
     global _provider_cache_key, _provider_cache
     config = dict(config) if config is not None else load_full_config()
     profile = get_model_profile(config)

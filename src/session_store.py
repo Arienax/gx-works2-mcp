@@ -8,8 +8,6 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from qt_compat import QStandardPaths
-
 
 def _utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -102,12 +100,19 @@ def detect_image_media_type(data):
 class SessionStore:
     """Persistent project, conversation, and generated-version storage."""
 
-    def __init__(self, base_dir=None, legacy_dir=None):
+    def __init__(self, base_dir=None, legacy_dir=None, *, create=True):
+        """Open the existing format; ``create=False`` skips workspace creation.
+
+        Headless callers supply a base directory (or PLC_AI_WORKSPACE_DIR), so
+        only the desktop's default-location lookup needs Qt.
+        """
         if base_dir is None:
             override = os.environ.get("PLC_AI_WORKSPACE_DIR", "").strip()
             if override:
                 base_dir = Path(override)
             else:
+                from qt_compat import QStandardPaths
+
                 app_data = QStandardPaths.writableLocation(
                     QStandardPaths.StandardLocation.AppDataLocation
                 )
@@ -116,9 +121,10 @@ class SessionStore:
         self.projects_dir = self.base_dir / "projects"
         self.index_path = self.base_dir / "index.json"
         self.legacy_dir = Path(legacy_dir) if legacy_dir else Path.cwd()
-        self.projects_dir.mkdir(parents=True, exist_ok=True)
-        if not self.index_path.exists():
-            self._write_json(self.index_path, {"projects": [], "legacy_imported": False})
+        if create:
+            self.projects_dir.mkdir(parents=True, exist_ok=True)
+            if not self.index_path.exists():
+                self._write_json(self.index_path, {"projects": [], "legacy_imported": False})
 
     @staticmethod
     def _read_json(path, default=None):
@@ -592,7 +598,7 @@ class SessionStore:
                 return version
         return None
 
-    def load_ladder(self, project_id, version_id):
+    def load_ladder(self, project_id, version_id, *, persist_legacy=True):
         """Load a ladder through canonical IR, migrating legacy data on view."""
 
         version = self.get_version(project_id, version_id)
@@ -603,7 +609,9 @@ class SessionStore:
         try:
             from plc_ir import ir_to_ladder
 
-            program = self.load_program_ir(project_id, version_id)
+            program = self.load_program_ir(
+                project_id, version_id, persist_legacy=persist_legacy
+            )
             if isinstance(program, dict):
                 return ir_to_ladder(program)
         except (OSError, TypeError, ValueError):
@@ -709,8 +717,12 @@ class SessionStore:
         self._write_json(version_path / "version.json", updated)
         return updated
 
-    def load_program_ir(self, project_id, version_id):
-        """Load canonical IR, persistently upgrading a valid legacy ladder."""
+    def load_program_ir(self, project_id, version_id, *, persist_legacy=True):
+        """Load canonical IR, optionally persisting a legacy ladder's upgrade.
+
+        The desktop keeps migration-on-view. External readers can request the
+        same deterministic compatibility view without writing to the project.
+        """
 
         version = self.get_version(project_id, version_id)
         if not version or version.get("target_mode") != "ladder":
@@ -760,7 +772,7 @@ class SessionStore:
         # If metadata already names an IR that this runtime cannot validate,
         # keep that artifact byte-for-byte for a newer reader.  The rebuilt IR
         # is only an in-memory compatibility view in that case.
-        if can_persist_legacy:
+        if can_persist_legacy and persist_legacy:
             self._persist_legacy_program_ir(project_id, version_id, program)
         return program
 

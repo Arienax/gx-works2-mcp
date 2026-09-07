@@ -1,0 +1,444 @@
+"""Optional MCP tests: deterministic fixtures, no GUI, vendor software or network."""
+
+import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+pytest.importorskip("mcp", reason="Install requirements-mcp.txt for MCP integration tests")
+
+import anyio
+from jsonschema import Draft202012Validator
+from mcp import Client
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
+from integrations.mcp.context_provider import (
+    ContextUnavailableError,
+    SessionToolContextProvider,
+    StaticToolContextProvider,
+)
+from integrations.mcp.server import create_server
+from integrations.mcp.tool_adapter import MCPToolAdapter, to_mcp_result
+from model_provider import ToolCall, ToolResult
+from plc_agent_tools import (
+    FORBIDDEN_TOOL_NAMES,
+    SAFE_TOOL_NAMES,
+    ToolDefinition,
+    ToolRegistry,
+    build_tool_context,
+)
+from plc_core import PLCCore
+from plc_ir import build_plc_ir
+from session_store import SessionStore
+from tool_runtime import InProcessToolRuntime, build_default_tool_runtime
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def saved_project(tmp_path):
+    ladder = {
+        "device_comments": {"X0": "启动", "Y0": "运行"},
+        "rungs": [{
+            "rung_id": 1, "debug_note": "启动输出", "header_element": None,
+            "shared_inputs": [],
+            "branches": [{
+                "branch_id": 1, "y_offset_level": 0,
+                "inputs": [{"type": "NO", "address": "X0", "label": ""}],
+                "outputs": [{"type": "COIL", "address": "Y0", "label": ""}],
+            }],
+        }],
+    }
+    program = build_plc_ir(ladder, plc_model="FX3U", revision=1)
+    store = SessionStore(base_dir=tmp_path / "workspace", legacy_dir=tmp_path)
+    project = store.create_project("MCP 测试项目")
+    version_id, directory = store.prepare_version(project["id"])
+    compiled = PLCCore().compile_project(program, directory)
+    version = store.complete_version(project["id"], version_id, {
+        **store._ir_metadata(program), "target_mode": "ladder", "plc_model": "FX3U",
+        "artifacts": dict(compiled["artifacts"]),
+    })
+    return store, project["id"], version, program
+
+
+def _provider(saved_project, *, pin=False):
+    store, project_id, version, _ = saved_project
+    return SessionToolContextProvider(
+        store.base_dir, project_id, version["id"] if pin else None
+    )
+
+
+def _files(root):
+    return {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+
+def test_discovery_and_schemas_come_from_the_runtime(saved_project):
+    runtime = build_default_tool_runtime()
+    adapter = MCPToolAdapter(runtime, _provider(saved_project))
+    tools = adapter.list_tools()
+    assert tuple(tool.name for tool in tools) == SAFE_TOOL_NAMES
+    assert not {tool.name for tool in tools} & FORBIDDEN_TOOL_NAMES
+    for tool, source in zip(tools, runtime.list_tools()):
+        assert tool.description == source["function"]["description"]
+        assert tool.input_schema == source["function"]["parameters"]
+        Draft202012Validator.check_schema(tool.input_schema)
+        assert tool.model_dump(by_alias=True)["inputSchema"] == tool.input_schema
+    tools[0].input_schema["properties"]["injected"] = {"type": "string"}
+    assert "injected" not in adapter.list_tools()[0].input_schema["properties"]
+
+
+def test_mcp_client_discovers_and_calls_the_shared_runtime(saved_project):
+    runtime = build_default_tool_runtime()
+    calls = []
+    original = runtime.invoke
+
+    def invoke(call, context):
+        calls.append((call, context))
+        return original(call, context)
+
+    runtime.invoke = invoke
+
+    async def exercise():
+        async with Client(create_server(_provider(saved_project), runtime)) as client:
+            discovered = await client.list_tools()
+            assert {tool.name for tool in discovered.tools} == set(SAFE_TOOL_NAMES)
+            for name, arguments in [
+                ("get_current_project", {}),
+                ("get_current_program_info", {}),
+                ("read_network", {"network_id": "N0001"}),
+                ("get_diagnostics", {}),
+                ("validate_project", {}),
+                ("validate_current_program", {}),
+                ("compile_project", {}),
+            ]:
+                result = await client.call_tool(name, arguments)
+                assert result.is_error is False
+                assert result.structured_content["ok"] is True
+                assert json.loads(result.content[0].text) == result.structured_content
+                assert result.meta["gxworks"]["project_id"] == saved_project[1]
+                assert result.meta["gxworks"]["call_id"]
+            assert calls[2][0].arguments == {"network_id": "N0001"}
+            assert isinstance(calls[2][0], ToolCall)
+            assert calls[2][1].program_ir == saved_project[3]
+
+    anyio.run(exercise)
+
+
+@pytest.mark.parametrize("name,arguments", [
+    ("read_network", {}),
+    ("read_network", {"network_id": 1}),
+    ("get_current_project", {"auto_approve": True}),
+    ("search_plc_manual", {"query": "X0", "top_k": True}),
+    ("search_plc_manual", {"query": "X0", "top_k": 9}),
+    ("patch_program", {"patch": []}),
+])
+def test_invalid_arguments_survive_the_mcp_boundary(saved_project, name, arguments):
+    async def exercise():
+        async with Client(create_server(_provider(saved_project))) as client:
+            result = await client.call_tool(name, arguments)
+            assert result.is_error is True
+            assert result.structured_content["error"]["code"] == "INVALID_ARGUMENTS"
+
+    anyio.run(exercise)
+
+
+@pytest.mark.parametrize("arguments", [[], "{", 3, True])
+def test_adapter_delegates_invalid_argument_decoding_to_registry(saved_project, arguments):
+    result = MCPToolAdapter(build_default_tool_runtime(), _provider(saved_project)).call_tool(
+        "read_network", arguments, "invalid"
+    )
+    assert result.is_error
+    assert result.structured_content["error"]["code"] == "INVALID_ARGUMENTS"
+
+
+@pytest.mark.parametrize("name", [*sorted(FORBIDDEN_TOOL_NAMES), "arbitrary_shell", "approve_action"])
+def test_forbidden_and_unknown_calls_never_invoke_runtime(saved_project, name):
+    class UntrustedRuntime:
+        def list_tools(self, context=None):
+            return [{"function": {"name": name, "description": "unsafe", "parameters": {"type": "object"}}}]
+
+        def invoke(self, call, context):
+            pytest.fail("A tool outside SAFE_TOOL_NAMES was invoked")
+
+    adapter = MCPToolAdapter(UntrustedRuntime(), _provider(saved_project))
+    assert adapter.list_tools() == []
+    assert adapter.call_tool(name, {}, "blocked").structured_content["error"]["code"] == "UNKNOWN_TOOL"
+
+    async def exercise():
+        async with Client(create_server(_provider(saved_project))) as client:
+            result = await client.call_tool(name, {})
+            assert result.is_error
+            assert result.structured_content["error"]["code"] == "UNKNOWN_TOOL"
+
+    anyio.run(exercise)
+
+
+def test_runtime_tool_error_translation(saved_project):
+    result = MCPToolAdapter(build_default_tool_runtime(), _provider(saved_project)).call_tool(
+        "read_network", {"network_id": "N9999"}, "missing-network"
+    )
+    assert result.is_error
+    assert result.structured_content["error"]["code"] == "TOOL_FAILED"
+    assert "N9999" in result.structured_content["error"]["message"]
+    assert result.meta["gxworks"]["call_id"] == "missing-network"
+
+
+def test_public_projection_does_not_leak_or_truncate_structured_data():
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        "get_current_project", "test", {"type": "object"},
+        lambda *_: {
+            "_private": "hidden-top", "long_text": "测" * 19000,
+            "nested": [{"visible": 1, "_secret": "hidden-nested"}],
+            "tuple": ({"_secret": "hidden-tuple", "visible": 2},),
+            "audit": {"revision": 4, "hash": "public-hash"},
+        },
+    ))
+    original = InProcessToolRuntime(registry).invoke(
+        ToolCall("long", "get_current_project", {}), build_tool_context({"id": "test"})
+    )
+    assert len(original.content) == 18000
+    result = to_mcp_result(original)
+    wire = result.model_dump_json(by_alias=True)
+    assert "hidden-" not in wire
+    assert "_private" not in wire
+    assert json.loads(result.content[0].text) == result.structured_content
+    assert len(result.structured_content["data"]["long_text"]) == 19000
+    assert result.structured_content["data"]["audit"]["revision"] == 4
+    assert original.data["data"]["_private"] == "hidden-top"
+
+
+def test_text_only_tool_errors_are_preserved():
+    result = to_mcp_result(ToolResult("text", "get_current_project", "backend unavailable", is_error=True))
+    assert result.is_error
+    assert result.structured_content is None
+    assert result.content[0].text == "backend unavailable"
+
+
+def test_confirmations_stay_pending_and_never_write_the_workspace(saved_project):
+    store, project_id, version, program = saved_project
+    before = _files(store.base_dir)
+    rung = copy.deepcopy(program["networks"][0]["ladder"])
+    rung["branches"][0]["inputs"].append({"type": "NC", "address": "X1", "label": ""})
+    patch = {"operations": [{"operation": "modify_network", "network": "N0001", "ladder": rung}]}
+
+    async def exercise():
+        async with Client(create_server(_provider(saved_project))) as client:
+            for name, arguments in [
+                ("patch_program", {"patch": patch}),
+                ("import_current_program_to_gxworks2", {}),
+            ]:
+                result = await client.call_tool(name, arguments)
+                public = result.structured_content
+                assert not result.is_error
+                assert public["status"] == "confirmation_required"
+                assert public["data"]["requires_confirmation"] is True
+                pending = public["data"]["pending_action"]
+                assert pending["project_id"] == project_id
+                assert "_candidate_ir" not in result.model_dump_json()
+                assert "_confirmed_spec" not in result.model_dump_json()
+                if name == "patch_program":
+                    assert pending["base_version_id"] == version["id"]
+                    assert pending["candidate_ir_sha256"]
+                    assert pending["artifact_hashes"]
+                    assert pending["diff"]["modified"] == ["N0001"]
+                else:
+                    assert pending["version_id"] == version["id"]
+
+    anyio.run(exercise)
+    assert _files(store.base_dir) == before
+
+
+def test_provider_loads_copies_and_follows_active_or_pinned_versions(saved_project):
+    store, project_id, version, _ = saved_project
+    provider = _provider(saved_project)
+    pinned = _provider(saved_project, pin=True)
+    context = provider.get_context()
+    context.project["name"] = "mutated copy"
+    assert provider.get_context().project["name"] == "MCP 测试项目"
+    static = StaticToolContextProvider(context)
+    context.project["name"] = "changed again"
+    assert static.get_context().project["name"] == "mutated copy"
+    snapshot = static.get_context()
+    snapshot.project["name"] = "changed returned value"
+    assert static.get_context().project["name"] == "mutated copy"
+    second, _ = store.prepare_version(project_id)
+    store.complete_version(project_id, second, {"target_mode": "st", "artifacts": {}})
+    assert provider.get_context().version_id == second
+    assert pinned.get_context().version_id == version["id"]
+
+
+def test_legacy_context_does_not_persist_migration_but_desktop_still_does(saved_project):
+    store, project_id, version, _ = saved_project
+    ir_file = store.version_dir(project_id, version["id"]) / version["artifacts"]["ir"]
+    ir_file.unlink()
+    project = store.get_project(project_id)
+    project["versions"][0]["artifacts"].pop("ir")
+    store.save_project(project)
+    before = _files(store.base_dir)
+    context = _provider(saved_project).get_context()
+    assert context.program_ir["revision"] == 1
+    assert context.ladder["rungs"][0]["rung_id"] == 1
+    assert _files(store.base_dir) == before
+    store.load_program_ir(project_id, version["id"])
+    assert ir_file.exists()
+    assert store.get_version(project_id, version["id"])["artifacts"]["ir"]
+
+
+def test_missing_context_and_path_escape_fail_closed(saved_project, tmp_path):
+    store, project_id, version, _ = saved_project
+    with pytest.raises(ContextUnavailableError):
+        SessionToolContextProvider(tmp_path / "does-not-exist", project_id)
+    assert not (tmp_path / "does-not-exist").exists()
+    for invalid in ("../elsewhere", "C:\\elsewhere", "..", "a/b"):
+        with pytest.raises(ContextUnavailableError):
+            SessionToolContextProvider(store.base_dir, invalid)
+    with pytest.raises(ContextUnavailableError):
+        SessionToolContextProvider(store.base_dir, project_id, "v9999").get_context()
+    project = store.get_project(project_id)
+    project["versions"][0]["artifacts"]["ir"] = "../../outside.json"
+    store.save_project(project)
+    with pytest.raises(ContextUnavailableError, match="escapes"):
+        _provider(saved_project).get_context()
+    result = MCPToolAdapter(build_default_tool_runtime(), _provider(saved_project)).call_tool(
+        "get_current_project", {}, "bad-context"
+    )
+    assert result.is_error
+    assert result.structured_content["error"]["code"] == "CONTEXT_UNAVAILABLE"
+    assert str(store.base_dir) not in result.content[0].text
+
+
+def test_project_without_version_has_a_valid_context(tmp_path):
+    store = SessionStore(base_dir=tmp_path / "workspace")
+    project = store.create_project("Empty project")
+    provider = SessionToolContextProvider(store.base_dir, project["id"])
+    context = provider.get_context()
+    assert context.version is None and context.program_ir is None
+    result = MCPToolAdapter(build_default_tool_runtime(), provider).call_tool("get_current_project", {}, "empty")
+    assert not result.is_error
+
+
+def test_context_rejects_concurrent_metadata_changes(saved_project, monkeypatch):
+    provider = _provider(saved_project)
+    original = provider._store.get_project
+    calls = []
+
+    def changing_project(project_id):
+        project = original(project_id)
+        calls.append(project)
+        if len(calls) > 1:
+            project["name"] = "changed during read"
+        return project
+
+    monkeypatch.setattr(provider._store, "get_project", changing_project)
+    with pytest.raises(ContextUnavailableError, match="changed"):
+        provider.get_context()
+
+
+def test_unexpected_runtime_exception_is_a_sanitized_tool_error(saved_project, monkeypatch):
+    runtime = build_default_tool_runtime()
+
+    def fail(*_):
+        raise RuntimeError("private failure details")
+
+    monkeypatch.setattr(runtime, "invoke", fail)
+    result = MCPToolAdapter(runtime, _provider(saved_project)).call_tool("get_current_project", {}, "error")
+    assert result.is_error
+    assert result.structured_content["error"]["code"] == "TOOL_FAILED"
+    assert "private failure details" not in result.content[0].text
+
+
+def test_stdio_real_process_without_qt_and_with_noisy_runtime(saved_project, tmp_path):
+    wrapper = tmp_path / "headless_server.py"
+    wrapper.write_text('''import importlib.abc
+import os
+import sys
+
+class BlockDesktop(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] in {"PyQt6", "PyQt5", "qt_compat", "main", "openai", "pywinauto", "win32com", "config_manager", "credential_store"}:
+            raise AssertionError("Unexpected desktop/provider dependency: " + fullname)
+
+sys.meta_path.insert(0, BlockDesktop())
+from integrations.mcp import server
+from integrations.mcp.__main__ import main
+original = server.build_default_tool_runtime
+
+def noisy_runtime():
+    runtime = original()
+    invoke = runtime.invoke
+    def noisy(call, context):
+        print("python stdout diagnostic", flush=True)
+        os.write(1, b"native stdout diagnostic\\n")
+        return invoke(call, context)
+    runtime.invoke = noisy
+    return runtime
+
+server.build_default_tool_runtime = noisy_runtime
+raise SystemExit(main())
+''', encoding="utf-8")
+    store, project_id, _, _ = saved_project
+    parameters = StdioServerParameters(
+        command=sys.executable,
+        args=[str(wrapper), "--stdio", "--workspace", str(store.base_dir), "--project", project_id],
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONIOENCODING": "utf-8"},
+        cwd=tmp_path,
+    )
+
+    async def exercise():
+        with anyio.fail_after(25):
+            with (tmp_path / "stderr.txt").open("w", encoding="utf-8") as errors:
+                async with stdio_client(parameters, errlog=errors) as streams:
+                    async with ClientSession(*streams, read_timeout_seconds=10) as client:
+                        initialized = await client.initialize()
+                        assert initialized.server_info.name == "gxworks-agent"
+                        assert "confirmation_required" in initialized.instructions
+                        assert initialized.capabilities.tools is not None
+                        assert {tool.name for tool in (await client.list_tools()).tools} == set(SAFE_TOOL_NAMES)
+                        for name, arguments in [
+                            ("read_network", {"network_id": "N0001"}),
+                            ("compile_project", {}),
+                            ("import_current_program_to_gxworks2", {}),
+                        ]:
+                            result = await client.call_tool(name, arguments)
+                            assert not result.is_error
+                            assert result.structured_content["ok"]
+
+    anyio.run(exercise)
+    diagnostics = (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+    assert "python stdout diagnostic" in diagnostics
+    assert "native stdout diagnostic" in diagnostics
+
+
+def test_cli_help_and_setup_errors_use_only_stderr(tmp_path):
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "PLC_AI_WORKSPACE_DIR": ""}
+    for args, expected_code in [
+        (["--help"], 0),
+        (["--stdio", "--project", "absent"], 2),
+        (["--stdio", "--workspace", str(tmp_path / "missing"), "--project", "absent"], 2),
+    ]:
+        result = subprocess.run(
+            [sys.executable, "-m", "integrations.mcp", *args],
+            env=env, cwd=tmp_path, capture_output=True, timeout=15,
+        )
+        assert result.returncode == expected_code
+        assert result.stdout == b""
+        assert result.stderr
+
+
+def test_scriptable_stdio_smoke():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "mcp_smoke.py")],
+        cwd=ROOT, capture_output=True, encoding="utf-8", timeout=35,
+    )
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    assert summary["ok"] is True
+    assert summary["tool_count"] == len(SAFE_TOOL_NAMES)
+    assert summary["called_tool"] == "read_network"
