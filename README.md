@@ -1,70 +1,24 @@
-# GX Works2 Openness MCP
+# GXWorks Agent
 
 English | [简体中文](README.zh-CN.md)
 
-> AI-assisted engineering workbench for Mitsubishi GX Works2, with an MCP-ready structured tool runtime.  
-> **Natural language → confirmed control spec → PLC IR → deterministic validation → GX Works2 → simulation.**
+> **AI engineering agent for Mitsubishi MELSEC PLC programming, validation, modification, simulation, and debugging.**  
+> Natural language → confirmed control specification → PLC IR → deterministic validation → GX Works2 → simulation feedback.
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6.svg)
 ![PLC](https://img.shields.io/badge/demo-FX3U-orange.svg)
 ![Status](https://img.shields.io/badge/status-active%20development-yellow.svg)
 
-GX Works2 Openness MCP is an experimental AI engineering layer for Mitsubishi MELSEC PLCs. It is designed to make PLC generation and modification inspectable, incremental, and verifiable instead of treating raw LLM output as the final engineering artifact.
-
-```text
-Natural Language
-      ↓
-Requirement Clarification
-      ↓
-Confirmed Control Spec
-      ↓
-PLC IR
-      ↓
-Deterministic Validation
-      ↓
-Ladder / ST
-      ↓
-GX Works2
-      ↓
-GX Simulator2
-      ↓
-Test / Diagnose / Repair
-```
-
-The current demo focuses on **FX3U + GX Works2**.
-
-> [!IMPORTANT]
-> `Openness` here means providing a programmable engineering interface around GX Works2.
-> This project does **not** use or claim to provide an official Mitsubishi Electric "Openness API".
-
-> [!NOTE]
-> The repository already contains an MCP-shaped structured Tool Runtime, but the current release does **not yet expose a standalone MCP server** for external MCP clients. Standalone stdio / Streamable HTTP transport is under development.
-
 <p align="center">
-  <img src="resources/assets/demo.gif" alt="GX Works2 Openness MCP demo" width="1200">
+  <img src="resources/assets/demo.gif" alt="GXWorks Agent demo" width="1200">
 </p>
 
----
+**GXWorks Agent** is an experimental AI engineering agent for Mitsubishi MELSEC PLC development.
 
-## Capability Status
+Instead of treating raw LLM output as the final PLC program, GXWorks Agent places a structured engineering layer between the model and GX Works. Programs can be represented as PLC IR, checked by deterministic validators, modified through controlled engineering tools, synchronized with GX Works2, and tested through GX Simulator2.
 
-| Capability | Status |
-| --- | --- |
-| Natural-language requirement analysis | ✅ Working |
-| Confirmed control specification | ✅ Working |
-| PLC Intermediate Representation (PLC IR) | ✅ Working |
-| Deterministic PLC validation | ✅ Working |
-| Ladder CSV generation | ✅ Working |
-| GX Works2 CSV import / export | ✅ Working |
-| Program and comment synchronization | ✅ Working |
-| Incremental network patching / diff | ✅ Working |
-| FX3U manual knowledge retrieval | ✅ Working |
-| Structured Text generation | 🧪 Experimental |
-| GX Simulator2 automated testing | 🧪 Experimental |
-| Standalone MCP server | 🚧 In development |
-| Structured Ladder / FBD | 📋 Planned |
-| GX Works3 adapter | 📋 Planned |
+The current implementation primarily targets **FX3U + GX Works2**.
 
 ---
 
@@ -72,15 +26,15 @@ The current demo focuses on **FX3U + GX Works2**.
 
 ### Requirements
 
-Core / desktop workbench:
+Core desktop workbench:
 
 - Windows 10 / 11
 - Python
-- DeepSeek, Zhipu GLM, or another OpenAI-compatible API
+- DeepSeek, Zhipu GLM, or another supported OpenAI-compatible API
 
 For GX Works2 integration:
 
-- GX Works2
+- Mitsubishi GX Works2
 
 Optional for automated simulation:
 
@@ -102,7 +56,7 @@ pip install -r requirements.txt
 python src\main.py
 ```
 
-Run tests:
+### Run Tests
 
 ```powershell
 pytest -q
@@ -114,13 +68,38 @@ A separate dependency set is also provided for Windows 7:
 pip install -r requirements-win7.txt
 ```
 
-API keys are stored in the Windows Credential Manager instead of the repository configuration.
+API keys are stored in Windows Credential Manager rather than repository configuration files.
+
+---
+
+## Capability Status
+
+| Capability | Status |
+| --- | --- |
+| Natural-language requirement analysis | ✅ Working |
+| Confirmed control specification | ✅ Working |
+| PLC Intermediate Representation (PLC IR) | ✅ Working |
+| Deterministic PLC validation | ✅ Working |
+| Ladder CSV generation | ✅ Working |
+| GX Works2 CSV import / export | ✅ Working |
+| Program and device-comment synchronization | ✅ Working |
+| Incremental network patching / diff | ✅ Working |
+| FX3U manual knowledge retrieval | ✅ Working |
+| Structured engineering Tool Runtime | ✅ Working |
+| Structured Text generation | 🧪 Experimental |
+| GX Simulator2 automated testing | 🧪 Experimental |
+| GXW / Structured Ladder format research | 🔬 Research |
+| Standalone MCP server | 🚧 In development |
+| Structured Ladder / FBD editing | 📋 Planned |
+| GX Works3 adapter | 📋 Planned |
+
+> Status labels are intentionally conservative. Research or planned features should not be treated as supported engineering backends.
 
 ---
 
 ## Example
 
-Describe the required control behavior:
+Describe the required machine behavior:
 
 ```text
 X0 starts the motor.
@@ -129,94 +108,131 @@ Y0 drives the motor contactor.
 
 Use a holding circuit.
 Stop must have priority.
-After X2 detects a workpiece, stop after 3 seconds.
-The motor must not automatically restart after power recovery.
+
+After X2 detects a workpiece,
+stop the motor after 3 seconds.
+
+The motor must not automatically restart
+after power recovery.
 ```
 
-The intended workflow is not:
+A conventional LLM workflow might stop at:
 
 ```text
-Prompt → LLM → PLC code
+Prompt
+  ↓
+LLM
+  ↓
+PLC Code
 ```
 
-Instead, the model works through structured engineering state:
+GXWorks Agent instead works through structured engineering state:
 
 ```text
-AI reasoning
-    +
-confirmed control specification
-    +
+Natural Language
+      ↓
+Requirement Clarification
+      ↓
+Confirmed Control Specification
+      ↓
 PLC IR
-    +
-deterministic validation
-    +
-engineering tools
-    +
-simulation feedback
+      ↓
+Deterministic Validation
+      ↓
+Ladder / ST
+      ↓
+GX Works2
+      ↓
+GX Simulator2
+      ↓
+Test / Diagnose / Repair
 ```
 
-The Agent can clarify incomplete requirements, generate Ladder or ST, inspect existing logic, create targeted patches, validate candidate revisions, and diagnose problems.
+The Agent can clarify incomplete requirements, generate PLC logic, inspect existing programs, create targeted patches, validate candidate revisions, and use simulation feedback to support diagnosis.
 
 ---
 
-## Core Design
+# How It Works
 
-### PLC Intermediate Representation
+## PLC Intermediate Representation
 
-LLM output is converted into an internal **PLC IR** rather than being treated as the final program.
+LLM output is converted into an internal **PLC Intermediate Representation (PLC IR)** instead of being treated as the final engineering artifact.
 
 ```text
-             ┌─ Ladder CSV
-             ├─ ST
-AI → PLC IR ─┼─ SVG Preview
-             ├─ Validation
-             └─ GX Works2
+                    ┌─ Ladder CSV
+                    ├─ Structured Text
+AI → PLC IR ────────┼─ SVG Preview
+                    ├─ Validation
+                    ├─ Diff / Patch
+                    └─ GX Works2 Adapter
 ```
 
-The IR provides a stable semantic layer for networks, instructions, devices, read/write dependencies, revisions, static analysis, diffs, incremental patches, and deterministic rendering.
+PLC IR provides a structured semantic layer for:
 
-### Deterministic Validation
+- networks
+- instructions
+- PLC devices
+- timers and counters
+- read / write dependencies
+- revisions
+- static analysis
+- deterministic rendering
+- diffs
+- incremental patches
 
-The model is not responsible for judging whether its own output is correct. Generated programs are checked locally for issues such as:
+This makes program state inspectable and allows engineering operations to be performed without regenerating the entire program from free-form model output.
+
+---
+
+## Deterministic Validation
+
+The model is not expected to judge the correctness of its own output.
+
+Candidate PLC programs are checked by deterministic local code for issues such as:
 
 - instruction structure
 - device validity
 - I/O references
 - timers and counters
 - network structure
-- read/write dependencies
+- read / write dependencies
 - PLC-specific constraints
 - control-spec consistency
-- common ladder logic problems
+- common Ladder logic problems
 
 ```text
-LLM → PLC IR → Validator → Pass → Render / Import
-                        ↓
-                       Fail
-                        ↓
-                      Repair
+LLM
+ ↓
+PLC IR
+ ↓
+Validator
+ ├──────── PASS ────────→ Render / Import
+ │
+ └──────── FAIL
+             ↓
+         Diagnostics
+             ↓
+           Repair
 ```
 
 > **LLM for reasoning. Deterministic code for verification.**
 
-### GX Works2 Integration
+---
 
-The current Ladder workflow uses GX Works2 CSV import / export as the most mature engineering interface.
+## Incremental Program Editing
 
-Supported workflows include program and device-comment CSV generation, import / export, synchronization, automatic backup before overwrite, synchronization baselines, external modification detection, conflict protection, and optional round-trip verification.
+Existing PLC programs do not have to be regenerated from scratch.
 
-If the project detects that the GX Works2 program has been manually modified since the previous synchronization, it stops instead of silently overwriting the changes.
-
-### Incremental Editing
-
-Existing programs do not have to be regenerated from scratch.
+GXWorks Agent supports network-level candidate modifications:
 
 ```text
 Current PLC IR
       ↓
+Requested Change
+      ↓
 Network Patch
       ↓
-Candidate Version
+Candidate Revision
       ↓
 Validation
       ↓
@@ -231,12 +247,44 @@ This allows requests such as:
 
 ```text
 Change the stop logic to stop-priority.
+
 Do not modify the other networks.
 ```
 
-### Controlled Tool Boundary
+The modification can be represented as a targeted patch and validated before it replaces the current program state.
 
-The built-in Agent interacts with high-level engineering tools such as:
+---
+
+## GX Works2 Integration
+
+The current Ladder workflow uses **GX Works2 CSV import / export** as the most mature integration backend.
+
+Supported workflows include:
+
+- Ladder program CSV generation
+- device-comment CSV generation
+- GX Works2 import / export
+- program synchronization
+- comment synchronization
+- automatic backup before overwrite
+- synchronization baselines
+- external modification detection
+- conflict protection
+- optional round-trip verification
+
+If GXWorks Agent detects that a GX Works2 program has been manually modified since the previous synchronization, it stops instead of silently overwriting the engineer's changes.
+
+GX Works2 GUI integration currently relies in part on GUI automation and may depend on software version, interface language, and window state.
+
+---
+
+# Engineering Agent
+
+GXWorks Agent contains a built-in tool-calling PLC Agent.
+
+The Agent operates through a structured engineering Tool Runtime rather than unrestricted low-level computer control.
+
+Examples of engineering tools include:
 
 ```text
 get_current_project
@@ -251,39 +299,98 @@ validate_current_program
 import_current_program_to_gxworks2
 ```
 
-Low-level primitives such as arbitrary mouse input, file deletion, physical PLC writes, or forced device writes are not directly exposed to the model. Engineering state changes remain behind controlled application boundaries.
-
-### GX Simulator2 Automated Testing
-
-The project can generate a simulation test plan from the current PLC program and execute it through GX Simulator2.
+The intended boundary is:
 
 ```text
-PLC Program
-    ↓
-AI Test Planning
-    ↓
-User Confirmation
-    ↓
-GX Simulator2
-    ↓
-Input Sequence
-    ↓
-Assertions
-    ↓
-Test Report
+AI Agent
+   ↓
+Engineering Tools
+   ↓
+Tool Runtime
+   ↓
+PLC Core
+   ├─ PLC IR
+   ├─ Validator
+   ├─ Knowledge Retrieval
+   └─ GX Works2 Adapter
 ```
 
-The local simulator gateway is intentionally isolated from physical PLCs. Its current design uses localhost-only access, a process-specific authentication token, a fixed GX Simulator2 target, controlled device writes, and no physical PLC connection path.
+Low-level primitives such as arbitrary mouse input, file deletion, physical PLC writes, or unrestricted forced-device writes are not directly exposed to the model.
 
-See [`simulator_gateway/README.md`](simulator_gateway/README.md).
+Engineering state changes remain behind controlled application boundaries.
 
 ---
 
-## FX3U Knowledge Retrieval
+# GX Simulator2 Automated Testing
 
-The Agent includes local retrieval for FX3U manuals and engineering knowledge, including instruction lookup, device constraints, and troubleshooting.
+GXWorks Agent can generate a simulation test plan from the current PLC program and execute controlled test operations through GX Simulator2.
 
-The repository contains a 220-case retrieval benchmark under [`benchmarks/`](benchmarks/):
+```text
+PLC Program
+     ↓
+AI Test Planning
+     ↓
+User Confirmation
+     ↓
+GX Simulator2
+     ↓
+Input Sequence
+     ↓
+Assertions
+     ↓
+Test Report
+```
+
+Simulator automation is currently **experimental**.
+
+The local simulator gateway is intentionally separated from physical PLC access.
+
+Its current design uses:
+
+- localhost-only communication
+- process-specific authentication
+- a fixed GX Simulator2 target
+- controlled device writes
+- no physical PLC connection path
+
+See [`simulator_gateway/README.md`](simulator_gateway/README.md).
+
+The long-term engineering loop is:
+
+```text
+Generate / Modify
+       ↓
+Validate
+       ↓
+GX Works2
+       ↓
+Simulate
+       ↓
+Observe
+       ↓
+Diagnose
+       ↓
+Repair
+       ↓
+Validate Again
+```
+
+The complete automatic compile / diagnose / repair loop is not yet finished.
+
+---
+
+# FX3U Knowledge Retrieval
+
+GXWorks Agent includes local retrieval for FX3U manuals and engineering knowledge.
+
+The retrieval layer supports information such as:
+
+- instruction lookup
+- device constraints
+- programming rules
+- troubleshooting information
+
+The repository contains a **220-case retrieval benchmark** under [`benchmarks/`](benchmarks/).
 
 | Metric | Result |
 | --- | ---: |
@@ -297,11 +404,11 @@ The repository contains a 220-case retrieval benchmark under [`benchmarks/`](ben
 
 See [`benchmarks/fx3u_rag_benchmark_report.json`](benchmarks/fx3u_rag_benchmark_report.json) for the current report.
 
-> These are project-internal retrieval benchmarks. They measure knowledge retrieval performance, not end-to-end PLC program correctness or real-machine safety.
+> These are project-internal retrieval benchmarks. They measure knowledge-retrieval performance, not end-to-end PLC program correctness or real-machine safety.
 
 ---
 
-## Model Support
+# Model Support
 
 The built-in Agent uses a vendor-neutral `ModelProvider` abstraction.
 
@@ -314,13 +421,17 @@ The built-in Agent uses a vendor-neutral `ModelProvider` abstraction.
 | Gemini native API | 🚧 Planned |
 | Codex Harness / App Server | 🚧 Planned |
 
-DeepSeek and Zhipu currently share the same OpenAI-compatible transport layer rather than separate provider implementations.
+DeepSeek and Zhipu currently share the same OpenAI-compatible transport layer rather than separate native provider implementations.
+
+The engineering core is intentionally separated from the model provider so PLC state, validation, and engineering operations do not depend on one specific LLM vendor.
 
 ---
 
-## MCP
+# MCP Integration
 
-The current codebase has an MCP-shaped Tool Runtime:
+**MCP is an interface to GXWorks Agent, not the identity of the entire project.**
+
+The current codebase already contains a structured Tool Runtime with canonical ToolCall / ToolResult objects and structured tool schemas:
 
 ```text
 Built-in Agent
@@ -334,15 +445,22 @@ Built-in Agent
 GX Works2 Adapter
 ```
 
-Tools use structured schemas and canonical ToolCall / ToolResult objects.
+The current release does **not yet expose a standalone standards-compliant MCP server** for external MCP clients.
 
-The next step is exposing this Tool Runtime as a standalone MCP server:
+The planned external interface is:
 
 ```text
-Codex ────────────┐
-Claude Code ──────┤
-DeepSeek Harness ─┼→ GX Works2 MCP → PLC Core → GX Works2
-Other Agents ─────┘
+Codex ──────────────┐
+Claude Code ────────┤
+Other AI Agents ────┼──→ MCP Interface
+                    │
+Built-in Agent ─────┘
+                           ↓
+                     GXWorks Agent
+                           ↓
+                        PLC Core
+                           ↓
+                       GX Works2
 ```
 
 Planned transports:
@@ -350,9 +468,62 @@ Planned transports:
 - stdio
 - Streamable HTTP
 
+This allows MCP to remain one integration layer while the underlying PLC engineering core can also be used directly by the built-in Agent.
+
 ---
 
-## Architecture
+# GXW / Structured Ladder Research
+
+GXWorks Agent includes an active reverse-engineering research track for GX Works2 project files and structured program representations.
+
+Research material is available under [`docs/research/`](docs/research/).
+
+Current research areas include:
+
+- GXW container structure
+- project object resolution
+- `Program.pou` structure
+- Mitsubishi instruction tokenization
+- PLC semantic representation
+- Structured Ladder representation
+- Function-related structures
+- Function Block-related structures
+
+The current GXW research is **experimental**.
+
+Controlled FX3U samples show that `.gxw` projects use a Microsoft Compound File Binary container with nested project data, including objects such as `Program.pou`.
+
+The current research direction is approximately:
+
+```text
+GXW
+ ↓
+Container Reader
+ ↓
+Project Object Resolver
+ ↓
+Program.pou Tokenizer
+ ↓
+Mitsubishi Instruction Decoder
+ ↓
+PLC IR
+```
+
+The first engineering target is a deterministic parser.
+
+Directly writing or reconstructing `.gxw` projects is a separate and higher-risk problem because GX Works2 projects may contain duplicated or derived state, metadata, hashes, compiler state, and other consistency requirements.
+
+> **GXW reverse engineering is research work and is not currently a supported GXWorks Agent editing backend.**
+
+See:
+
+- [`docs/research/gxw_reverse_engineering.md`](docs/research/gxw_reverse_engineering.md)
+- [`docs/research/gxw_structured_ladder_reverse_engineering.md`](docs/research/gxw_structured_ladder_reverse_engineering.md)
+- [`docs/research/gxw_semantic_model_v1.md`](docs/research/gxw_semantic_model_v1.md)
+
+---
+
+# Architecture
 
 ```mermaid
 flowchart TD
@@ -385,87 +556,174 @@ flowchart TD
     AGENT --> KB[PLC Knowledge Retrieval]
 ```
 
-### Technology Overview
-
-- Core / UI: Python, PyQt6
-- Packaging: PyInstaller
-- PLC integration: GX Works2 CSV, pywinauto
-- Simulation: GX Simulator2, MX Component, local C# gateway
-- Knowledge retrieval: SQLite FTS5, BM25, dense retrieval, hybrid reranking
-- LLM integration: vendor-neutral `ModelProvider` with OpenAI-compatible transport
-
----
-
-## Project Structure
+The architecture separates AI reasoning from deterministic PLC engineering operations.
 
 ```text
-src/
-├─ main.py                  Desktop engineering workbench
-├─ model_provider.py        Vendor-neutral model abstraction
-├─ plc_agent.py             Tool-calling PLC Agent
-├─ plc_agent_tools.py       Engineering tool definitions
-├─ tool_runtime.py          MCP-shaped tool boundary
-├─ plc_core.py              Model-independent PLC operations
-├─ plc_ir.py                PLC IR / Patch / Validation / Hash
-├─ plc_json_validator.py    Deterministic PLC validation
-├─ knowledge_retriever.py   PLC manual / knowledge retrieval
-└─ gxworks2/                GX Works2 integration
-
-simulator_gateway/          Local GX Simulator2 gateway
-resources/                  PLC models, patterns, and knowledge resources
-examples/                   GX Works2 CSV examples
-benchmarks/                 FX3U retrieval benchmarks and reports
-docs/                       Design and research documentation
+                GXWorks Agent
+                      │
+        ┌─────────────┼─────────────┐
+        ↓             ↓             ↓
+     PLC Agent     PLC Core      Knowledge
+        │             │           Retrieval
+        ↓             ↓
+   Tool Runtime     PLC IR
+                      │
+                 Validator
+                      │
+                   Renderer
+                      │
+                GX Works2 Adapter
+                      │
+                  GX Works2
+                      │
+                GX Simulator2
 ```
 
 ---
 
-## Roadmap
+## Technology Overview
 
-- [ ] Standalone MCP Server
-- [ ] Codex Harness / App Server integration
-- [ ] DeepSeek Harness integration
-- [ ] Structured Ladder / FBD
-- [ ] Function / Function Block
-- [ ] Reusable FB Library
+- **Core / UI:** Python, PyQt6
+- **Packaging:** PyInstaller
+- **PLC representation:** custom PLC IR
+- **PLC integration:** GX Works2 CSV, pywinauto
+- **Simulation:** GX Simulator2, MX Component, local C# gateway
+- **Knowledge retrieval:** SQLite FTS5, BM25, dense retrieval, hybrid reranking
+- **LLM integration:** vendor-neutral `ModelProvider` with OpenAI-compatible transport
+- **Agent tool interface:** structured Tool Runtime
+- **External Agent interface:** standalone MCP transport under development
+
+---
+
+# Project Structure
+
+```text
+gxworks-agent/
+│
+├─ src/
+│  ├─ main.py                  Desktop engineering workbench
+│  ├─ model_provider.py        Vendor-neutral model abstraction
+│  ├─ plc_agent.py             Tool-calling PLC Agent
+│  ├─ plc_agent_tools.py       Engineering tool definitions
+│  ├─ tool_runtime.py          Structured Agent tool boundary
+│  ├─ plc_core.py              Model-independent PLC operations
+│  ├─ plc_ir.py                PLC IR / Patch / Validation / Hash
+│  ├─ plc_json_validator.py    Deterministic PLC validation
+│  ├─ knowledge_retriever.py   PLC manual / knowledge retrieval
+│  └─ gxworks2/                GX Works2 integration
+│
+├─ simulator_gateway/          Local GX Simulator2 gateway
+├─ resources/                  PLC models, patterns, knowledge, and assets
+├─ examples/                   GX Works2 CSV examples
+├─ benchmarks/                 FX3U retrieval benchmarks and reports
+├─ docs/
+│  ├─ localization.md
+│  └─ research/                GXW / structured-program research
+│
+└─ tests/
+```
+
+---
+
+# Roadmap
+
+## Agent & Engineering Core
+
+- [x] PLC Intermediate Representation
+- [x] Deterministic validation
+- [x] Incremental network patching / diff
+- [x] Tool-calling PLC Agent
+- [x] FX3U knowledge retrieval
 - [ ] More complete compile / diagnose / repair loop
+- [ ] Function / Function Block support
+- [ ] Reusable FB library
+
+## GX Works Integration
+
+- [x] Ladder CSV generation
+- [x] GX Works2 CSV import / export
+- [x] Program and comment synchronization
+- [ ] Structured Ladder / FBD editing
+- [ ] GXW parser / serializer
 - [ ] More MELSEC PLC families
 - [ ] GX Works3 adapter
 - [ ] Vendor-neutral PLC backend
+
+## Simulation
+
+- [x] GX Simulator2 gateway architecture
+- [x] AI-generated simulation test planning
+- [ ] Broader automated simulation coverage
+- [ ] More complete diagnose / repair / retest workflow
+
+## Agent Interfaces
+
+- [x] Internal structured Tool Runtime
+- [ ] Standalone MCP server
+- [ ] stdio transport
+- [ ] Streamable HTTP transport
+- [ ] Codex Harness / App Server integration
+- [ ] DeepSeek Harness integration
+
+## Future Engineering Scope
+
 - [ ] HMI / wider automation-project model
 
 ---
 
-## Current Limitations
+# Current Limitations
 
-This project is still under active development.
+GXWorks Agent is under active development.
 
-- primarily developed and tested around FX3U
+Current limitations include:
+
+- development and testing primarily focus on FX3U
 - Ladder CSV integration is currently the most mature backend
-- Structured Text and simulator automation are still experimental
-- Structured Ladder / FBD is not implemented yet
-- standalone MCP transport is not implemented yet
-- GX Works2 GUI automation may depend on software version, language, and window state
+- Structured Text remains experimental
+- GX Simulator2 automation remains experimental
+- Structured Ladder / FBD editing is not implemented
+- GXW parsing / serialization remains research work
+- standalone MCP transport is not implemented
+- GX Works2 GUI automation can depend on software version, interface language, and window state
 - simulator validation does not replace real-machine commissioning
 
 ---
 
-## Safety
+# Safety
 
-PLC software controls physical equipment. Generated logic should be reviewed by qualified engineers before deployment to real machinery.
+PLC software controls physical equipment.
 
-Particular attention should be paid to emergency-stop circuits, mechanical interlocks, limit switches, homing, fail-safe behavior, startup states, motion collision risks, and drive / servo parameters.
+AI-generated or AI-modified PLC logic should be reviewed by qualified engineers before deployment to real machinery.
+
+Particular attention should be paid to:
+
+- emergency-stop circuits
+- safety circuits
+- mechanical interlocks
+- limit switches
+- homing behavior
+- fail-safe behavior
+- startup states
+- unexpected automatic restart
+- motion limits
+- mechanical collision risks
+- drive and servo parameters
+- communication failure behavior
+
+Simulation can reduce engineering risk, but it does not replace commissioning, machine validation, or functional-safety engineering.
 
 ---
 
-## License
+# License
 
 Licensed under the [Apache License 2.0](LICENSE).
 
 ---
 
-## Disclaimer
+# Disclaimer
 
-This is an independent open-source project and is **not affiliated with, sponsored by, or endorsed by Mitsubishi Electric**.
+GXWorks Agent is an independent open-source project.
 
-Mitsubishi Electric, MELSEC, GX Works2, GX Simulator2, and MX Component are trademarks or product names of their respective owners.
+It is **not affiliated with, sponsored by, or endorsed by Mitsubishi Electric**.
+
+Mitsubishi Electric, MELSEC, GX Works2, GX Works3, GX Simulator2, and MX Component are trademarks or product names of their respective owners.
