@@ -11,8 +11,9 @@ if str(SRC) not in sys.path:
 
 from gxw.container import CompoundFile, FREESECT
 from gxw.container_writer import (
+    inspect_root_ministream_allocation,
     inspect_stream_allocation,
-    replace_stream_with_free_mini_growth,
+    replace_stream_with_ministream_growth,
     replace_stream_within_allocation,
 )
 from gxw.models import GXWFormatError
@@ -103,22 +104,28 @@ def main() -> None:
 
     hdb_bytes = outer.read_stream("_hdb")
     before = inspect_stream_allocation(hdb_bytes, stream_name)
+    root_before = inspect_root_ministream_allocation(hdb_bytes)
     backed, free_backed = _free_backed_mini_sectors(hdb_bytes)
 
     print("Structured Program insertion:")
-    print(f"  logical object: {logical_name}")
-    print(f"  nested stream:  {stream_name}")
-    print(f"  edit:            insert {args.new_symbol} after {args.after_symbol}")
-    print(f"  records:         {program.record_count} -> {modified.record_count}")
-    print(f"  size:            {len(original_pou)} -> {len(patched_pou)} bytes")
+    print(f"  logical object:  {logical_name}")
+    print(f"  nested stream:   {stream_name}")
+    print(f"  edit:             insert {args.new_symbol} after {args.after_symbol}")
+    print(f"  records:          {program.record_count} -> {modified.record_count}")
+    print(f"  size:             {len(original_pou)} -> {len(patched_pou)} bytes")
     print(
-        f"  allocation:      {before.storage}, {before.allocation_capacity} bytes "
+        f"  allocation:       {before.storage}, {before.allocation_capacity} bytes "
         f"({before.chain_length} sectors)"
     )
     if before.storage == "mini":
         print(
-            f"  root MiniStream: {backed} backed mini-sectors, "
-            f"{free_backed} currently free"
+            f"  root MiniStream:  {root_before.stream_size} bytes logical / "
+            f"{root_before.allocation_capacity} bytes FAT capacity"
+        )
+        print(
+            f"  mini-sector map:  {backed} backed, {free_backed} free-backed, "
+            f"{root_before.max_backed_mini_sectors - backed} more can be exposed "
+            "without FAT growth"
         )
 
     if len(patched_pou) <= before.allocation_capacity:
@@ -129,22 +136,33 @@ def main() -> None:
         )
         allocation_mode = "existing chain"
     else:
-        new_hdb_bytes = replace_stream_with_free_mini_growth(
+        new_hdb_bytes = replace_stream_with_ministream_growth(
             hdb_bytes,
             stream_name,
             patched_pou,
         )
-        allocation_mode = "extended MiniFAT chain using free backed mini-sectors"
+        root_after_growth = inspect_root_ministream_allocation(new_hdb_bytes)
+        if root_after_growth.stream_size > root_before.stream_size:
+            allocation_mode = "extended MiniFAT chain + exposed existing root FAT slack"
+        else:
+            allocation_mode = "extended MiniFAT chain using free backed mini-sectors"
 
     after = inspect_stream_allocation(new_hdb_bytes, stream_name)
+    root_after = inspect_root_ministream_allocation(new_hdb_bytes)
     print(
-        f"  result allocation:{after.allocation_capacity} bytes "
+        f"  result allocation: {after.allocation_capacity} bytes "
         f"({after.chain_length} sectors; {allocation_mode})"
     )
+    if root_after.stream_size != root_before.stream_size:
+        print(
+            f"  root MiniStream:  {root_before.stream_size} -> "
+            f"{root_after.stream_size} bytes (container length unchanged)"
+        )
 
-    # This milestone only links mini-sectors already backed by the existing root
-    # MiniStream, so the nested CFB byte length must remain unchanged. The outer
-    # _hdb replacement is therefore still a conservative same-allocation write.
+    # This milestone may enlarge the logical root MiniStream only inside bytes
+    # already covered by its regular FAT chain. The nested CFB file itself stays
+    # byte-for-byte the same length, so the outer _hdb stream still needs no FAT
+    # growth.
     if len(new_hdb_bytes) != len(hdb_bytes):
         raise GXWFormatError(
             "nested _hdb container changed length; outer CFB growth is not enabled"
