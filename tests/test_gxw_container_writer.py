@@ -12,7 +12,10 @@ from src.gxw.container import (
     CompoundFile,
 )
 from src.gxw.container_writer import (
+    inspect_root_ministream_allocation,
     inspect_stream_allocation,
+    replace_stream_with_free_mini_growth,
+    replace_stream_with_ministream_growth,
     replace_stream_within_allocation,
 )
 from src.gxw.models import GXWFormatError
@@ -37,7 +40,7 @@ def _directory_entry(
         raw[: len(encoded)] = encoded
         struct.pack_into("<H", raw, 64, len(encoded))
     raw[66] = object_type
-    raw[67] = 1  # black tree node
+    raw[67] = 1
     struct.pack_into("<III", raw, 68, left, right, child)
     struct.pack_into("<I", raw, 116, start_sector)
     struct.pack_into("<Q", raw, 120, stream_size)
@@ -73,10 +76,21 @@ def _header(
     return bytes(raw)
 
 
-def _build_mini_stream_cfb(payload: bytes) -> bytes:
+def _build_mini_stream_cfb(
+    payload: bytes,
+    *,
+    root_stream_size: int = SECTOR_SIZE,
+) -> bytes:
     # Sector 0: directory; 1: root MiniStream; 2: MiniFAT; 3: FAT.
     if not payload or len(payload) >= 4096:
         raise ValueError("mini fixture payload must be 1..4095 bytes")
+    if root_stream_size <= 0 or root_stream_size > SECTOR_SIZE:
+        raise ValueError("synthetic root MiniStream must fit its one FAT sector")
+    if root_stream_size % 64:
+        raise ValueError("synthetic root MiniStream size must be mini-sector aligned")
+    if len(payload) > root_stream_size:
+        raise ValueError("payload exceeds the logical root MiniStream size")
+
     needed_mini_sectors = math.ceil(len(payload) / 64)
     if needed_mini_sectors > 8:
         raise ValueError("synthetic root MiniStream contains only eight mini-sectors")
@@ -87,7 +101,7 @@ def _build_mini_stream_cfb(payload: bytes) -> bytes:
         5,
         child=1,
         start_sector=1,
-        stream_size=SECTOR_SIZE,
+        stream_size=root_stream_size,
     )
     directory[128:256] = _directory_entry(
         "16",
@@ -193,6 +207,70 @@ def test_ministream_growth_fails_when_existing_chain_is_too_small():
 
     with pytest.raises(GXWFormatError, match="holds only 448 bytes"):
         replace_stream_within_allocation(raw, "16", original_payload + b"X" * 38)
+
+
+def test_grow_ministream_by_linking_free_backed_mini_sectors():
+    original_payload = bytes(index % 251 for index in range(300))
+    raw = _build_mini_stream_cfb(original_payload)
+
+    before = inspect_stream_allocation(raw, "16")
+    assert before.chain_length == 5
+    assert before.allocation_capacity == 320
+
+    new_payload = original_payload + b"G" * 130
+    patched = replace_stream_with_free_mini_growth(raw, "16", new_payload)
+
+    assert len(patched) == len(raw)
+    reparsed = CompoundFile(patched)
+    assert reparsed.read_stream("16") == new_payload
+    after = inspect_stream_allocation(patched, "16")
+    assert after.stream_size == 430
+    assert after.chain_length == 7
+    assert after.allocation_capacity == 448
+
+
+def test_free_mini_growth_fails_when_root_ministream_has_no_backed_capacity():
+    original_payload = bytes(index % 251 for index in range(300))
+    raw = _build_mini_stream_cfb(original_payload)
+
+    with pytest.raises(GXWFormatError, match="root MiniStream growth is required"):
+        replace_stream_with_free_mini_growth(raw, "16", original_payload + b"Z" * 300)
+
+
+def test_grow_root_ministream_into_existing_fat_slack():
+    original_payload = bytes(index % 251 for index in range(411))
+    raw = _build_mini_stream_cfb(original_payload, root_stream_size=448)
+
+    root_before = inspect_root_ministream_allocation(raw)
+    assert root_before.stream_size == 448
+    assert root_before.allocation_capacity == 512
+    assert root_before.backed_mini_sectors == 7
+    assert root_before.max_backed_mini_sectors == 8
+
+    # 479 bytes require eight mini-sectors. The eighth MiniFAT entry is free but
+    # initially outside the logical root MiniStream; the same one-sector FAT chain
+    # already contains the needed final 64 bytes.
+    new_payload = original_payload + b"R" * 68
+    patched = replace_stream_with_ministream_growth(raw, "16", new_payload)
+
+    assert len(patched) == len(raw)
+    reparsed = CompoundFile(patched)
+    assert reparsed.read_stream("16") == new_payload
+    assert reparsed.root_entry.stream_size == 512
+    after = inspect_stream_allocation(patched, "16")
+    assert after.stream_size == 479
+    assert after.chain_length == 8
+    assert after.allocation_capacity == 512
+
+
+def test_root_ministream_growth_still_fails_when_fat_chain_has_no_slack():
+    original_payload = bytes(index % 251 for index in range(411))
+    raw = _build_mini_stream_cfb(original_payload, root_stream_size=448)
+
+    # 535 bytes would require nine mini-sectors, but this synthetic root FAT chain
+    # can expose only eight. A real FAT-chain extension would be required.
+    with pytest.raises(GXWFormatError, match="FAT-chain growth is required"):
+        replace_stream_with_ministream_growth(raw, "16", original_payload + b"Q" * 124)
 
 
 def test_grow_regular_stream_within_existing_fat_chain():
