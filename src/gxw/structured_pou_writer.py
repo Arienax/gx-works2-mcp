@@ -6,6 +6,9 @@ from typing import Optional
 
 from .models import (
     GXWFormatError,
+    NodeKind,
+    Point,
+    Rect,
     StructuredNode,
     StructuredProgram,
     StructuredWire,
@@ -123,23 +126,37 @@ def serialize_structured_wire(wire: StructuredWire) -> bytes:
 
 
 def _validate_source_header(program: StructuredProgram) -> None:
+    """Validate the immutable raw source behind a possibly mutated model.
+
+    Structural mutations intentionally change ``record_count`` and ``body_size`` on
+    the dataclass before serialization. Therefore this guard validates the original
+    ``program.raw`` header against itself rather than requiring the mutated semantic
+    fields to still equal the source values.
+    """
+
     raw = program.raw
     if len(raw) < STRUCTURED_RECORDS_OFFSET:
         raise GXWFormatError("StructuredProgram raw source is shorter than its header")
 
-    if _u32(raw, BODY_SIZE_OFFSET) != program.body_size:
-        raise GXWFormatError("StructuredProgram body_size no longer matches its raw source")
-    if _u32(raw, CANVAS_HEIGHT_OFFSET) != program.canvas_height:
+    raw_body_size = _u32(raw, BODY_SIZE_OFFSET)
+    if raw_body_size != len(raw) - STRUCTURED_RECORDS_OFFSET:
         raise GXWFormatError(
-            "StructuredProgram canvas_height no longer matches its raw source"
+            "StructuredProgram raw body_size does not match the source byte length"
         )
-    if _u32(raw, RECORD_COUNT_OFFSET) != program.record_count:
-        raise GXWFormatError("StructuredProgram record_count no longer matches its raw source")
+
+    raw_record_count = _u32(raw, RECORD_COUNT_OFFSET)
+    source = parse_structured_pou(
+        raw,
+        logical_name=program.logical_name,
+        source_path=program.source_path,
+    )
+    if source.record_count != raw_record_count:
+        raise GXWFormatError("StructuredProgram raw record_count failed source verification")
 
     # This relation is strongly repeated across the controlled Structured
     # Ladder/FBD corpus. The writer intentionally fails closed rather than
     # inventing values for a project variant where the invariant does not hold.
-    expected_size_like = program.body_size + 12
+    expected_size_like = raw_body_size + 12
     for offset in (SIZE_LIKE_A_OFFSET, SIZE_LIKE_B_OFFSET):
         actual = _u32(raw, offset)
         if actual != expected_size_like:
@@ -242,3 +259,134 @@ def replace_node_symbol(
     nodes = list(program.nodes)
     nodes[index] = replace(node, symbol=new_symbol)
     return replace(program, nodes=tuple(nodes))
+
+
+def insert_series_contact_after(
+    program: StructuredProgram,
+    after_symbol: str,
+    new_symbol: str,
+    *,
+    node_offset: Optional[int] = None,
+    horizontal_gap: int = 3,
+) -> StructuredProgram:
+    """Insert one normally-open contact into a verified simple horizontal series wire.
+
+    This is intentionally the first narrow structure-edit primitive. It clones the
+    ABI of an existing normally-open contact, places the new contact to its right,
+    splits the single outgoing horizontal wire into two conductors, and preserves
+    all still-unknown fields from the source contact/wire records.
+
+    The controlled target is sample 48 ``X1 -> Y1`` becoming
+    ``X1 -> X2 -> Y1``. More general autorouting is deliberately out of scope.
+    """
+
+    matches = [
+        node
+        for node in program.nodes
+        if node.symbol == after_symbol
+        and (node_offset is None or node.offset == node_offset)
+    ]
+    if not matches:
+        suffix = f" at offset 0x{node_offset:X}" if node_offset is not None else ""
+        raise GXWFormatError(f"no structured node with symbol {after_symbol!r}{suffix}")
+    if len(matches) > 1:
+        offsets = ", ".join(f"0x{node.offset:X}" for node in matches)
+        raise GXWFormatError(
+            f"symbol {after_symbol!r} occurs in multiple nodes ({offsets}); "
+            "specify node_offset"
+        )
+
+    source = matches[0]
+    if source.kind != NodeKind.CONTACT or source.kind_code != 0x03:
+        raise GXWFormatError(
+            "first structure-insertion milestone only clones a normally-open contact"
+        )
+    if len(source.ports) != 2:
+        raise GXWFormatError("source contact does not have the verified two-port ABI")
+    if horizontal_gap < 1:
+        raise GXWFormatError("horizontal_gap must be at least one grid unit")
+
+    left_port = source.port_point(0)
+    right_port = source.port_point(1)
+    if left_port.y != right_port.y or left_port.x >= right_port.x:
+        raise GXWFormatError("source contact ports are not the verified left-to-right geometry")
+
+    outgoing: list[tuple[StructuredWire, Point]] = []
+    for wire in program.wires:
+        if wire.start == right_port:
+            outgoing.append((wire, wire.end))
+        elif wire.end == right_port:
+            outgoing.append((wire, wire.start))
+
+    if len(outgoing) != 1:
+        raise GXWFormatError(
+            "series insertion requires exactly one explicit wire connected to the "
+            f"source contact right port; found {len(outgoing)}"
+        )
+
+    target_wire, far_end = outgoing[0]
+    if far_end.y != right_port.y or far_end.x <= right_port.x:
+        raise GXWFormatError(
+            "series insertion currently requires a horizontal outgoing wire to the right"
+        )
+
+    width = source.bbox.right - source.bbox.left
+    height = source.bbox.bottom - source.bbox.top
+    new_left_x = source.bbox.right + horizontal_gap
+    new_bbox = Rect(
+        new_left_x,
+        source.bbox.top,
+        new_left_x + width,
+        source.bbox.top + height,
+    )
+
+    new_left_port = source.ports[0].absolute_point(new_bbox)
+    new_right_port = source.ports[1].absolute_point(new_bbox)
+    if not (
+        right_port.x < new_left_port.x < new_right_port.x < far_end.x
+        and new_left_port.y == right_port.y
+        and new_right_port.y == right_port.y
+    ):
+        raise GXWFormatError(
+            "not enough horizontal room on the existing wire for the cloned contact"
+        )
+
+    # Offsets on mutated objects are ordering keys until the serializer rebuilds
+    # real byte offsets. Existing GX Works2 samples place node records before wires.
+    clone = replace(
+        source,
+        offset=source.offset + 1,
+        symbol=new_symbol,
+        bbox=new_bbox,
+    )
+
+    first_segment = replace(
+        target_wire,
+        start=right_port,
+        end=new_left_port,
+    )
+    second_segment = replace(
+        target_wire,
+        offset=target_wire.offset + 1,
+        start=new_right_port,
+        end=far_end,
+    )
+
+    nodes = [node for node in program.nodes]
+    nodes.append(clone)
+    wires = [
+        first_segment if wire is target_wire else wire
+        for wire in program.wires
+    ]
+    wires.append(second_segment)
+
+    added_body_bytes = len(serialize_structured_node(clone)) + len(
+        serialize_structured_wire(second_segment)
+    )
+    return replace(
+        program,
+        nodes=tuple(nodes),
+        wires=tuple(wires),
+        record_count=program.record_count + 2,
+        body_size=program.body_size + added_body_bytes,
+    )
