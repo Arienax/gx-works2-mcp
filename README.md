@@ -46,8 +46,8 @@ GX Works2, GX Simulator2, and MX Component are proprietary Mitsubishi Electric s
 ### Install
 
 ```powershell
-git clone https://github.com/Arienax/gx-works2-mcp.git
-cd gx-works2-mcp
+git clone https://github.com/Arienax/gxworks-agent.git
+cd gxworks-agent
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
