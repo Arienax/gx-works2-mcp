@@ -34,6 +34,7 @@ def _transport_field_accesses(path):
 def test_plc_and_gx_core_do_not_import_model_or_vendor_clients():
     core_files = [
         SOURCE_ROOT / "plc_core.py",
+        SOURCE_ROOT / "plc_generation_contract.py",
         SOURCE_ROOT / "plc_ir.py",
         SOURCE_ROOT / "plc_json_validator.py",
         SOURCE_ROOT / "plc_semantics.py",
@@ -107,6 +108,7 @@ def test_mcp_adapters_do_not_import_plc_or_desktop_implementations():
         "plc_static_analyzer", "plc_timing", "draw", "inspection_engine",
         "knowledge_retriever", "gxworks2", "simulator", "pywinauto",
         "qt_compat", "PyQt5", "PyQt6", "main", "plc_agent", "openai",
+        "api", "model_provider", "config", "config_manager", "credential_store",
     }
     violations = [
         f"{path.relative_to(ROOT)} -> {imported}"
@@ -121,7 +123,27 @@ def test_mcp_adapters_do_not_import_plc_or_desktop_implementations():
 
 
 def test_runtime_and_builtin_agent_do_not_depend_on_optional_mcp_sdk():
-    for name in ("tool_runtime.py", "plc_agent.py", "plc_agent_tools.py", "model_provider.py", "session_store.py"):
+    for name in ("tool_runtime.py", "tool_messages.py", "plc_generation_contract.py", "plc_agent.py", "plc_agent_tools.py", "model_provider.py", "session_store.py"):
         assert not {"mcp", "mcp_types", "integrations"}.intersection(
             imported.split(".", 1)[0] for imported in _imports(SOURCE_ROOT / name)
         )
+
+
+def test_generation_contract_and_tool_messages_depend_only_on_standard_library():
+    allowed = {"__future__", "copy", "re", "typing", "dataclasses"}
+    for name in ("plc_generation_contract.py", "tool_messages.py"):
+        assert {item.split(".", 1)[0] for item in _imports(SOURCE_ROOT / name)} <= allowed
+
+
+def test_external_tool_runtime_has_no_model_or_credential_dependency():
+    forbidden = {"api", "model_provider", "config", "config_manager", "credential_store", "openai", "qt_compat", "PyQt5", "PyQt6"}
+    for name in ("tool_runtime.py", "tool_messages.py", "plc_agent_tools.py", "plc_generation_contract.py"):
+        assert not forbidden.intersection(item.split(".", 1)[0] for item in _imports(SOURCE_ROOT / name))
+
+
+def test_model_provider_reexports_the_same_neutral_tool_types():
+    import model_provider
+    import tool_messages
+
+    assert model_provider.ToolCall is tool_messages.ToolCall
+    assert model_provider.ToolResult is tool_messages.ToolResult

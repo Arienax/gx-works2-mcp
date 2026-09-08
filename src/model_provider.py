@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
 from i18n import get_language, response_language_instruction
+from tool_messages import ToolCall, ToolResult
 
 
 @dataclass(frozen=True)
@@ -49,26 +50,10 @@ class UserMessage:
 
 
 @dataclass(frozen=True)
-class ToolCall:
-    id: str
-    name: str
-    arguments: Any = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
 class AssistantMessage:
     content: str = ""
     tool_calls: Tuple[ToolCall, ...] = ()
     reasoning: str = ""
-
-
-@dataclass(frozen=True)
-class ToolResult:
-    call_id: str
-    name: str
-    content: str
-    data: Mapping[str, Any] = field(default_factory=dict)
-    is_error: bool = False
 
 
 ModelMessage = Union[SystemMessage, UserMessage, AssistantMessage, ToolResult]

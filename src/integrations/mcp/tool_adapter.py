@@ -9,7 +9,7 @@ from typing import Any
 
 from mcp.types import CallToolResult, TextContent, Tool
 
-from model_provider import ToolCall, ToolResult
+from tool_messages import ToolCall, ToolResult
 from plc_agent_tools import FORBIDDEN_TOOL_NAMES, SAFE_TOOL_NAMES
 from tool_runtime import ToolRuntime, public_tool_result_data
 

@@ -6,7 +6,7 @@ import copy
 import json
 from typing import Any, List, Mapping, Protocol
 
-from model_provider import ToolCall, ToolResult
+from tool_messages import ToolCall, ToolResult
 
 
 class ToolRuntime(Protocol):

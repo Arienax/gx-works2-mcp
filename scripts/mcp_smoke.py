@@ -20,7 +20,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from plc_agent_tools import FORBIDDEN_TOOL_NAMES, SAFE_TOOL_NAMES
 from plc_core import PLCCore
-from plc_ir import build_plc_ir
+from plc_ir import build_plc_ir, ir_to_ladder
 from session_store import SessionStore
 
 
@@ -66,7 +66,7 @@ async def smoke() -> dict:
                     network = result.structured_content["data"]["network"]
                     assert network["writes"] == ["Y0"]
                     assert json.loads(result.content[0].text) == result.structured_content
-                    return {
+                    summary = {
                         "ok": True,
                         "server": initialized.server_info.name,
                         "protocol_version": initialized.protocol_version,
@@ -74,6 +74,49 @@ async def smoke() -> dict:
                         "called_tool": "read_network",
                         "network_id": network["id"],
                     }
+        # A separate, versionless project exercises the actual first-generation
+        # entry point, not a patch disguised as generation on an existing IR.
+        new_project = store.create_project("MCP first-generation smoke")
+        before = {
+            path.relative_to(store.base_dir): path.read_bytes()
+            for path in store.base_dir.rglob("*") if path.is_file()
+        }
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "integrations.mcp", "--stdio", "--workspace", str(store.base_dir),
+                  "--project", new_project["id"]],
+            cwd=ROOT / "src",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
+        with anyio.fail_after(25):
+            async with stdio_client(parameters) as streams:
+                async with ClientSession(*streams, read_timeout_seconds=10) as client:
+                    await client.initialize()
+                    assert {tool.name for tool in (await client.list_tools()).tools} == set(SAFE_TOOL_NAMES)
+                    context = await client.call_tool("get_generation_context", {})
+                    assert not context.is_error
+                    assert context.structured_content["data"]["project_id"] == new_project["id"]
+                    assert context.structured_content["data"]["output_contract"]["format"] == "ladder_v1"
+                    candidate = await client.call_tool("create_program_candidate", {"ladder": ir_to_ladder(program)})
+                    assert not candidate.is_error
+                    assert candidate.structured_content["status"] == "confirmation_required"
+                    assert candidate.structured_content["data"]["revision"] == 1
+                    assert "_candidate_ir" not in candidate.model_dump_json()
+                    assert "_confirmed_spec" not in candidate.model_dump_json()
+                    assert json.loads(candidate.content[0].text) == candidate.structured_content
+        saved = store.get_project(new_project["id"])
+        assert saved["versions"] == []
+        assert saved["active_version_id"] is None
+        assert {
+            path.relative_to(store.base_dir): path.read_bytes()
+            for path in store.base_dir.rglob("*") if path.is_file()
+        } == before
+        summary["generation"] = {
+            "called_tools": ["get_generation_context", "create_program_candidate"],
+            "status": "confirmation_required", "revision": 1,
+            "version_count": 0, "active_version_id": None, "workspace_unchanged": True,
+        }
+        return summary
 
 
 if __name__ == "__main__":
