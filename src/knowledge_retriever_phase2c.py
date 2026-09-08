@@ -8,14 +8,7 @@ skill concept entity and the requested task matches the chunk role.
 from __future__ import annotations
 
 
-_GXW2_SKILL_CONCEPTS = {
-    "CONTINUE", "VAR_IN_OUT", "CASE", "RANGE", "LABEL", "TON", "OUTPUT",
-    "SR", "RS", "ARRAY", "NEW", "DELETE", "DYNAMIC", "MEMORY", "FB", "FUN",
-    "PROGRAM", "POU", "INSTANCE", "PRG_INIT", "PRG_MAIN", "PRG_PROCESS",
-    "FB_MOTOR", "FBMOTOR", "COMMENT", "COMMENTS", "STRUCTURED", "TEXT",
-    "LREAL", "WSTRING", "LTIME", "REF_TO", "DINT", "DWORD", "REAL", "STRING",
-    "TIME", "K100", "HFF", "E3", "INT_TO_REAL_E", "FX3S", "WORKS3",
-}
+from gxw2_skill_concepts import SKILL_CONCEPTS as _GXW2_SKILL_CONCEPTS
 
 _BOOSTS = {
     "st": {
@@ -69,6 +62,17 @@ def rerank(results: list[dict], task_type: str) -> list[dict]:
             str(item.get("id") or ""),
         )
     )
+    # Exact task-scoped supporting evidence gets at most one reserved slot.
+    # Keep the leading authoritative result and all scores/weights unchanged;
+    # a page merely sharing "GX Works2" must not crowd out a requested rule.
+    supporting_index = next(
+        (index for index, item in enumerate(ranked)
+         if item.get("gxw2_supporting_boost")), None,
+    )
+    if supporting_index is not None and supporting_index >= 5:
+        supporting = ranked.pop(supporting_index)
+        supporting["gxw2_supporting_slot"] = True
+        ranked.insert(1, supporting)
     return ranked
 
 

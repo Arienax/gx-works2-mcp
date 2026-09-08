@@ -21,6 +21,7 @@ import unicodedata
 from urllib.parse import quote
 
 from resource_paths import resource_path
+from gxw2_skill_concepts import query_skill_concepts
 
 
 _INDEX_RESOURCE = "knowledge/fx3u_knowledge.sqlite"
@@ -522,6 +523,23 @@ def _query_is_timer_semantics(query):
     )
 
 
+def _query_is_direction_output_assignment(query):
+    """Recognize pulse/direction wiring assignment questions in either language."""
+
+    normalized = _normalize_text(query)
+    direction = re.search(
+        r"方向(?:输出|信号)|direction\s+(?:signal|output)", normalized, re.IGNORECASE,
+    )
+    assignment = re.search(
+        r"固定|配对|映射|任意|指定|分配|可以用|assign|arbitrary|fixed|pair|any\s+output|must",
+        normalized, re.IGNORECASE,
+    )
+    motion = _query_is_positioning(normalized) or re.search(
+        r"(?<![A-Za-z0-9_])Y\d+(?![A-Za-z0-9_])", normalized, re.IGNORECASE,
+    )
+    return bool(direction and assignment and motion)
+
+
 def _query_is_clock_semantics(query):
     normalized = _normalize_text(query)
     return bool(
@@ -886,6 +904,24 @@ def _structured_references(connection, schema, query, terms, plc_model, task_typ
             scored_rows.sort(key=lambda item: (-item[0], str(item[1])))
             for score, chunk_id, section in scored_rows[:16]:
                 add(chunk_id, section, "manual_section", score)
+
+    # The output-assignment section explicitly distinguishes main-unit
+    # transistor outputs from the fixed high-speed-adapter terminal mapping.
+    # Use the existing manual-section base score for this precise heading
+    # route; ordinary Y-address matches alone are insufficient to select it.
+    if (
+        chunks
+        and {"id", "manual_type", "section"}.issubset(chunks["columns"])
+        and _query_is_direction_output_assignment(query)
+    ):
+        rows = connection.execute(
+            "SELECT id,section FROM {} WHERE manual_type='positioning' "
+            "AND section LIKE '%Assignment of Output Numbers%'".format(
+                _quote_identifier(chunks["name"]),
+            )
+        ).fetchall()
+        for row in rows:
+            add(row["id"], row["section"], "manual_section", 1540.0)
 
     aliases = schema.get("instruction_aliases")
     if aliases and {
@@ -1275,8 +1311,13 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
         plc_model,
         task_type,
     )
+    # Qualified routes enter the same entity pipeline as native entities. They
+    # do not change the original query, official structured lookup, or dense
+    # text, and cannot be triggered by bare generic software words.
+    routed_terms = query_skill_concepts(query, task_type)
+    entity_terms = exact_terms + [term for term in routed_terms if term not in exact_terms]
     exact_refs = _entity_references(
-        connection, schema, exact_terms, plc_model, task_type
+        connection, schema, entity_terms, plc_model, task_type
     )
     fts_limit = min(_MAX_CANDIDATES, max(60, top_k * 12))
     fts_refs = _fts_references(

@@ -126,6 +126,26 @@ def test_positioning_queries_retrieve_manual_and_debug_evidence():
     assert any("M8336" in item["section"] for item in flag_results)
 
 
+@pytest.mark.parametrize("query", [
+    "FX3U 使用 Y0 发定位脉冲时，方向信号是否必须固定为 Y4？可以用 Y7 吗？",
+    "FX3U Y000 pulse output: must the direction signal be fixed to Y004 or can I use Y007?",
+    "FX3U-2HSY-ADP 的方向输出是否固定配对？",
+])
+def test_direction_assignment_retrieves_official_hardware_distinction(query):
+    results = retrieve_knowledge(query, plc_model="FX3U", task_type="program_review",
+                                 top_k=10, char_budget=50000)
+    assignment = next(item for item in results if "Assignment of Output Numbers" in item["section"])
+    assert assignment["manual_id"] == "fx3_positioning_k"
+    assert "Connect a line to any output" in assignment["text"]
+    assert "High-speed output special adapter" in assignment["text"]
+    assert assignment["match_type"] == "manual_section"
+
+
+def test_direction_assignment_route_does_not_capture_plain_y_address_queries():
+    assert not knowledge_retriever._query_is_direction_output_assignment("FX3U 将 Y0 指定为指示灯输出")
+    assert not knowledge_retriever._query_is_direction_output_assignment("FX3U DRVI direction signal ON/OFF timing")
+
+
 def test_plsy_and_completion_flag_retrieve_detailed_manual_pages_first():
     results = retrieve_knowledge(
         "FX3U PLSY K1000 K0 Y000 M8029 脉冲输出完成",

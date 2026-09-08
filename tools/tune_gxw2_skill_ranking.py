@@ -6,8 +6,8 @@ adds a small, idempotent ``skill_concept`` layer to ``entity_index`` so ST rules
 data-type guidance, and compatibility notes can enter the existing hybrid
 candidate pool when a query names a relevant GX Works2 concept.
 
-Phase 2b also mirrors those derived concept tokens into the chunk ``entities``
-search field and rebuilds FTS5. This strengthens BM25/entity cross-signals
+Only strong derived concepts are mirrored into the chunk ``entities`` search
+field. Native importer entities are restored before each FTS5 rebuild
 without changing chunk text, dense vectors, manual priority, or any Mitsubishi
 official structured record. Dense embeddings therefore remain valid.
 """
@@ -15,79 +15,20 @@ official structured record. Dense embeddings therefore remain valid.
 from __future__ import annotations
 
 import argparse
+import json
 from collections import defaultdict
 from pathlib import Path
 import sqlite3
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from gxw2_skill_concepts import (
+    CONCEPT_ROUTES, LEGACY_DERIVED_CONCEPTS, STRONG_CONCEPTS, TASK_SCOPE,
+)
 
 
 SOURCE_MANUAL_ID = "gxw2_skill_1_6_1"
 ENTITY_TYPE = "skill_concept"
-
-# Each route maps a query-visible exact term to markers that identify the most
-# relevant supporting chunk. Terms are deliberately narrow: they should route
-# a user to a rule/reference page, not turn the third-party source into a global
-# authority.
-CONCEPT_ROUTES: dict[str, dict[str, tuple[str, ...]]] = {
-    "st_rule": {
-        "CONTINUE": ("continue",),
-        "VAR_IN_OUT": ("var_in_out",),
-        "CASE": ("case statement", "case ranges", "named case"),
-        "RANGE": ("case ranges", "1..5"),
-        "LABEL": ("named case", "integer labels"),
-        "TON": ("assignment operator", "tondelay", "ton("),
-        "OUTPUT": ("assignment operator", "fb outputs"),
-        "SR": ("sr/rs", "sr`, `rs", "bistable"),
-        "RS": ("sr/rs", "sr`, `rs", "bistable"),
-        "ARRAY": ("array[*]", "variable-length arrays"),
-        "NEW": ("__new", "dynamic memory"),
-        "DELETE": ("__delete", "dynamic memory"),
-        "DYNAMIC": ("dynamic memory", "__new", "__delete"),
-        "MEMORY": ("dynamic memory", "__new", "__delete"),
-        "FB": ("fb/fun/prg", "function block", "fb instance"),
-        "FUN": ("fb/fun/prg", "fun name", "function overloading"),
-        "PROGRAM": ("3-program structure", "program pou", "prg_"),
-        "POU": ("pou", "fb/fun/prg", "program pou"),
-        "INSTANCE": ("fb instance", "instances are declared"),
-        "PRG_INIT": ("prg_init",),
-        "PRG_MAIN": ("prg_main",),
-        "PRG_PROCESS": ("prg_process",),
-        "FB_MOTOR": ("fb_motor",),
-        "FBMOTOR": ("fbmotor",),
-        "COMMENT": ("comment style", "line comments", "comments:"),
-        "COMMENTS": ("comment style", "line comments", "comments:"),
-        # Chinese queries commonly retain the English phrase "Structured Text".
-        # Route those two exact tokens specifically to the comment-style rule
-        # chunk instead of giving every skill chunk a generic ST boost.
-        "STRUCTURED": ("comment style", "line comments", "comments:"),
-        "TEXT": ("comment style", "line comments", "comments:"),
-    },
-    "data_type": {
-        "LREAL": ("lreal",),
-        "WSTRING": ("wstring",),
-        "LTIME": ("ltime",),
-        "REF_TO": ("ref_to",),
-        "DINT": ("memory consumption", "d registers consumed"),
-        "DWORD": ("memory consumption", "d registers consumed"),
-        "REAL": ("memory consumption", "d registers consumed"),
-        "STRING": ("elementary types", "unsupported types", "string conversions"),
-        "TIME": ("elementary types", "time conversions"),
-        "K100": ("mitsubishi literal notation", "literal examples"),
-        "HFF": ("mitsubishi literal notation", "literal examples"),
-        "E3": ("mitsubishi literal notation", "literal examples"),
-        "INT_TO_REAL_E": ("int_to_real_e", "_e postfix pattern"),
-    },
-    "compatibility": {
-        "STRING": ("feature matrix", "string functions"),
-        "FX3S": ("device ranges", "fx3s"),
-        "WORKS3": ("gx works 2 vs gx works 3", "gx works 3"),
-    },
-}
-
-TASK_SCOPE = {
-    "st_rule": "st,generate,edit",
-    "data_type": "st,generate,edit,analysis",
-    "compatibility": "st,generate,analysis",
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -103,7 +44,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _validate_schema(connection: sqlite3.Connection) -> None:
-    required = {"chunks", "entity_index", "manuals", "chunks_fts"}
+    required = {"chunks", "entity_index", "manuals", "chunks_fts", "meta"}
     present = {
         row[0]
         for row in connection.execute(
@@ -153,20 +94,36 @@ def tune_database(database: Path, manual_id: str = SOURCE_MANUAL_ID) -> dict[str
                 f"refusing to tune non-third-party source {manual_id!r}"
             )
 
-        # Idempotent replacement of this derived routing layer only.
+        # Recover native importer entities before removing old derived rows.
+        # entities_json is the immutable importer snapshot, so even a route
+        # removed several versions ago cannot leave a stale lexical token.
+        vocabulary_key = f"skill_concept_vocabulary:{manual_id}"
+        vocabulary_row = connection.execute(
+            "SELECT value FROM meta WHERE key=?", (vocabulary_key,),
+        ).fetchone()
+        vocabulary = set(LEGACY_DERIVED_CONCEPTS)
+        vocabulary.update(concept for routes in CONCEPT_ROUTES.values() for concept in routes)
+        if vocabulary_row:
+            vocabulary.update(json.loads(vocabulary_row[0]))
+        native_by_chunk: defaultdict[int, set[str]] = defaultdict(set)
+        for chunk_id, entity, entity_type in connection.execute(
+            "SELECT chunk_id,entity,entity_type FROM entity_index WHERE manual_id=?",
+            (manual_id,),
+        ):
+            if entity_type == ENTITY_TYPE:
+                vocabulary.add(str(entity))
+            else:
+                native_by_chunk[int(chunk_id)].add(str(entity))
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(chunks)")}
+        native_column = "entities_json" if "entities_json" in columns else "NULL"
+        rows = connection.execute(
+            f"SELECT id,chunk_type,text,plc_models,entities,{native_column} "
+            "FROM chunks WHERE manual_id=? ORDER BY id", (manual_id,),
+        ).fetchall()
         connection.execute(
             "DELETE FROM entity_index WHERE manual_id=? AND entity_type=?",
             (manual_id, ENTITY_TYPE),
         )
-
-        rows = connection.execute(
-            """
-            SELECT id,chunk_type,text,plc_models,entities
-            FROM chunks
-            WHERE manual_id=? AND chunk_type IN ('st_rule','data_type','compatibility')
-            """,
-            (manual_id,),
-        ).fetchall()
 
         inserted = 0
         routed_concepts: set[str] = set()
@@ -174,9 +131,19 @@ def tune_database(database: Path, manual_id: str = SOURCE_MANUAL_ID) -> dict[str
         concepts_by_chunk: defaultdict[int, set[str]] = defaultdict(set)
         entities_by_chunk: dict[int, str] = {}
 
-        for chunk_id, chunk_type, text, plc_models, existing_entities in rows:
+        derived_folded = {value.casefold() for value in vocabulary}
+        for chunk_id, chunk_type, text, plc_models, existing_entities, native_json in rows:
             chunk_id = int(chunk_id)
-            entities_by_chunk[chunk_id] = str(existing_entities or "")
+            if native_json is not None:
+                native = {str(item["entity"]) for item in json.loads(native_json)
+                          if item.get("type") != ENTITY_TYPE}
+            else:
+                # Compatibility with older/minimal schemas: preserve native
+                # index entries, strip the full historical injection vocabulary.
+                native = {token for token in str(existing_entities or "").split()
+                          if token.casefold() not in derived_folded}
+                native.update(native_by_chunk[chunk_id])
+            entities_by_chunk[chunk_id] = " ".join(sorted(native))
             routes = CONCEPT_ROUTES.get(str(chunk_type), {})
             for concept, markers in routes.items():
                 if not _marker_matches(str(text or ""), markers):
@@ -204,23 +171,23 @@ def tune_database(database: Path, manual_id: str = SOURCE_MANUAL_ID) -> dict[str
                 per_type[str(chunk_type)] += 1
                 concepts_by_chunk[chunk_id].add(concept)
 
-        # ``entities`` is already a derived lexical-search field. Mirroring the
-        # route concepts into it gives the same supporting chunk both an entity
-        # signal and a stronger BM25 signal. Chunk text/text_sha256 are untouched,
-        # so the dense sidecar remains valid.
-        fts_chunks = 0
-        for chunk_id, concepts in concepts_by_chunk.items():
-            merged = _merge_entity_tokens(entities_by_chunk.get(chunk_id, ""), concepts)
-            connection.execute(
-                "UPDATE chunks SET entities=? WHERE id=?",
-                (merged, chunk_id),
-            )
-            fts_chunks += 1
+        # Rebuild every source chunk, including chunks which lost all routes.
+        # Weak qualified routes stay in entity_index only: FTS tokenization
+        # would split a namespace and reintroduce bare PROGRAM/COMMENT words.
+        for chunk_id, native_entities in entities_by_chunk.items():
+            concepts = concepts_by_chunk[chunk_id].intersection(STRONG_CONCEPTS)
+            merged = _merge_entity_tokens(native_entities, concepts)
+            connection.execute("UPDATE chunks SET entities=? WHERE id=?", (merged, chunk_id))
+        fts_chunks = sum(bool(concepts) for concepts in concepts_by_chunk.values())
+        connection.execute(
+            "INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+            (vocabulary_key, json.dumps(sorted(vocabulary))),
+        )
 
         connection.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
         connection.execute(
             "INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
-            ("external_source_gxw2_skill_routing", "concept_entities_fts_v2"),
+            ("external_source_gxw2_skill_routing", "scoped_concepts_native_entities_v3"),
         )
         connection.commit()
 

@@ -8,11 +8,12 @@ structured evidence remains authoritative in the core scorer.
 
 from __future__ import annotations
 
-import re
+import sys
+
+from gxw2_skill_concepts import CONTEXT_RE as _GXW2_CONTEXT_RE, query_skill_concepts
 
 import knowledge_retriever_core as _core
 from knowledge_retriever_phase2c import (
-    _GXW2_SKILL_CONCEPTS,
     rerank as _rerank_gxw2_supporting,
     supporting_boost as _supporting_boost,
 )
@@ -37,34 +38,6 @@ _SYNCED_CORE_HOOKS = (
     "_fts_references",
 )
 
-# These words are useful inside a GX Works2/ST query but are too generic to
-# justify widening retrieval by themselves. A lone request such as
-# "please revise this program" must stay empty just as it did before phase 2c.
-_GXW2_WEAK_CONCEPTS = {
-    "PROGRAM",
-    "OUTPUT",
-    "MEMORY",
-    "STRING",
-    "REAL",
-    "TIME",
-    "CASE",
-    "RANGE",
-    "LABEL",
-    "INSTANCE",
-    "COMMENT",
-    "COMMENTS",
-    "STRUCTURED",
-    "TEXT",
-    "FB",
-    "FUN",
-}
-
-_GXW2_CONTEXT_RE = re.compile(
-    r"gx\s*works\s*[23]?|structured\s*text|(?<![A-Za-z0-9_])ST(?![A-Za-z0-9_])|"
-    r"FX3(?:S|G|GC|U|UC)|mitsubishi|三菱|软元件|梯形图|PLC",
-    re.IGNORECASE,
-)
-
 
 def _gxw2_supporting_boost(candidate, task_type):
     """Return the narrow phase-2c boost for one already-retrieved candidate."""
@@ -72,20 +45,8 @@ def _gxw2_supporting_boost(candidate, task_type):
     return _supporting_boost(candidate, task_type)
 
 
-def _query_has_gxw2_skill_concept(query):
-    try:
-        terms = {
-            _core._normalize_text(term).upper()
-            for term in _core._exact_terms(query)
-        }
-    except (TypeError, ValueError):
-        return False
-    matched = terms.intersection(_GXW2_SKILL_CONCEPTS)
-    if not matched:
-        return False
-    if matched.difference(_GXW2_WEAK_CONCEPTS):
-        return True
-    return bool(_GXW2_CONTEXT_RE.search(_core._normalize_text(query)))
+def _query_has_gxw2_skill_concept(query, task_type="generate"):
+    return bool(query_skill_concepts(query, task_type))
 
 
 def _query_has_plc_context(query):
@@ -138,16 +99,16 @@ def retrieve_knowledge(
     task = _core._normalize_text(task_type).casefold() or "generate"
     expand = (
         task in {"st", "generate", "edit", "analysis"}
-        and _query_has_gxw2_skill_concept(query)
+        and _query_has_gxw2_skill_concept(query, task)
     )
     candidate_top_k = min(
         _core._MAX_TOP_K,
         max(normalized_top_k, 40 if expand else normalized_top_k),
     )
-    candidate_budget = max(
-        normalized_budget,
-        160000 if expand else normalized_budget,
-    )
+    # Candidate recall is bounded by count. Apply the user's character budget
+    # only after reranking, so long official sections cannot consume it before
+    # a short, relevant supporting rule reaches the reranker.
+    candidate_budget = sys.maxsize if expand else normalized_budget
 
     results = _core.retrieve_knowledge(
         query,
