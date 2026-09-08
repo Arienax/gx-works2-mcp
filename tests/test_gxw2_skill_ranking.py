@@ -19,7 +19,8 @@ def _create_database(path: Path) -> None:
                 manual_id TEXT NOT NULL REFERENCES manuals(manual_id) ON DELETE CASCADE,
                 chunk_type TEXT NOT NULL,
                 text TEXT NOT NULL,
-                plc_models TEXT NOT NULL
+                plc_models TEXT NOT NULL,
+                entities TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE entity_index (
                 entity_norm TEXT NOT NULL,
@@ -32,6 +33,13 @@ def _create_database(path: Path) -> None:
                 occurrences INTEGER NOT NULL,
                 PRIMARY KEY(entity_norm, entity_type, chunk_id)
             ) WITHOUT ROWID;
+            CREATE VIRTUAL TABLE chunks_fts USING fts5(
+                text,
+                entities,
+                content='chunks',
+                content_rowid='id',
+                tokenize='unicode61 remove_diacritics 0'
+            );
             """
         )
         connection.execute(
@@ -43,14 +51,15 @@ def _create_database(path: Path) -> None:
             ("official", "programming"),
         )
         connection.executemany(
-            "INSERT INTO chunks(id,manual_id,chunk_type,text,plc_models) VALUES(?,?,?,?,?)",
+            "INSERT INTO chunks(id,manual_id,chunk_type,text,plc_models,entities) VALUES(?,?,?,?,?,?)",
             [
                 (
                     1,
                     "gxw2_skill_1_6_1",
                     "st_rule",
-                    "No CONTINUE. Comment Style uses block comments. VAR_IN_OUT is unsupported.",
+                    "No CONTINUE. Comment Style uses block comments. VAR_IN_OUT is unsupported. 3-Program Structure uses PRG_MAIN. FB instances are declared separately.",
                     "FX3U,FX3G,FX3S",
+                    "",
                 ),
                 (
                     2,
@@ -58,6 +67,7 @@ def _create_database(path: Path) -> None:
                     "data_type",
                     "Unsupported Types include LREAL and WSTRING. Memory Consumption: DINT DWORD REAL.",
                     "FX3U,FX3G,FX3S",
+                    "",
                 ),
                 (
                     3,
@@ -65,6 +75,7 @@ def _create_database(path: Path) -> None:
                     "compatibility",
                     "Feature Matrix STRING. Device Ranges FX3S. GX Works 2 vs GX Works 3.",
                     "FX3U,FX3G,FX3S",
+                    "",
                 ),
                 (
                     4,
@@ -72,6 +83,7 @@ def _create_database(path: Path) -> None:
                     "instruction",
                     "CONTINUE STRING FX3S GX Works 3",
                     "FX3U",
+                    "MOV",
                 ),
             ],
         )
@@ -83,6 +95,7 @@ def _create_database(path: Path) -> None:
             ) VALUES('mov','MOV','instruction','FX3U','*','official',4,1)
             """
         )
+        connection.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
         connection.commit()
 
 
@@ -95,6 +108,7 @@ def test_tune_database_adds_scoped_supporting_concepts_and_is_idempotent(tmp_pat
 
     assert first == second
     assert first["entities"] > 0
+    assert first["fts_chunks"] == 3
     assert first["st_rule"] > 0
     assert first["data_type"] > 0
     assert first["compatibility"] > 0
@@ -109,16 +123,33 @@ def test_tune_database_adds_scoped_supporting_concepts_and_is_idempotent(tmp_pat
             """
         ).fetchall()
         assert ("continue", 1, "st,generate,edit") in rows
+        assert ("program", 1, "st,generate,edit") in rows
         assert ("lreal", 2, "st,generate,edit,analysis") in rows
         assert ("fx3s", 3, "st,generate,analysis") in rows
         assert ("works3", 3, "st,generate,analysis") in rows
+
+        # Derived concepts are also mirrored into the FTS lexical metadata.
+        st_entities = connection.execute(
+            "SELECT entities FROM chunks WHERE id=1"
+        ).fetchone()[0]
+        assert "CONTINUE" in st_entities.split()
+        assert "PROGRAM" in st_entities.split()
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH 'PROGRAM'"
+            ).fetchone()[0]
+            >= 1
+        )
 
         # The derived routing layer must not mutate official structured evidence.
         official = connection.execute(
             "SELECT entity,entity_type FROM entity_index WHERE manual_id='official'"
         ).fetchall()
         assert official == [("MOV", "instruction")]
+        assert connection.execute(
+            "SELECT entities FROM chunks WHERE id=4"
+        ).fetchone()[0] == "MOV"
 
         assert connection.execute(
             "SELECT value FROM meta WHERE key='external_source_gxw2_skill_routing'"
-        ).fetchone()[0] == "concept_entities_v1"
+        ).fetchone()[0] == "concept_entities_fts_v2"
