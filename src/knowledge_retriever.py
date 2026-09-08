@@ -8,8 +8,6 @@ structured evidence remains authoritative in the core scorer.
 
 from __future__ import annotations
 
-import json
-
 import knowledge_retriever_core as _core
 from knowledge_retriever_phase2c import (
     _GXW2_SKILL_CONCEPTS,
@@ -19,9 +17,23 @@ from knowledge_retriever_phase2c import (
 
 
 # Compatibility aliases used by the benchmark harness and existing tests.
+# Several tests monkeypatch these helpers directly on knowledge_retriever, so
+# the facade mirrors the current facade values back into the core per request.
 _index_path = _core._index_path
 _retrieve_cached = _core._retrieve_cached
 _close_thread_connection = _core._close_thread_connection
+_retrieve_uncached = _core._retrieve_uncached
+_load_meta = _core._load_meta
+_entity_references = _core._entity_references
+_fts_references = _core._fts_references
+
+_SYNCED_CORE_HOOKS = (
+    "_index_path",
+    "_retrieve_uncached",
+    "_load_meta",
+    "_entity_references",
+    "_fts_references",
+)
 
 
 def _gxw2_supporting_boost(candidate, task_type):
@@ -39,9 +51,9 @@ def _query_has_gxw2_skill_concept(query):
 
 
 def _sync_core_hooks():
-    # The benchmark harness replaces knowledge_retriever._index_path with a
-    # temporary database. Mirror that hook into the core before each request.
-    _core._index_path = globals().get("_index_path", _core._index_path)
+    for name in _SYNCED_CORE_HOOKS:
+        if name in globals():
+            setattr(_core, name, globals()[name])
 
 
 def retrieve_knowledge(
@@ -63,9 +75,18 @@ def retrieve_knowledge(
         return []
 
     task = _core._normalize_text(task_type).casefold() or "generate"
-    expand = task in {"st", "generate", "edit", "analysis"} and _query_has_gxw2_skill_concept(query)
-    candidate_top_k = min(_core._MAX_TOP_K, max(normalized_top_k, 40 if expand else normalized_top_k))
-    candidate_budget = max(normalized_budget, 160000 if expand else normalized_budget)
+    expand = (
+        task in {"st", "generate", "edit", "analysis"}
+        and _query_has_gxw2_skill_concept(query)
+    )
+    candidate_top_k = min(
+        _core._MAX_TOP_K,
+        max(normalized_top_k, 40 if expand else normalized_top_k),
+    )
+    candidate_budget = max(
+        normalized_budget,
+        160000 if expand else normalized_budget,
+    )
 
     results = _core.retrieve_knowledge(
         query,
