@@ -88,6 +88,13 @@ def percentile(values: list[float], fraction: float) -> float:
     return float(ordered[index])
 
 
+def _is_release_benchmark(benchmark: Path, root: Path) -> bool:
+    """Only the canonical benchmark is allowed to update release metadata."""
+
+    canonical = (root / "benchmarks" / "fx3u_rag_benchmark.jsonl").resolve()
+    return benchmark.expanduser().resolve() == canonical
+
+
 def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parents[1]
@@ -230,8 +237,11 @@ def main() -> int:
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+    # A/B and feature-specific benchmark runs are diagnostic artifacts. They
+    # must not overwrite the canonical release benchmark stored in manifest.
     manifest_path = args.manifest.expanduser().resolve()
-    if manifest_path.is_file():
+    if _is_release_benchmark(benchmark, root) and manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest.setdefault("retrieval", {})["benchmark"] = {
             "cases": report["cases"],
