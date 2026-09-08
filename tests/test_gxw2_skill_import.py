@@ -167,6 +167,10 @@ def _make_source(tmp_path: Path) -> Path:
         "D10 := D0;\n",
         encoding="utf-8",
     )
+    (root / "examples" / "01-move.csv").write_text(
+        "Name\tDevice\tType\r\nStart\tX0\tBOOL\r\nMotor\tY0\tBOOL\r\n",
+        encoding="utf-16",
+    )
     return root
 
 
@@ -188,7 +192,7 @@ def _spec() -> SourceSpec:
     )
 
 
-def test_gxw2_skill_import_adds_lower_priority_chunks_and_structured_instruction(tmp_path):
+def test_gxw2_skill_import_adds_supporting_chunks_without_structured_instruction(tmp_path):
     database = tmp_path / "knowledge.sqlite"
     _create_schema(database)
     source_root = _make_source(tmp_path)
@@ -196,9 +200,15 @@ def test_gxw2_skill_import_adds_lower_priority_chunks_and_structured_instruction
 
     stats = import_source(database, _spec(), documents)
 
-    assert stats["documents"] == 4
-    assert stats["chunks"] == 3
-    assert stats["instructions"] == 1
+    assert stats["documents"] == 5
+    assert stats["chunks"] == 4
+    assert stats["instructions"] == 0
+
+    csv_document = next(
+        document for document in documents if document.relative_path.endswith("01-move.csv")
+    )
+    assert "Start\tX0\tBOOL" in csv_document.text
+    assert "\x00" not in csv_document.text
 
     with sqlite3.connect(database) as connection:
         manual = connection.execute(
@@ -207,11 +217,28 @@ def test_gxw2_skill_import_adds_lower_priority_chunks_and_structured_instruction
         ).fetchone()
         assert manual == ("third_party_skill", 52, "1.6.1")
 
-        instruction = connection.execute(
-            "SELECT opcode,manual_id FROM instructions WHERE opcode_norm='mov'"
-        ).fetchone()
-        assert instruction == ("MOV", "gxw2_skill_test")
-
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM instructions WHERE manual_id=?",
+                ("gxw2_skill_test",),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM instruction_aliases"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM chunks "
+                "WHERE manual_id=? AND chunk_type='skill_instruction' "
+                "AND instruction_opcode='MOV'",
+                ("gxw2_skill_test",),
+            ).fetchone()[0]
+            >= 1
+        )
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM chunks WHERE source_file LIKE '%00_Instruction_List.md'"
@@ -237,6 +264,12 @@ def test_gxw2_skill_import_adds_lower_priority_chunks_and_structured_instruction
                 "WHERE entity_norm='s1' AND entity_type='operand_placeholder'"
             ).fetchone()[0]
             >= 1
+        )
+        assert (
+            connection.execute(
+                "SELECT value FROM meta WHERE key='external_source_gxw2_skill_role'"
+            ).fetchone()[0]
+            == "supporting"
         )
         assert (
             connection.execute(
@@ -273,5 +306,5 @@ def test_gxw2_skill_import_is_idempotent(tmp_path):
             connection.execute(
                 "SELECT COUNT(*) FROM instructions WHERE manual_id=?", (spec.id,)
             ).fetchone()[0]
-            == 1
+            == 0
         )
