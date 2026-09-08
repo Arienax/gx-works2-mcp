@@ -33,3 +33,19 @@ def test_supporting_boost_is_task_and_chunk_scoped():
 def test_supporting_boost_rejects_nonconcept_entity_hits():
     candidate = _candidate("st_rule", matched="MOV")
     assert retriever._gxw2_supporting_boost(candidate, "st") == 0
+
+
+def test_weak_concepts_do_not_expand_generic_requests():
+    assert retriever._query_has_gxw2_skill_concept("please revise this program") is False
+    assert retriever._query_has_gxw2_skill_concept("check the output") is False
+    assert retriever._query_has_gxw2_skill_concept("memory usage") is False
+
+
+def test_weak_concepts_expand_when_gxworks_context_is_explicit():
+    assert retriever._query_has_gxw2_skill_concept("FX3U GX Works2 ST program structure") is True
+    assert retriever._query_has_gxw2_skill_concept("GX Works2 STRING support") is True
+
+
+def test_strong_skill_concepts_expand_without_generic_context():
+    assert retriever._query_has_gxw2_skill_concept("VAR_IN_OUT supported?") is True
+    assert retriever._query_has_gxw2_skill_concept("INT_TO_REAL_E return value") is True
