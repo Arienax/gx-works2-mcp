@@ -1,9 +1,12 @@
 # FX3U RAG 知识库
 
 当前知识库使用 schema v3。运行时使用 SQLite/FTS5 与随程序打包、按需加载的
-NumPy LSA 向量索引；PDF 解析和向量构建只在离线构建时使用，不进入启动关键路径。
+NumPy LSA 向量索引；PDF 解析、第三方 Markdown 导入和向量构建只在离线构建时使用，
+不进入启动关键路径。
 
 ## 知识源
+
+官方三菱资料：
 
 - JY997D16601 Rev.R：FX3S/FX3G/FX3GC/FX3U/FX3UC Basic & Applied Instruction
 - JY997D16801 Rev.K：FX3S/FX3G/FX3GC/FX3U/FX3UC Positioning Control
@@ -13,27 +16,36 @@ NumPy LSA 向量索引；PDF 解析和向量构建只在离线构建时使用，
 - SH-080781ENG Rev.AG：GX Works2 Structured Project
 - SH-080782ENG Rev.O：Structured Programming Fundamentals
 
-源文件、官方地址和 SHA-256 记录在 `sources.json`。构建时会强制校验文件哈希。
+官方源文件、地址和 SHA-256 记录在 `sources.json`。构建时会强制校验文件哈希。
+
+可选第三方知识源：
+
+- `Serhioromano/gxw2-skill` 1.6.1：GX Works 2 / FX 系列 ST、CSV Label Editor、设备、数据类型、兼容性、指令说明和 `.iecst/.csv` 示例。
+
+第三方源固定在 `external_sources.json` 中的具体 commit，当前检索优先级为 52，低于所有已配置的官方手册。导入器不会把 `00_Instruction_List.md` 作为普通全文 chunk，以避免它与单指令文档重复抢占检索结果。第三方许可与归属见 `THIRD_PARTY_NOTICES.md`。
 
 ## 构建流程
 
 ```text
-PDF
- ├─ plain text
- ├─ word geometry / layout reconstruction
- ├─ table rows + bounding boxes
- └─ ladder/diagram text windows
-          ↓
-section / instruction-aware chunks
-          ↓
-SQLite + FTS5 + structured tables
-          ↓
-local dense LSA embeddings
+Mitsubishi PDF manuals                 gxw2-skill Markdown/examples
+        │                                         │
+        ├─ text/layout/table parsing              ├─ Markdown heading chunking
+        │                                         └─ instruction/entity extraction
+        └──────────────────┬──────────────────────┘
+                           ↓
+                schema-v3 unified SQLite
+                  ├─ chunks + FTS5
+                  ├─ instructions / aliases
+                  └─ entity_index
+                           ↓
+                 local dense LSA embeddings
 ```
 
 主要结构化表：`instructions`、`instruction_aliases`、`device_records`、`error_records`、`debug_cases`。
 
-`S1/S2` 根据上下文分为 `operand_placeholder` 或 `device`；例如 PLSY 的 `S1/S2` 是 operand，而状态继电器章节中的 `S1` 是设备地址。
+`gxw2-skill` 第一版导入会写入 `chunks`、`entity_index`、`instructions` 和 `instruction_aliases`；暂不写第三方 `device_records`，因为当前 `device_records` 的唯一键没有 source 维度，直接合并可能覆盖或折叠官方设备记录。
+
+`S1/S2` 根据上下文分为 `operand_placeholder` 或 `device`；例如指令文档中的 `S1/S2` 作为 operand，而设备文档中的状态继电器地址保持为 device。
 
 ## 检索
 
@@ -57,11 +69,22 @@ deterministic cross-signal reranker + source priority + task-aware ranking
 
 ## 重建与评估
 
+完整重建顺序：
+
 ```powershell
-python tools/build_fx3u_knowledge.py
+python tools/build_fx3u_knowledge_v3.py
+python tools/import_gxw2_skill.py
 python tools/build_dense_embeddings.py
 python tools/build_rag_benchmark.py --target 220
 python tools/evaluate_rag_benchmark.py --fail-under-recall-10 0.98
 ```
+
+`import_gxw2_skill.py` 默认下载 `external_sources.json` 固定的 commit。已有本地 checkout 时可离线导入：
+
+```powershell
+python tools/import_gxw2_skill.py --source-dir C:\path\to\gxw2-skill
+```
+
+导入第三方语料后，脚本会重建 FTS5，并将已有 dense 向量标记为 `stale`；因此必须随后重新运行 `build_dense_embeddings.py`。
 
 基准集位于 `benchmarks/fx3u_rag_benchmark.jsonl`，包含指令、设备、错误码、调试案例、伺服/步进定位、结构化编程和负例。
