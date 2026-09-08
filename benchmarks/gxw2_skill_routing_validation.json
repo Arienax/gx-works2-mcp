@@ -1,0 +1,364 @@
+{
+  "audit_scope": "Routing-stage snapshot before the subsequent release-manifest refresh for PR #3 merge",
+  "resources/knowledge/fx3u_dense_lsa.npz": true,
+  "resources/knowledge/manifest.json": true,
+  "benchmarks/fx3u_rag_benchmark.meta.json": true,
+  "benchmarks/fx3u_rag_benchmark_report.json": true,
+  "benchmarks/fx3u_rag_benchmark_pre_skill.jsonl": true,
+  "benchmarks/gxw2_skill_rag_benchmark.jsonl": true,
+  "database_integrity": "ok",
+  "text_hash_native_entity_priority_changes": 0,
+  "instructions_added_removed": [
+    0,
+    0
+  ],
+  "instruction_aliases_added_removed": [
+    0,
+    0
+  ],
+  "manuals_added_removed": [
+    0,
+    0
+  ],
+  "device_records_added_removed": [
+    0,
+    0
+  ],
+  "debug_cases_added_removed": [
+    0,
+    0
+  ],
+  "vector_embeddings_added_removed": [
+    0,
+    0
+  ],
+  "chunks_preserved_added_removed": [
+    0,
+    0
+  ],
+  "entity_index_preserved_added_removed": [
+    0,
+    0
+  ],
+  "bare_program_derived_entities": 0,
+  "program_in_skill_entities": 0,
+  "skill_structured_instruction_count": 0,
+  "generic_query": [],
+  "program_structure_results": [
+    {
+      "id": "2992",
+      "manual_id": "gxworks2_structured_ag",
+      "chunk_type": "section",
+      "matched_entity": "4 PROGRAM CONFIGURATIONS"
+    },
+    {
+      "id": "3309",
+      "manual_id": "gxw2_skill_1_6_1",
+      "chunk_type": "st_rule",
+      "matched_entity": "GXW2_PROGRAM_STRUCTURE"
+    },
+    {
+      "id": "2993",
+      "manual_id": "gxworks2_structured_ag",
+      "chunk_type": "section",
+      "matched_entity": "4.1 Program Configurations of Structured Project"
+    },
+    {
+      "id": "3028",
+      "manual_id": "gxworks2_structured_ag",
+      "chunk_type": "section",
+      "matched_entity": "6 COMMON OPERATIONS OF PROGRAM EDITORS"
+    }
+  ],
+  "skill_cases": [
+    {
+      "id": "skill_st_001",
+      "category": "st_rule",
+      "rank": 1,
+      "result": {
+        "id": "3291",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Mandatory Constraints",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1626.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_st_002",
+      "category": "st_rule",
+      "rank": 2,
+      "result": {
+        "id": "3296",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Comment Style",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1526.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": true
+      }
+    },
+    {
+      "id": "skill_st_003",
+      "category": "st_rule",
+      "rank": 1,
+      "result": {
+        "id": "3291",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Mandatory Constraints",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1626.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_st_004",
+      "category": "st_rule",
+      "rank": 2,
+      "result": {
+        "id": "3302",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Selection > CASE Statement",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1896.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": true
+      }
+    },
+    {
+      "id": "skill_st_005",
+      "category": "st_rule",
+      "rank": 1,
+      "result": {
+        "id": "3299",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Assignment Operator",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1626.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_st_006",
+      "category": "st_rule",
+      "rank": 1,
+      "result": {
+        "id": "3309",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > 3-Program Structure (Default Project Layout)",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1783.8,
+        "gxw2_supporting_boost": 280.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_st_007",
+      "category": "st_rule",
+      "rank": 2,
+      "result": {
+        "id": "3295",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Naming Conventions > FB/FUN/PRG POU and File Naming",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 2100.8,
+        "gxw2_supporting_boost": 280.0,
+        "gxw2_supporting_slot": true
+      }
+    },
+    {
+      "id": "skill_type_001",
+      "category": "data_type",
+      "rank": 1,
+      "result": {
+        "id": "3341",
+        "section": "Data Types — GX Works 2 ST (FX Series) > Unsupported Types (FX Series)",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "data_type",
+        "score": 1846.8,
+        "gxw2_supporting_boost": 280.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_type_002",
+      "category": "data_type",
+      "rank": 1,
+      "result": {
+        "id": "3343",
+        "section": "Data Types — GX Works 2 ST (FX Series) > Memory Consumption",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "data_type",
+        "score": 1971.8,
+        "gxw2_supporting_boost": 240.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_type_003",
+      "category": "data_type",
+      "rank": 1,
+      "result": {
+        "id": "3339",
+        "section": "Data Types — GX Works 2 ST (FX Series) > Elementary Types",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "data_type",
+        "score": 1783.8,
+        "gxw2_supporting_boost": 280.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_type_004",
+      "category": "data_type",
+      "rank": 2,
+      "result": {
+        "id": "3350",
+        "section": "Data Types — GX Works 2 ST (FX Series) > `_E` Postfix Pattern",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "data_type",
+        "score": 1685.8,
+        "gxw2_supporting_boost": 280.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_compat_001",
+      "category": "compatibility",
+      "rank": 2,
+      "result": {
+        "id": "3313",
+        "section": "Compatibility Matrix — FX Series Models (GX Works 2) > Feature Matrix",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "compatibility",
+        "score": 1771.8,
+        "gxw2_supporting_boost": 240.0,
+        "gxw2_supporting_slot": true
+      }
+    },
+    {
+      "id": "skill_compat_002",
+      "category": "compatibility",
+      "rank": 1,
+      "result": {
+        "id": "3314",
+        "section": "Compatibility Matrix — FX Series Models (GX Works 2) > Device Ranges",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "compatibility",
+        "score": 1699.8,
+        "gxw2_supporting_boost": 300.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_compat_003",
+      "category": "compatibility",
+      "rank": 2,
+      "result": {
+        "id": "3320",
+        "section": "Compatibility Matrix — FX Series Models (GX Works 2) > GX Works 2 vs GX Works 3",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "compatibility",
+        "score": 1506.8,
+        "gxw2_supporting_boost": 300.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_mov_001",
+      "category": "skill_instruction",
+      "rank": 4,
+      "result": {
+        "id": "4091",
+        "section": "MOV — MOV / Move > ST Syntax (GX Works 2)",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "skill_instruction",
+        "score": 2101.8,
+        "gxw2_supporting_boost": null,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_mov_002",
+      "category": "skill_instruction",
+      "rank": 9,
+      "result": {
+        "id": "4095",
+        "section": "MOV — MOV / Move > Key Rules",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "skill_instruction",
+        "score": 2229.8,
+        "gxw2_supporting_boost": null,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_mov_003",
+      "category": "skill_instruction",
+      "rank": 4,
+      "result": {
+        "id": "4091",
+        "section": "MOV — MOV / Move > ST Syntax (GX Works 2)",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "skill_instruction",
+        "score": 1981.8,
+        "gxw2_supporting_boost": null,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_st_008",
+      "category": "st_rule",
+      "rank": 2,
+      "result": {
+        "id": "3291",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Mandatory Constraints",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1725.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": true
+      }
+    },
+    {
+      "id": "skill_st_009",
+      "category": "st_rule",
+      "rank": 3,
+      "result": {
+        "id": "3291",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Mandatory Constraints",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 1851.8,
+        "gxw2_supporting_boost": 320.0,
+        "gxw2_supporting_slot": null
+      }
+    },
+    {
+      "id": "skill_st_010",
+      "category": "st_rule",
+      "rank": 2,
+      "result": {
+        "id": "3295",
+        "section": "Common Rules — GX Works 2 ST (Mandatory) > Naming Conventions > FB/FUN/PRG POU and File Naming",
+        "manual_id": "gxw2_skill_1_6_1",
+        "chunk_type": "st_rule",
+        "score": 2194.8,
+        "gxw2_supporting_boost": 280.0,
+        "gxw2_supporting_slot": null
+      }
+    }
+  ],
+  "pytest": {
+    "passed": 730,
+    "skipped": 3,
+    "skip_reasons": [
+      "MCP dependency unavailable",
+      "GX Works2 is not running",
+      "GX Works2 does not currently have an open program"
+    ]
+  }
+}

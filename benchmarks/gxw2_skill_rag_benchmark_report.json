@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "evaluated_at_utc": "2026-09-08T11:09:13.803157+00:00",
+  "database": "D:\\download\\gx\\gxworks-agent\\resources\\knowledge\\fx3u_knowledge.sqlite",
+  "benchmark": "D:\\download\\gx\\gxworks-agent\\benchmarks\\gxw2_skill_rag_benchmark.jsonl",
+  "cases": 20,
+  "positive_cases": 20,
+  "negative_cases": 0,
+  "recall_at_1": 0.4,
+  "recall_at_5": 0.95,
+  "recall_at_10": 1.0,
+  "mrr": 0.6472,
+  "negative_accuracy": 0.0,
+  "latency_ms": {
+    "mean": 64.358,
+    "p50": 58.289,
+    "p95": 99.425,
+    "max": 221.776
+  },
+  "categories": {
+    "compatibility": {
+      "cases": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "recall_at_10": 1.0,
+      "negative_accuracy": null
+    },
+    "data_type": {
+      "cases": 4,
+      "passed": 4,
+      "pass_rate": 1.0,
+      "recall_at_10": 1.0,
+      "negative_accuracy": null
+    },
+    "skill_instruction": {
+      "cases": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "recall_at_10": 1.0,
+      "negative_accuracy": null
+    },
+    "st_rule": {
+      "cases": 10,
+      "passed": 10,
+      "pass_rate": 1.0,
+      "recall_at_10": 1.0,
+      "negative_accuracy": null
+    }
+  },
+  "failures": [],
+  "passed_threshold": true
+}
