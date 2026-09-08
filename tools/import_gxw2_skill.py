@@ -188,6 +188,13 @@ def source_root(spec: SourceSpec, source_dir: Path | None) -> Iterator[Path]:
             members = bundle.namelist()
             if not members:
                 raise RuntimeError("gxw2-skill archive is empty")
+            base = temp_dir.resolve()
+            for member in bundle.infolist():
+                destination = (base / member.filename).resolve()
+                if base != destination and base not in destination.parents:
+                    raise RuntimeError(
+                        f"unsafe path in gxw2-skill archive: {member.filename}"
+                    )
             bundle.extractall(temp_dir)
         root = _locate_skill_root(temp_dir, spec.root)
         yield root
@@ -406,14 +413,24 @@ def known_opcodes(documents: Iterable[SourceDocument]) -> set[str]:
 
 
 def extract_entities(
-    text: str, opcodes: set[str], explicit_opcode: str = ""
+    text: str,
+    opcodes: set[str],
+    explicit_opcode: str = "",
+    *,
+    chunk_type: str = "",
 ) -> Counter[tuple[str, str]]:
     entities: Counter[tuple[str, str]] = Counter()
     for match in DEVICE_RE.finditer(text):
-        token = f"{match.group(1).upper()}{match.group(2)}"
+        prefix = match.group(1).upper()
+        token = f"{prefix}{match.group(2)}"
         if match.group(3):
             token += f".{match.group(3)}"
-        entities[(token, "device")] += 1
+        kind = (
+            "operand_placeholder"
+            if chunk_type == "instruction" and prefix == "S"
+            else "device"
+        )
+        entities[(token, kind)] += 1
     upper = text.upper()
     for opcode in opcodes:
         count = len(
@@ -542,7 +559,10 @@ def import_source(
             entity_rows = 0
             for draft in drafts:
                 entities = extract_entities(
-                    draft.text, opcodes, explicit_opcode=draft.instruction_opcode
+                    draft.text,
+                    opcodes,
+                    explicit_opcode=draft.instruction_opcode,
+                    chunk_type=draft.chunk_type,
                 )
                 entity_tokens = sorted({entity for entity, _kind in entities})
                 entities_json = [
@@ -764,7 +784,7 @@ def main(argv: list[str] | None = None) -> int:
     if not database.is_file():
         raise SystemExit(
             f"knowledge database not found: {database}\n"
-            "Run tools/build_fx3u_knowledge.py before importing gxw2-skill."
+            "Run tools/build_fx3u_knowledge_v3.py before importing gxw2-skill."
         )
     spec = load_source_spec(config, args.source_id)
     with source_root(spec, args.source_dir) as root:
