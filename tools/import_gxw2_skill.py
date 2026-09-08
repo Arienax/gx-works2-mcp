@@ -3,8 +3,8 @@
 
 The importer is intentionally separate from the PDF builder. Run the PDF build
 first, then this importer, then rebuild dense embeddings. The source is treated
-as a lower-priority third-party corpus; official Mitsubishi manuals remain the
-preferred evidence.
+as a lower-priority third-party supporting corpus; official Mitsubishi manuals
+remain the authoritative structured evidence.
 """
 
 from __future__ import annotations
@@ -125,6 +125,13 @@ def normalize_text(value: str) -> str:
     return "\n".join(line.rstrip() for line in value.split("\n")).strip()
 
 
+def decode_source_text(raw: bytes) -> str:
+    """Decode gxw2-skill text files while preserving GX Works2 CSV compatibility."""
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    return raw.decode("utf-8-sig")
+
+
 def cjk_bigrams(text: str) -> str:
     terms: list[str] = []
     for match in CJK_RUN_RE.finditer(text):
@@ -209,7 +216,7 @@ def classify_path(relative_path: str) -> tuple[str, str]:
             return "instruction_index", ""
         if re.match(r"^\d+_", stem):
             return "instruction_group", ""
-        return "instruction", stem.upper()
+        return "skill_instruction", stem.upper()
     if name == "devices.md" or name == "system-devices.md":
         return "device", ""
     if name == "compatibility.md":
@@ -244,7 +251,7 @@ def discover_documents(root: Path) -> list[SourceDocument]:
         relative = path.relative_to(root).as_posix()
         chunk_type, opcode = classify_path(relative)
         raw = path.read_bytes()
-        text = normalize_text(raw.decode("utf-8-sig"))
+        text = normalize_text(decode_source_text(raw))
         documents.append(
             SourceDocument(
                 relative_path=relative,
@@ -408,7 +415,7 @@ def known_opcodes(documents: Iterable[SourceDocument]) -> set[str]:
     return {
         document.instruction_opcode
         for document in documents
-        if document.chunk_type == "instruction" and document.instruction_opcode
+        if document.chunk_type == "skill_instruction" and document.instruction_opcode
     }
 
 
@@ -427,7 +434,7 @@ def extract_entities(
             token += f".{match.group(3)}"
         kind = (
             "operand_placeholder"
-            if chunk_type == "instruction" and prefix == "S"
+            if chunk_type in {"instruction", "skill_instruction"} and prefix == "S"
             else "device"
         )
         entities[(token, kind)] += 1
@@ -524,8 +531,9 @@ def import_source(
         _validate_database(connection)
         connection.execute("BEGIN")
         try:
-            # Deleting the manual cascades prior chunks/entities/instruction
-            # records for this third-party source, making import idempotent.
+            # Deleting the manual cascades prior third-party chunks, entities,
+            # instructions, and aliases. This also upgrades databases imported
+            # by v1 of this adapter without leaving authoritative skill rows.
             connection.execute("DELETE FROM manuals WHERE manual_id=?", (spec.id,))
             connection.execute(
                 """
@@ -554,7 +562,6 @@ def import_source(
                 ),
             )
 
-            first_instruction_chunk: dict[str, int] = {}
             chunk_count = 0
             entity_rows = 0
             for draft in drafts:
@@ -623,15 +630,11 @@ def import_source(
                             separators=(",", ":"),
                         ),
                         cjk_bigrams(draft.text),
-                        "third_party,markdown",
+                        "third_party,supporting,markdown",
                     ),
                 )
                 chunk_id = int(cursor.lastrowid)
                 chunk_count += 1
-                if draft.instruction_opcode:
-                    first_instruction_chunk.setdefault(
-                        draft.instruction_opcode, chunk_id
-                    )
                 for (entity, kind), count in entities.items():
                     connection.execute(
                         """
@@ -653,59 +656,10 @@ def import_source(
                     )
                     entity_rows += 1
 
+            # Third-party instruction pages remain retrievable through chunks,
+            # entities, FTS5, and dense search. They intentionally do not enter
+            # the authoritative instructions/instruction_aliases stores.
             instruction_count = 0
-            for document in documents:
-                opcode = document.instruction_opcode
-                if document.chunk_type != "instruction" or not opcode:
-                    continue
-                chunk_id = first_instruction_chunk.get(opcode)
-                if chunk_id is None:
-                    continue
-                title, summary = _summary_from_instruction(document.text)
-                cursor = connection.execute(
-                    """
-                    INSERT INTO instructions(
-                        opcode,opcode_norm,fnc_number,title,summary,variants_json,
-                        operands_json,completion_flags_json,restrictions_json,
-                        manual_id,manual_number,revision,page_start,page_end,
-                        source_pages_json,chunk_id
-                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """,
-                    (
-                        opcode,
-                        opcode.casefold(),
-                        "",
-                        title or opcode,
-                        summary,
-                        json.dumps([opcode], separators=(",", ":")),
-                        "[]",
-                        "[]",
-                        "[]",
-                        spec.id,
-                        "gxw2-skill",
-                        spec.version,
-                        0,
-                        0,
-                        "[]",
-                        chunk_id,
-                    ),
-                )
-                instruction_id = int(cursor.lastrowid)
-                connection.execute(
-                    """
-                    INSERT INTO instruction_aliases(
-                        alias_norm,alias,alias_type,instruction_id,chunk_id
-                    ) VALUES(?,?,?,?,?)
-                    """,
-                    (
-                        opcode.casefold(),
-                        opcode,
-                        "opcode",
-                        instruction_id,
-                        chunk_id,
-                    ),
-                )
-                instruction_count += 1
 
             # FTS5 external-content indexes do not update themselves in this
             # schema, so rebuild after replacing the source.
@@ -722,6 +676,7 @@ def import_source(
                 "external_source_gxw2_skill_version": spec.version,
                 "external_source_gxw2_skill_sha256": source_sha,
                 "external_source_gxw2_skill_license": spec.license,
+                "external_source_gxw2_skill_role": "supporting",
             }.items():
                 connection.execute(
                     "INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
@@ -755,6 +710,7 @@ def update_manifest(
     replacement = {
         "id": spec.id,
         "type": "third_party_skill",
+        "role": "supporting",
         "repository": spec.repository,
         "commit": spec.commit,
         "version": spec.version,
@@ -764,7 +720,7 @@ def update_manifest(
         "source_sha256": stats["source_sha256"],
         "documents": stats["documents"],
         "chunks": stats["chunks"],
-        "instructions": stats["instructions"],
+        "structured_instructions": stats["instructions"],
         "imported_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     external[:] = [item for item in external if item.get("id") != spec.id]
@@ -802,7 +758,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "gxw2-skill imported: "
         f"documents={stats['documents']} chunks={stats['chunks']} "
-        f"instructions={stats['instructions']} entities={stats['entity_rows']}"
+        f"structured_instructions={stats['instructions']} entities={stats['entity_rows']}"
     )
     print("Dense embeddings are stale; run tools/build_dense_embeddings.py next.")
     return 0
