@@ -233,6 +233,13 @@ def test_gxw2_skill_import_adds_lower_priority_chunks_and_structured_instruction
         )
         assert (
             connection.execute(
+                "SELECT COUNT(*) FROM entity_index "
+                "WHERE entity_norm='s1' AND entity_type='operand_placeholder'"
+            ).fetchone()[0]
+            >= 1
+        )
+        assert (
+            connection.execute(
                 "SELECT value FROM meta WHERE key='vector_status'"
             ).fetchone()[0]
             == "stale"
