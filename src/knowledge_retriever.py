@@ -8,6 +8,8 @@ structured evidence remains authoritative in the core scorer.
 
 from __future__ import annotations
 
+import re
+
 import knowledge_retriever_core as _core
 from knowledge_retriever_phase2c import (
     _GXW2_SKILL_CONCEPTS,
@@ -35,6 +37,34 @@ _SYNCED_CORE_HOOKS = (
     "_fts_references",
 )
 
+# These words are useful inside a GX Works2/ST query but are too generic to
+# justify widening retrieval by themselves.  A lone request such as
+# "please revise this program" must stay empty just as it did before phase 2c.
+_GXW2_WEAK_CONCEPTS = {
+    "PROGRAM",
+    "OUTPUT",
+    "MEMORY",
+    "STRING",
+    "REAL",
+    "TIME",
+    "CASE",
+    "RANGE",
+    "LABEL",
+    "INSTANCE",
+    "COMMENT",
+    "COMMENTS",
+    "STRUCTURED",
+    "TEXT",
+    "FB",
+    "FUN",
+}
+
+_GXW2_CONTEXT_RE = re.compile(
+    r"gx\s*works\s*[23]?|structured\s*text|(?<![A-Za-z0-9_])ST(?![A-Za-z0-9_])|"
+    r"FX3(?:S|G|GC|U|UC)|mitsubishi|三菱|软元件|梯形图|PLC",
+    re.IGNORECASE,
+)
+
 
 def _gxw2_supporting_boost(candidate, task_type):
     """Return the narrow phase-2c boost for one already-retrieved candidate."""
@@ -44,10 +74,18 @@ def _gxw2_supporting_boost(candidate, task_type):
 
 def _query_has_gxw2_skill_concept(query):
     try:
-        terms = {_core._normalize_text(term).upper() for term in _core._exact_terms(query)}
+        terms = {
+            _core._normalize_text(term).upper()
+            for term in _core._exact_terms(query)
+        }
     except (TypeError, ValueError):
         return False
-    return bool(terms.intersection(_GXW2_SKILL_CONCEPTS))
+    matched = terms.intersection(_GXW2_SKILL_CONCEPTS)
+    if not matched:
+        return False
+    if matched.difference(_GXW2_WEAK_CONCEPTS):
+        return True
+    return bool(_GXW2_CONTEXT_RE.search(_core._normalize_text(query)))
 
 
 def _sync_core_hooks():
