@@ -8,8 +8,6 @@ structured evidence remains authoritative in the core scorer.
 
 from __future__ import annotations
 
-import re
-
 import knowledge_retriever_core as _core
 from knowledge_retriever_phase2c import (
     _GXW2_SKILL_CONCEPTS,
@@ -37,34 +35,6 @@ _SYNCED_CORE_HOOKS = (
     "_fts_references",
 )
 
-# These words are useful inside a GX Works2/ST query but are too generic to
-# justify widening retrieval by themselves.  A lone request such as
-# "please revise this program" must stay empty just as it did before phase 2c.
-_GXW2_WEAK_CONCEPTS = {
-    "PROGRAM",
-    "OUTPUT",
-    "MEMORY",
-    "STRING",
-    "REAL",
-    "TIME",
-    "CASE",
-    "RANGE",
-    "LABEL",
-    "INSTANCE",
-    "COMMENT",
-    "COMMENTS",
-    "STRUCTURED",
-    "TEXT",
-    "FB",
-    "FUN",
-}
-
-_GXW2_CONTEXT_RE = re.compile(
-    r"gx\s*works\s*[23]?|structured\s*text|(?<![A-Za-z0-9_])ST(?![A-Za-z0-9_])|"
-    r"FX3(?:S|G|GC|U|UC)|mitsubishi|三菱|软元件|梯形图|PLC",
-    re.IGNORECASE,
-)
-
 
 def _gxw2_supporting_boost(candidate, task_type):
     """Return the narrow phase-2c boost for one already-retrieved candidate."""
@@ -74,18 +44,31 @@ def _gxw2_supporting_boost(candidate, task_type):
 
 def _query_has_gxw2_skill_concept(query):
     try:
-        terms = {
-            _core._normalize_text(term).upper()
-            for term in _core._exact_terms(query)
-        }
+        terms = {_core._normalize_text(term).upper() for term in _core._exact_terms(query)}
     except (TypeError, ValueError):
         return False
-    matched = terms.intersection(_GXW2_SKILL_CONCEPTS)
-    if not matched:
+    return bool(terms.intersection(_GXW2_SKILL_CONCEPTS))
+
+
+def _query_has_plc_context(query):
+    """Reject generic programming prose before third-party support can leak in."""
+
+    normalized = _core._normalize_text(query).casefold()
+    if not normalized:
         return False
-    if matched.difference(_GXW2_WEAK_CONCEPTS):
+    if any(marker.casefold() in normalized for marker in _core._PLC_DOMAIN_MARKERS):
         return True
-    return bool(_GXW2_CONTEXT_RE.search(_core._normalize_text(query)))
+    if any(marker.casefold() in normalized for marker in _core._MITSUBISHI_SCOPE_MARKERS):
+        return True
+    if _core._DEVICE_RE.search(query) or _core._PRODUCT_TERM_RE.search(query):
+        return True
+    if _core._error_terms(query):
+        return True
+    # Strong skill concepts such as VAR_IN_OUT/LREAL/PRG_MAIN are themselves
+    # sufficiently domain-specific. Weak concepts are already gated inside
+    # _query_has_gxw2_skill_concept and therefore do not make a generic
+    # "please revise this program" request PLC-specific.
+    return _query_has_gxw2_skill_concept(query)
 
 
 def _sync_core_hooks():
@@ -133,6 +116,22 @@ def retrieve_knowledge(
         top_k=candidate_top_k,
         char_budget=candidate_budget,
     )
+    if not results:
+        return []
+
+    # Phase 2b intentionally added lexical routing metadata to third-party
+    # chunks. Generic software prose can therefore match words such as PROGRAM
+    # even though the core FTS relevance gate would historically return empty.
+    # Keep the supporting source invisible unless the query has real PLC/ST
+    # context. Official results are left untouched.
+    if not _query_has_plc_context(query):
+        results = [
+            item
+            for item in results
+            if _core._normalize_text(item.get("manual_type", "")).casefold()
+            != "third_party_skill"
+        ]
+
     if not results or not expand:
         return results[:normalized_top_k]
 
