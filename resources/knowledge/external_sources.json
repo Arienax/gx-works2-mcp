@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "gxw2_skill_1_6_1",
+      "type": "markdown_repository",
+      "repository": "Serhioromano/gxw2-skill",
+      "commit": "505e63ac75e452f9d48d0b7842464157ee66a853",
+      "version": "1.6.1",
+      "published": "2026-08-20",
+      "title": "gxw2-skill 1.6.1 (third-party)",
+      "language": "en",
+      "plc_models": ["FX3U", "FX3G", "FX3S", "FX5U"],
+      "priority": 52,
+      "license": "MIT",
+      "homepage": "https://github.com/Serhioromano/gxw2-skill",
+      "archive_url": "https://github.com/Serhioromano/gxw2-skill/archive/505e63ac75e452f9d48d0b7842464157ee66a853.zip",
+      "root": "skills/gxw2-st"
+    }
+  ]
+}
