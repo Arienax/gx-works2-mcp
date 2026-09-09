@@ -42,6 +42,18 @@ SERVER_INSTRUCTIONS = (
     "No physical PLC writes or low-level desktop controls are exposed."
 )
 
+SERVICE_SERVER_INSTRUCTIONS = (
+    "GXWorks tools use the running local engineering service's shared ToolRuntime. "
+    "Call get_generation_context before create_program_candidate and read_network before patch_program. "
+    "Use the same ladder_v1 contract and deterministic validation as standalone mode. "
+    "The service persists confirmation_required actions as proposals and returns their proposal_id. "
+    "An operator must review and approve each proposal in the Web workbench. "
+    "This MCP agent cannot approve, accept versions, import, run simulation, or grant permissions. "
+    "Report proposals as pending; never claim a proposal was executed. "
+    "Do not edit workspace records or call operator HTTP routes to bypass this boundary. "
+    "No physical PLC writes or low-level desktop controls are exposed."
+)
+
 
 def create_server(
     context_provider: ToolContextProvider, runtime: ToolRuntime | None = None
@@ -49,6 +61,16 @@ def create_server(
     adapter = MCPToolAdapter(
         runtime if runtime is not None else build_default_tool_runtime(), context_provider
     )
+    return _create_adapter_server(adapter, SERVER_INSTRUCTIONS)
+
+
+def create_service_server(client, project_id, version_id=None) -> Server:
+    from .service_client import ServiceMCPToolAdapter
+
+    return _create_adapter_server(ServiceMCPToolAdapter(client, project_id, version_id), SERVICE_SERVER_INSTRUCTIONS)
+
+
+def _create_adapter_server(adapter, instructions):
     limiter = anyio.CapacityLimiter(1)
 
     async def list_tools(
@@ -65,7 +87,7 @@ def create_server(
         )
 
     return Server(
-        "gxworks-agent", version="0.1.0", instructions=SERVER_INSTRUCTIONS,
+        "gxworks-agent", version="0.1.0", instructions=instructions,
         on_list_tools=list_tools, on_call_tool=call_tool,
     )
 
@@ -77,3 +99,9 @@ async def serve_stdio(context_provider: ToolContextProvider) -> None:
         await server.run(
             read_stream, write_stream, server.create_initialization_options()
         )
+
+
+async def serve_service_stdio(client, project_id, version_id=None) -> None:
+    async with stdio_server() as (read_stream, write_stream):
+        server = create_service_server(client, project_id, version_id)
+        await server.run(read_stream, write_stream, server.create_initialization_options())

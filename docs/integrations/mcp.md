@@ -1,5 +1,10 @@
 # Standalone GXWorks Agent MCP server
 
+The standalone behavior below remains the default. An additional, explicitly
+selected `--service-url` / `--service-token-env` mode connects to the local Web
+application's shared proposal store; see [service connection and operator approval](web.md#mcp-的显式服务连接模式).
+Agent credentials cannot approve proposals in that mode.
+
 The stdio server is working. External agents discover and call the same twelve
 high-level tools used by the built-in agent. The server reads an existing saved
 project through SessionStore; it does not launch the desktop or contact a model.
