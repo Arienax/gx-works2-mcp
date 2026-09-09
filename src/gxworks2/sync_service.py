@@ -488,7 +488,10 @@ class GXWorks2SyncService:
         session,
         state,
         details,
+        persist=True,
     ):
+        if not persist:
+            return None
         try:
             self._save_snapshot(
                 identity,
@@ -522,6 +525,7 @@ class GXWorks2SyncService:
         progress=None,
         import_context=None,
         project_identity: Optional[str] = None,
+        save_project=True,
     ):
         """Read one coherent MAIN/comments snapshot without requiring a local version."""
         expected_program_name = str(
@@ -835,7 +839,14 @@ class GXWorks2SyncService:
                     pass
 
         save_method = getattr(self.automation, "save_project", None)
-        if callable(save_method):
+        if not save_project:
+            gx_save = {
+                "success": False,
+                "attempted": False,
+                "save_required": None,
+                "message": "本次只读快照未保存GX Works2工程。",
+            }
+        elif callable(save_method):
             try:
                 gx_save = dict(save_method(session) or {})
             except Exception as error:
@@ -874,12 +885,14 @@ class GXWorks2SyncService:
         progress=None,
         import_context=None,
         project_identity: Optional[str] = None,
+        save_project=True,
     ) -> SyncResult:
         """Export GX MAIN/comments for bootstrap import into an empty AI project."""
         snapshot = self._read_current_snapshot_core(
             progress=progress,
             import_context=import_context,
             project_identity=project_identity,
+            save_project=save_project,
         )
         if isinstance(snapshot, SyncResult):
             return snapshot
@@ -915,6 +928,8 @@ class GXWorks2SyncService:
         progress=None,
         import_context=None,
         project_identity: Optional[str] = None,
+        save_project=True,
+        persist_baseline=True,
     ) -> SyncResult:
         app_program_path = Path(app_program_path).expanduser().resolve()
         app_comment_path = Path(app_comment_path).expanduser().resolve()
@@ -964,6 +979,7 @@ class GXWorks2SyncService:
             progress=progress,
             import_context=import_context,
             project_identity=project_identity,
+            save_project=save_project,
         )
         if isinstance(snapshot, SyncResult):
             return snapshot
@@ -1015,6 +1031,7 @@ class GXWorks2SyncService:
         details = {
             "project_identity": identity,
             "baseline_found": baseline is not None,
+            "baseline_write_enabled": bool(persist_baseline),
             "baseline": baseline or {},
             "hashes": hashes,
             "diff": difference,
@@ -1041,13 +1058,14 @@ class GXWorks2SyncService:
                     session=session,
                     state=state,
                     details=details,
+                    persist=persist_baseline,
                 )
                 if baseline_error is not None:
                     return baseline_error
                 return SyncResult(
                     True,
                     SyncStatus.SYNCED,
-                    "项目与GX Works2内容一致，已建立同步关系。",
+                    "项目与GX Works2内容一致，已建立同步关系。" if persist_baseline else "项目与GX Works2内容一致，本次未写入同步基线。",
                     project_name=project_name,
                     exported_program_path=str(gx_program_path),
                     exported_comment_path=str(gx_comment_path),
@@ -1091,13 +1109,14 @@ class GXWorks2SyncService:
                     session=session,
                     state=state,
                     details=details,
+                    persist=persist_baseline,
                 )
                 if baseline_error is not None:
                     return baseline_error
                 return SyncResult(
                     True,
                     SyncStatus.SYNCED,
-                    "当前项目与GX Works2内容一致，已更新工程绑定。",
+                    "当前项目与GX Works2内容一致，已更新工程绑定。" if persist_baseline else "当前项目与GX Works2内容一致，本次未更新工程绑定。",
                     project_name=project_name,
                     exported_program_path=str(gx_program_path),
                     exported_comment_path=str(gx_comment_path),
@@ -1148,6 +1167,7 @@ class GXWorks2SyncService:
                 session=session,
                 state=state,
                 details=details,
+                persist=persist_baseline,
             )
             if baseline_error is not None:
                 return baseline_error

@@ -1513,5 +1513,15 @@
   "{address} 不是 {model} 的合法软元件地址": "{address} is not a valid {model} device address",
   "地址前缀与类别不一致，已按真实前缀归类为 {kind}。": "The address prefix did not match its category; it was classified as {kind}.",
   "结构化标签不能作为 I/O 说明，已转为简短 JSON 文本。": "A structured label cannot be used as an I/O description; it was converted to compact JSON text.",
-  "变频器频率给定控制方式": "Inverter frequency command method"
+  "变频器频率给定控制方式": "Inverter frequency command method",
+  "工作区正在使用": "Workspace in use",
+  "模型服务认证失败，请检查 API Key 和访问权限。": "Model service authentication failed. Check the API key and access permissions.",
+  "模型服务请求过于频繁，请稍后重试。": "The model service rate limit was reached. Try again later.",
+  "模型服务请求超时，请稍后重试。": "The model service request timed out. Try again later.",
+  "模型服务拒绝了请求，请检查模型配置和输入。": "The model service rejected the request. Check the model configuration and input.",
+  "模型服务暂时不可用，请检查连接或稍后重试。": "The model service is unavailable. Check the connection or try again later.",
+  "模型未返回有效候选结果，请重试或更换模型。": "The model returned no valid candidate. Retry or select another model.",
+  "当前模型不支持图片输入，请切换到带视觉能力的模型。": "The current model does not support image input. Select a vision-capable model.",
+  "图片编码后的请求体过大，请减少图片数量或压缩图片。": "The encoded image request is too large. Reduce the number or size of images.",
+  "模型服务调用失败，请检查配置或稍后重试。": "The model service request failed. Check the configuration or try again later."
 }

@@ -1070,7 +1070,7 @@ class SessionStore:
         self._write_json(version_path / "version.json", version)
         return payload
 
-    def load_simulator_test_plan(self, project_id, version_id, plan_id):
+    def load_simulator_test_plan(self, project_id, version_id, plan_id, *, persist_legacy=True):
         plan_id = self._validate_record_id(plan_id, "simulator test plan id")
         version = self.get_version(project_id, version_id)
         if version is None:
@@ -1093,7 +1093,7 @@ class SessionStore:
         payload = self._read_json(plan_path)
         if not isinstance(payload, dict):
             return None
-        program = self.load_program_ir(project_id, version_id)
+        program = self.load_program_ir(project_id, version_id, persist_legacy=persist_legacy)
         if not isinstance(program, dict):
             return None
         from plc_ir import canonical_sha256

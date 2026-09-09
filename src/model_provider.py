@@ -347,11 +347,14 @@ def _wire_message(message: ModelMessage) -> Dict[str, Any]:
 
 
 def _normalize_error(error: Exception) -> ModelProviderError:
-    if isinstance(error, ModelProviderError):
+    if isinstance(error, ResponseRejectedError):
         return error
     status = getattr(error, "status_code", None)
+    status = status if isinstance(status, int) and not isinstance(status, bool) else None
     name = type(error).__name__.lower()
-    if status in {401, 403} or "authentication" in name or "permission" in name:
+    if isinstance(error, ModelProviderError):
+        code, retryable = error.code, error.retryable
+    elif status in {401, 403} or "authentication" in name or "permission" in name:
         code, retryable = "authentication", False
     elif status == 429 or "ratelimit" in name or "rate_limit" in name:
         code, retryable = "rate_limit", True
@@ -359,15 +362,40 @@ def _normalize_error(error: Exception) -> ModelProviderError:
         code, retryable = "timeout", True
     elif status == 400 or "badrequest" in name:
         code, retryable = "invalid_request", False
-    elif status is not None and int(status) >= 500:
+    elif status is not None and status >= 500:
         code, retryable = "unavailable", True
     elif "connection" in name:
         code, retryable = "unavailable", True
     else:
         code, retryable = "provider_error", False
-    return ModelProviderError(
-        str(error), code=code, retryable=retryable, status_code=status
-    )
+    messages = {
+        "authentication": "模型服务认证失败，请检查 API Key 和访问权限。",
+        "rate_limit": "模型服务请求过于频繁，请稍后重试。",
+        "timeout": "模型服务请求超时，请稍后重试。",
+        "invalid_request": "模型服务拒绝了请求，请检查模型配置和输入。",
+        "unavailable": "模型服务暂时不可用，请检查连接或稍后重试。",
+        "protocol": "模型未返回有效候选结果，请重试或更换模型。",
+        "image_not_supported": "当前模型不支持图片输入，请切换到带视觉能力的模型。",
+        "image_payload_too_large": "图片编码后的请求体过大，请减少图片数量或压缩图片。",
+        "provider_error": "模型服务调用失败，请检查配置或稍后重试。",
+    }
+    if code not in messages:
+        code = "provider_error"
+    # SDK errors can echo the full Authorization/API key or request body. Only
+    # this classified message may cross a workflow/event/report boundary.
+    return ModelProviderError(translate(messages[code], get_language()),
+        code=code, retryable=retryable, status_code=status)
+
+
+def public_model_error(error: Exception) -> ModelProviderError:
+    """Find a wrapped provider classification without disclosing exception text."""
+    current, seen = error, set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ModelProviderError):
+            return _normalize_error(current)
+        current = current.__cause__
+    return _normalize_error(error)
 
 
 def _usage_event(value: Any) -> Optional[Usage]:
@@ -611,10 +639,16 @@ def collect_response(
                     calls.append(event.tool_call)
                 elif isinstance(event, Usage):
                     usage = event
-        except ModelProviderError as error:
-            attempts.append(snapshot(error.code))
-            error.raw_attempts = tuple(attempts)
-            raise
+        except Exception as error:
+            safe_error = public_model_error(error)
+            attempts.append(snapshot(safe_error.code))
+            safe_error.raw_attempts = tuple(attempts)
+            # Unknown adapter exceptions previously aborted without transport
+            # fallback. Classification must not add a new automatic retry.
+            safe_error._stream_fallback_allowed = isinstance(error, ModelProviderError)
+            if safe_error is error:
+                raise
+            raise safe_error from error
         raw = snapshot()
         attempts.append(raw)
         return raw
@@ -622,7 +656,9 @@ def collect_response(
     try:
         raw = consume(request)
     except ModelProviderError as error:
-        if not (fallback_to_non_stream and request.stream):
+        if isinstance(error, ResponseRejectedError):
+            raise
+        if not (fallback_to_non_stream and request.stream and error._stream_fallback_allowed):
             raise
         if on_fallback is not None:
             on_fallback(error)
@@ -778,6 +814,7 @@ __all__ = [
     "collect_response",
     "create_provider",
     "get_active_provider",
+    "public_model_error",
     "reload_model_provider",
     "reset_model_provider",
     "sdk_runtime_self_test",

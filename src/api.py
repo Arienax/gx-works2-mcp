@@ -3,6 +3,8 @@ import json
 import re
 import sys
 import warnings
+from contextlib import contextmanager
+from contextvars import ContextVar
 from i18n import language_scoped, tr
 from response_language import TEXT_RESPONSE, preserved_annotations as source_annotations
 from workflow_response_contracts import (
@@ -31,6 +33,38 @@ from pattern_library import (
     build_workflow_prompt,
     classify_request,
 )
+
+
+_provider_session = ContextVar("workflow_provider_session", default=None)
+_workflow_model = ContextVar("workflow_model_name", default=None)
+
+
+@contextmanager
+def provider_scope(provider=None, *, model_name=None):
+    """Keep one provider for an entire workflow, including fallback and repair.
+
+    A caller may supply a provider captured when a job is submitted. Otherwise
+    resolution is lazy, so deterministic and injected offline workflows do not
+    initialize credentials or SDK clients. Nested workflows reuse the session.
+    """
+    existing = _provider_session.get()
+    session = existing if provider is None and existing is not None else [provider]
+    token = _provider_session.set(session)
+    model_token = _workflow_model.set(model_name or _workflow_model.get())
+    try:
+        yield
+    finally:
+        _workflow_model.reset(model_token)
+        _provider_session.reset(token)
+
+
+def _workflow_provider():
+    session = _provider_session.get()
+    if session is None:
+        return get_active_provider()
+    if session[0] is None:
+        session[0] = get_active_provider()
+    return session[0]
 
 
 _KNOWLEDGE_GENERIC_VALUES = {
@@ -182,7 +216,7 @@ def reset_api_client():
 
 
 def _active_model_name(config=None):
-    return str(get_model_profile(config or load_full_config()).get("model") or "")
+    return _workflow_model.get() or str(get_model_profile(config or load_full_config()).get("model") or "")
 
 
 @language_scoped
@@ -225,7 +259,7 @@ def _request_model(
         preserved_annotations=preserved_annotations,
     )
     return collect_response(
-        get_active_provider(),
+        _workflow_provider(),
         request,
         on_reasoning_chunk=on_reasoning_chunk,
         on_content_chunk=on_content_chunk,

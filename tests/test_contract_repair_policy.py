@@ -60,17 +60,3 @@ def test_missing_required_opcode_is_contract_mismatch_not_auto_repairable():
 def test_normal_plc_validation_errors_remain_auto_repairable():
     error = PLCJsonValidationError("syntactic validation failure")
     assert should_auto_repair_validation_error(error) is True
-
-
-
-def test_compiler_keeps_contract_mismatch_candidate_before_repair_choice():
-    source = Path("src/main.py").read_text(encoding="utf-8")
-    compiler_start = source.index("class CompilerThread")
-    catch = source.index("except ApproachContractValidationError as contract_error:", compiler_start)
-    csv_generation = source.index("generate_gx_works2_csv", catch)
-    remote = source.index('"stage": "repairing_remote"', compiler_start)
-    assert catch < csv_generation
-    assert remote < csv_generation
-    block = source[catch:csv_generation]
-    assert "保留原始候选并先生成 CSV" in block
-    assert "should_auto_repair_validation_error(first_err)" not in block

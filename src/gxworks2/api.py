@@ -113,12 +113,14 @@ def read_current_snapshot(
     progress=None,
     import_context=None,
     project_identity=None,
+    save_project=True,
 ):
     """Read GX Works2 MAIN/comments without requiring a local application version."""
     return _get_sync_service().read_current_snapshot(
         progress=progress,
         import_context=import_context,
         project_identity=project_identity,
+        save_project=save_project,
     )
 
 def inspect_current_sync(
@@ -128,6 +130,8 @@ def inspect_current_sync(
     progress=None,
     import_context=None,
     project_identity=None,
+    save_project=True,
+    persist_baseline=True,
 ):
     return _get_sync_service().inspect(
         program_csv_path,
@@ -135,6 +139,8 @@ def inspect_current_sync(
         progress=progress,
         import_context=import_context,
         project_identity=project_identity,
+        save_project=save_project,
+        persist_baseline=persist_baseline,
     )
 
 

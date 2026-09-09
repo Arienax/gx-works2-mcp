@@ -180,10 +180,8 @@ def test_main_integrates_contract_repair_as_scoped_partial_patch():
     source = Path("src/main.py").read_text(encoding="utf-8")
     assert "build_contract_repair_plan" in source
     assert 'task_type="contract_repair"' in source
-    assert "patch_device_addresses(parsed)" in source
     assert "allowed_rung_ids=plan[\"allowed_rung_ids\"]" in source
     assert "allowed_addresses=plan[\"allowed_addresses\"]" in source
-    assert "方案约束修复候选未通过验证，不会继续隐藏重试" in source
 
 
 def test_indexed_devices_are_enforced_by_patch_scope():

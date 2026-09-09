@@ -377,9 +377,7 @@ def test_compiler_thread_persists_ir_and_all_legacy_artifacts(monkeypatch, tmp_p
     )
     assert validate_plc_ir(program) is program
     assert ir_to_ladder(program) == persisted_ladder == ladder
-    source = Path(main_module.__file__).read_text(encoding="utf-8")
-    assert "rendered_ladder = ir_to_ladder(program_ir)" in source
-    assert "drawer.generate_ladder(final_json_str)" in source
+    assert (tmp_path / result["artifacts"]["svg"]).read_text(encoding="utf-8").lstrip().startswith("<svg")
     assert result["ir_sha256"] == canonical_sha256(program)
     assert result["ladder_sha256"] == canonical_sha256(ladder)
     parsing_messages = [
