@@ -15,6 +15,7 @@ import hashlib
 import json
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 import uuid
+from i18n import language_scoped
 
 from inspection_models import hash_ladder_json, normalize_inspection_report
 from plc_ir import canonical_sha256, ir_to_ladder, validate_plc_ir
@@ -367,6 +368,7 @@ class DeterministicMultiAgentSupervisor:
             output_payload=accepted,
         )
 
+    @language_scoped
     def review_program(
         self,
         program: Mapping[str, Any],
@@ -434,6 +436,7 @@ class DeterministicMultiAgentSupervisor:
         }
         return {"reports": reports, "audit": run}
 
+    @language_scoped
     def prepare_debug_plan(
         self,
         *,

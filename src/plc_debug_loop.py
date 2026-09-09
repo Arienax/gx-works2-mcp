@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 import uuid
+from i18n import language_scoped
 
 from draw import AdvancedSVGLadder, generate_gx_works2_csv
 from knowledge_retriever import retrieve_knowledge
@@ -39,6 +40,10 @@ from plc_timing import TIMING_ANALYSIS_SCHEMA_VERSION
 from plc_semantics import SEMANTICS_SCHEMA_VERSION
 from simulator.models import normalize_test_suite
 from simulator.service import SimulatorRegressionService
+from simulator.verification import (
+    SimulatorEvidenceError, blocked_verification, evaluate_suite_result,
+    execution_binding, require_matching_binding,
+)
 
 
 DEBUG_EVIDENCE_SCHEMA_VERSION = 1
@@ -331,6 +336,15 @@ def build_failure_evidence(
     normalized_suite = normalize_test_suite(
         suite, plc_model=str(program.get("plc", {}).get("cpu") or "FX3U")
     )
+    verification = evaluate_suite_result(normalized_suite, result)
+    if (
+        binding.get("binding_scope") != "execution_snapshot"
+        or binding.get("suite_sha256") != canonical_sha256(normalized_suite)
+        or binding.get("result_sha256") != canonical_sha256(result)
+        or verification != simulator_run.get("verification")
+        or not verification["program_repair_allowed"]
+    ):
+        raise DebugLoopError("仿真证据未通过完整性与执行验收，请重新测试后再生成修复方案。")
     failures, affected_devices, stimulus_devices, failure_times = _failure_records(
         normalized_suite, result
     )
@@ -401,6 +415,7 @@ def build_failure_evidence(
     return {
         "schema_version": DEBUG_EVIDENCE_SCHEMA_VERSION,
         "binding": copy.deepcopy(dict(binding)),
+        "verification": verification,
         "plc": copy.deepcopy(dict(program.get("plc") or {})),
         "program_name": str(program.get("program_name") or "MAIN"),
         "failures": failures,
@@ -769,6 +784,7 @@ class DebugPatchLoopService:
         )
         self.retriever = retriever
 
+    @language_scoped
     def prepare_plan(
         self,
         project_id: str,
@@ -906,16 +922,38 @@ class DebugPatchLoopService:
                 status = "import_failed"
                 message = "候选程序未能完整导入 GX Works2。"
             else:
+                expected = execution_binding(
+                    project_id, candidate_version_id,
+                    checked["candidate_ir"], checked["regression_suite"],
+                )
                 execution = self.simulator_service.run_version_suite(
                     project_id,
                     candidate_version_id,
                     checked["regression_suite"],
+                    expected_binding=expected,
                 )
                 regression = {
                     "record": copy.deepcopy(execution.get("record") or {}),
                     "result": copy.deepcopy(execution.get("result") or {}),
                 }
-                if (execution.get("result") or {}).get("status") == "passed":
+                # A callback's "passed" is not acceptance. Reopen the indexed
+                # artifacts and check the exact candidate and approved suite.
+                regression_run_id = regression["record"].get("run_id")
+                if not regression_run_id:
+                    raise SimulatorEvidenceError("evidence_invalid", "候选回归缺少已保存的仿真记录。")
+                saved = self.store.load_simulator_run(
+                    project_id, candidate_version_id, regression_run_id
+                )
+                if not saved:
+                    raise SimulatorEvidenceError("evidence_invalid", "候选回归的仿真记录不存在。")
+                require_matching_binding(saved["binding"], expected)
+                if (
+                    canonical_sha256(regression["result"]) != saved["binding"].get("result_sha256")
+                    or regression["record"] != saved["record"]
+                ):
+                    raise SimulatorEvidenceError("evidence_invalid", "候选回归返回值与已保存证据不一致。")
+                regression["verification"] = saved["verification"]
+                if saved["verification"]["status"] == "passed":
                     self.store.activate_version(project_id, candidate_version_id)
                     self.store.update_version_metadata(
                         project_id,
@@ -929,11 +967,15 @@ class DebugPatchLoopService:
                     regression_status = str(
                         (execution.get("result") or {}).get("status") or "error"
                     )
+                    if regression_status == "passed":
+                        regression_status = "unverified"
                     status = f"regression_{regression_status}"
                     message = "候选程序未通过完整回归，已保留原版本。"
         except Exception as error:
             status = "error"
             message = str(error)
+            if isinstance(error, SimulatorEvidenceError):
+                regression["verification"] = blocked_verification(error.category)
             if candidate_import and _import_may_have_changed(candidate_import):
                 rollback["required"] = True
         finally:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from i18n import tr
 
 
 HARDWARE_PROFILE_SCHEMA_VERSION = 1
@@ -327,7 +328,7 @@ def ensure_hardware_questions(analysis, plc_model="FX3U", user_text=""):
                 0,
                 {
                     "id": "control_method",
-                    "question": QUESTION_IDS["control_method"],
+                    "question": str(tr("变频器频率给定控制方式")),
                     "options": list(_VFD_CONTROL_METHOD_OPTIONS),
                     "default": _VFD_CONTROL_METHOD_OPTIONS[0],
                     "source": "deterministic_drive_design_rule",

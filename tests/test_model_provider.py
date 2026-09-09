@@ -1,5 +1,6 @@
 import base64
 import copy
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -418,3 +419,45 @@ def test_deprecated_vendor_named_entrypoint_is_only_a_forwarding_alias(monkeypat
     with pytest.deprecated_call():
         assert alias("test") is sentinel
     assert alias.__deprecated__ is True
+
+
+@pytest.mark.parametrize("profile_id", ["deepseek-default", "zhipu-glm-5.3-flash"])
+@pytest.mark.parametrize("stream", [True, False])
+def test_real_request_parameters_keep_language_and_native_schema_before_acceptance(
+    monkeypatch, profile_id, stream
+):
+    from model_provider import ResponseRejectedError
+    from response_language import ResponseContract
+
+    raw = json.dumps({"summary": "仍然返回中文。"}, ensure_ascii=False)
+    wire_response = iter([_chunk(content=raw)]) if stream else SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=raw, tool_calls=[]))],
+    )
+    client = _Client([wire_response])
+    provider = OpenAICompatibleProvider(_profile(profile_id), "offline-key", client=client)
+    monkeypatch.setattr(api, "get_active_provider", lambda: provider)
+    native_format = {"type": "json_schema", "json_schema": {
+        "name": "summary", "strict": True, "schema": {
+            "type": "object", "properties": {"summary": {"type": "string"}},
+            "required": ["summary"], "additionalProperties": False,
+        },
+    }}
+    displayed = []
+    with pytest.raises(ResponseRejectedError) as error:
+        api._request_model(
+            [{"role": "system", "content": "JSON only. 中文示例。"},
+             {"role": "user", "content": "请分析 X0"}],
+            stream=stream, response_language="en",
+            response_contract=ResponseContract("test", "json", ("summary",)),
+            options={"response_format": native_format},
+            on_content_chunk=displayed.append,
+        )
+    assert displayed == []
+    assert error.value.raw_response.message.content == raw
+    assert len(client.completions.calls) == 1
+    params = client.completions.calls[0]
+    assert params["response_format"] == native_format
+    assert params["stream"] == stream
+    assert "response_language" not in params  # It is not an OpenAI wire option.
+    assert "English (en)" in params["messages"][0]["content"]
+    assert params["messages"][1]["content"] == "请分析 X0"

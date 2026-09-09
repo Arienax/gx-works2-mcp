@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from functools import lru_cache
+from functools import lru_cache, wraps
 import json
 from pathlib import Path
 import re
@@ -67,6 +67,20 @@ def language_context(language):
         yield
     finally:
         _override.reset(token)
+
+
+def language_scoped(function):
+    """Freeze a synchronous workflow, including preparation, retries and tools.
+
+    Non-UI callers can supply response_language= explicitly; otherwise inherit
+    the enclosing scope or capture the preference once at workflow entry.
+    Worker threads must separately capture the language at construction.
+    """
+    @wraps(function)
+    def scoped(*args, response_language=None, **kwargs):
+        with language_context(response_language or get_language()):
+            return function(*args, **kwargs)
+    return scoped
 
 
 @lru_cache(maxsize=2)
@@ -195,10 +209,10 @@ def runtime_text(value):
 
 
 class DisplayLanguageGuard:
-    """Withhold obvious off-language model prose at the display boundary only.
+    """Legacy display-only wrapper; model workflows must use collect_response.
 
-    Transport, response JSON and evidence are never modified. Language detection
-    is conservative: Han-only Japanese labels must be known catalog entries.
+    Retained for source compatibility. Uses the shared checker, but cannot
+    establish acceptance or roll back earlier chunks and is no longer in the UI.
     """
     def __init__(self, language=None):
         self.language = normalize_language(language or get_language())
@@ -206,20 +220,13 @@ class DisplayLanguageGuard:
         self.warned = False
 
     def _checked(self, text):
-        has_han = bool(re.search(r"[\u3400-\u9fff]", text))
-        has_kana = bool(re.search(r"[\u3040-\u30ff]", text))
-        invalid = self.language == "en" and (has_han or has_kana)
-        if self.language == "zh-CN":
-            prose_words = re.findall(r"\b[A-Za-z][a-z]{2,}\b", text)
-            machine_syntax = bool(re.search(r'[{}\[\]":_=/\\]', text))
-            invalid = has_kana or (not has_han and len(prose_words) >= 4 and not machine_syntax)
-        if self.language == "ja":
-            known = text.strip(" \t\r\n。.!！") in {
-                value.strip(" \t\r\n。.!！") for value in catalog("ja").values()
-            }
-            prose_words = re.findall(r"\b[A-Za-z][a-z]{2,}\b", text)
-            machine_syntax = bool(re.search(r'[{}\[\]":_=/\\]', text))
-            invalid = not known and ((has_han and not has_kana) or (not has_kana and len(prose_words) >= 2 and not machine_syntax))
+        from response_language import ResponseContract, inspect_response
+        try:
+            json.loads(text)
+            contract = ResponseContract("legacy_display_json", "json", ("**",), structured_paths=("**",))
+        except ValueError:
+            contract = ResponseContract()
+        invalid = bool(inspect_response(text, self.language, contract))
         if not invalid:
             return text
         if self.warned:

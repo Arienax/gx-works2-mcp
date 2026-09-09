@@ -95,7 +95,8 @@ def test_simulator_test_suite_api_streams_reasoning_and_json(monkeypatch):
     assert reasoning == ["先识别启动与停止行为。"]
     assert "".join(content) == raw
     assert provider.requests[0].stream is True
-    assert provider.requests[0].options["response_format"] is None
+    assert provider.requests[0].response_contract.format == "json"
+    assert "response_format" not in provider.requests[0].options
     assert progress[0] == "AI 正在生成仿真测试方案（流式）"
     assert progress[-1] == "正在解析模型输出：清理并校验 JSON 结构"
 

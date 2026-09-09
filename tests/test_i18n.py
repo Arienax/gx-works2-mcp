@@ -181,15 +181,18 @@ def test_stream_guard_preserves_machine_tokens(language):
     assert guard.feed(payload) + guard.flush() == payload
 
 
-def test_thinking_panel_applies_language_to_both_streams_and_status():
+def test_thinking_panel_displays_accepted_bytes_without_reinterpreting_language():
     from main import ThinkingPanel
     set_language("en")
     panel = ThinkingPanel()
-    panel.append_reasoning("正在分析。")
-    panel.append_content("Done: X0 → Y0.")
+    # This Chinese quotation is accepted source evidence, not generated prose.
+    # A display-time language heuristic must not discard or rewrite it.
+    panel.append_reasoning('Source: "用户原文". ')
+    panel.append_content('Done: network_id=N0001, X0 → Y0.')
     panel.set_status("等待中")
     text = panel.content_edit.toPlainText()
-    assert "正在分析" not in text
+    assert 'Source: "用户原文".' in text
+    assert 'network_id=N0001' in text
     assert "X0 → Y0" in text
     assert panel.status_label.text() == translate("等待中")
     panel.close()
@@ -246,7 +249,8 @@ def test_regeneration_command_recognizes_supported_languages(utterance):
 
 
 def test_fallback_keeps_language_and_raw_response():
-    from model_provider import ModelProviderError, ModelRequest, TextDelta, UserMessage, collect_response
+    from model_provider import ModelProviderError, ModelRequest, ResponseRejectedError, TextDelta, UserMessage, collect_response
+    from response_language import ResponseContract
     requests = []
     raw = '{"description":"原始内容","operand":"X0"}'
     class Provider:
@@ -257,10 +261,15 @@ def test_fallback_keeps_language_and_raw_response():
                 raise ModelProviderError("fixture transport failure")
             yield TextDelta(raw)
     set_language("en")
-    guard = DisplayLanguageGuard()
-    result = collect_response(Provider(), ModelRequest((UserMessage("原文"),)),
-                              on_content_chunk=guard.feed, fallback_to_non_stream=True)
-    assert result.message.content == raw
+    displayed = []
+    request = ModelRequest((UserMessage("原文"),), response_contract=ResponseContract(
+        "fixture", "json", ("description",),
+    ))
+    with pytest.raises(ResponseRejectedError) as rejected:
+        collect_response(Provider(), request, on_content_chunk=displayed.append,
+                         fallback_to_non_stream=True)
+    assert rejected.value.raw_response.message.content == raw
+    assert displayed == []
     assert [request.response_language for request in requests] == ["en", "en"]
     assert all("English" in request.messages[0].content for request in requests)
 

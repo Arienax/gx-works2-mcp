@@ -13,7 +13,7 @@ from plc_debug_loop import (
 )
 from plc_ir import build_plc_ir, canonical_sha256
 from session_store import SessionStore
-from simulator import InMemoryTestBackend, PLCTestRunner, SimulatorRegressionService
+from simulator import InMemoryTestBackend, SimulatorRegressionService
 
 
 def _contact(kind, address):
@@ -112,11 +112,12 @@ def _project_with_failure(tmp_path):
             "lifecycle_status": "accepted",
         },
     )
-    failed = PLCTestRunner(
-        InMemoryTestBackend(on_write=_base_logic)
-    ).run_suite(_suite())
+    execution = SimulatorRegressionService(
+        store, backend=InMemoryTestBackend(on_write=_base_logic)
+    ).run_version_suite(project["id"], version_id, _suite())
+    failed = execution["result"]
     assert failed["status"] == "failed"
-    record = store.save_simulator_run(project["id"], version_id, _suite(), failed)
+    record = execution["record"]
     return store, project["id"], version_id, program, record["run_id"]
 
 
@@ -319,6 +320,71 @@ def test_approved_patch_passes_full_regression_before_activation(tmp_path):
     assert len(importer.calls) == 1
     assert store.load_debug_attempt(project_id, attempt["attempt_id"])["status"] == "passed"
     assert store.get_version(project_id, version_id)["debug_attempts"][-1]["attempt_id"] == attempt["attempt_id"]
+
+
+def test_unrecorded_pass_cannot_activate_candidate(tmp_path):
+    store, project_id, version_id, program, run_id = _project_with_failure(tmp_path)
+    importer = _FakeImporter()
+
+    class UnrecordedSimulator:
+        def run_version_suite(self, *_args, **_kwargs):
+            return {"result": {"status": "passed"}}
+
+    service = DebugPatchLoopService(
+        store, importer=importer, simulator_service=UnrecordedSimulator(),
+        retriever=_knowledge,
+    )
+    plan = service.prepare_plan(project_id, version_id, run_id, _diagnosis(), _patch(program))
+    attempt = service.execute_approved_plan(plan)
+
+    assert attempt["status"] != "passed"
+    assert store.get_project(project_id)["active_version_id"] == version_id
+    assert attempt["rollback"]["restored"]
+
+
+@pytest.mark.parametrize("source", [
+    "different_suite", "different_version", "changed_return", "changed_artifact", "persistence_only",
+])
+def test_pass_must_match_persisted_candidate_and_full_approved_suite(tmp_path, source):
+    store, project_id, version_id, program, run_id = _project_with_failure(tmp_path)
+    importer = _FakeImporter()
+    real = SimulatorRegressionService(store, backend=InMemoryTestBackend(on_write=_fixed_logic))
+
+    class UnreliableSimulator:
+        def run_version_suite(self, project_id, candidate_id, suite, **_kwargs):
+            suite = copy.deepcopy(suite)
+            if source == "different_suite":
+                # Same suite/case/step names, but the stop check was removed.
+                suite["tests"][0]["steps"] = suite["tests"][0]["steps"][:2]
+            target_id = version_id if source == "different_version" else candidate_id
+            execution = real.run_version_suite(project_id, target_id, suite)
+            assert execution["verification"]["status"] == "passed"
+            if source == "persistence_only":
+                execution["record"] = store.save_simulator_run(
+                    project_id, target_id, suite, execution["result"]
+                )
+            if source == "changed_return":
+                execution["result"]["results"][0]["trace"].clear()
+            if source == "changed_artifact":
+                path = store.version_dir(project_id, target_id) / execution["record"]["trace_artifact"]
+                payload = store._read_json(path)
+                payload["result"]["results"][0]["trace"].clear()
+                store._write_json(path, payload)
+            return execution
+
+    service = DebugPatchLoopService(
+        store, importer=importer, simulator_service=UnreliableSimulator(), retriever=_knowledge,
+    )
+    plan = service.prepare_plan(project_id, version_id, run_id, _diagnosis(), _patch(program))
+    attempt = service.execute_approved_plan(plan)
+    assert attempt["status"] != "passed"
+    if source == "persistence_only":
+        assert attempt["status"] == "regression_unverified"
+    assert attempt["regression"]["verification"]["status"] == "blocked"
+    assert attempt["regression"]["verification"]["program_repair_allowed"] is False
+    assert store.get_project(project_id)["active_version_id"] == version_id
+    assert attempt["rollback"]["restored"]
+    assert len(importer.calls) == 2
 
 
 def test_failed_regression_reimports_base_and_keeps_it_active(tmp_path):

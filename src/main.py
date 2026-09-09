@@ -1,4 +1,4 @@
-from i18n import DisplayLanguageGuard, runtime_text, tr
+from i18n import get_language, language_context, runtime_text, tr
 from qt_compat import QGridLayout, QSizePolicy
 import sys
 import os
@@ -96,7 +96,6 @@ from contract_repair import (
     patch_device_addresses,
 )
 from display_names import (
-    DisplayTextStream,
     naturalize_display_text,
     naturalize_identifier,
     preferred_display_name,
@@ -536,7 +535,6 @@ class ThinkingPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("ThinkingPanel")
         self._expanded = False
-        self._language_guards = {}
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -589,8 +587,7 @@ class ThinkingPanel(QFrame):
         """追加推理文本片段并自动滚屏。"""
         from qt_compat import QTextCursor
         self.content_edit.moveCursor(QTextCursor.MoveOperation.End)
-        guard = self._language_guards.setdefault("reasoning", DisplayLanguageGuard())
-        self.content_edit.insertPlainText(guard.feed(token))
+        self.content_edit.insertPlainText(token)
         scrollbar = self.content_edit.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
@@ -598,8 +595,7 @@ class ThinkingPanel(QFrame):
         """追加输出内容片段（与推理区分，灰色前缀）。"""
         from qt_compat import QTextCursor
         self.content_edit.moveCursor(QTextCursor.MoveOperation.End)
-        guard = self._language_guards.setdefault("content", DisplayLanguageGuard())
-        self.content_edit.insertPlainText(guard.feed(token))
+        self.content_edit.insertPlainText(token)
         scrollbar = self.content_edit.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
@@ -608,14 +604,12 @@ class ThinkingPanel(QFrame):
         self.status_label.setText(runtime_text(text))
 
     def flush_display(self):
-        for guard in self._language_guards.values():
-            self.content_edit.moveCursor(QTextCursor.MoveOperation.End)
-            self.content_edit.insertPlainText(guard.flush())
+        # Model content has already passed the shared acceptance boundary.
+        pass
 
     def reset(self):
         """清空内容、重置标题与状态。"""
         self.content_edit.clear()
-        self._language_guards = {}
         self.status_label.setText(tr('思考中...'))
         set_codicon(self.toggle_btn, "chevron-down", tr('推理详情'), 10)
         if not self._expanded:
@@ -652,7 +646,19 @@ class ThinkingPanel(QFrame):
 # 阶段1：需求分析线程
 # ============================
 
-class AnalysisThread(QThread):
+class LanguageScopedThread(QThread):
+    """Capture the caller's language before crossing the Qt thread boundary."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.response_language = get_language()
+
+    def run(self):
+        with language_context(self.response_language):
+            self.run_in_language()
+
+
+class AnalysisThread(LanguageScopedThread):
     """轻量分析线程 — 流式调用阶段1 API，不生成代码"""
     analysis_done = pyqtSignal(str, dict)
     analysis_failed = pyqtSignal(str, str)
@@ -676,7 +682,7 @@ class AnalysisThread(QThread):
         self.task_type = task_type
         self.image_attachments = tuple(image_attachments or ())
 
-    def run(self):
+    def run_in_language(self):
         try:
             from api import analyze_requirement_streaming
 
@@ -705,7 +711,7 @@ class AnalysisThread(QThread):
             self.analysis_failed.emit(self.task_id, tr('分析失败: {v0}', v0=str(e)))
 
 
-class ToolAgentThread(QThread):
+class ToolAgentThread(LanguageScopedThread):
     """Run the bounded, allow-listed PLC tool loop outside the UI thread."""
 
     agent_done = pyqtSignal(str, object)
@@ -721,7 +727,7 @@ class ToolAgentThread(QThread):
         self.context = context
         self.conversation_history = conversation_history or []
 
-    def run(self):
+    def run_in_language(self):
         try:
             from plc_agent import run_tool_agent
 
@@ -1111,7 +1117,7 @@ class GXWorks2PullThread(QThread):
 # 阶段2：需求确认对话框
 # ============================
 
-class DebugThread(QThread):
+class DebugThread(LanguageScopedThread):
     debug_done = pyqtSignal(str, dict)
     debug_failed = pyqtSignal(str, str)
 
@@ -1138,7 +1144,7 @@ class DebugThread(QThread):
         except Exception:
             self.model_name = None
 
-    def run(self):
+    def run_in_language(self):
         try:
             from api import debug_ladder
 
@@ -1180,7 +1186,7 @@ class DebugThread(QThread):
         }
 
 
-class InspectionThread(QThread):
+class InspectionThread(LanguageScopedThread):
     """Run deterministic inspection first, then optionally enrich it with AI."""
 
     local_ready = pyqtSignal(str, dict)
@@ -1237,7 +1243,7 @@ class InspectionThread(QThread):
             ).strip()
         return report
 
-    def run(self):
+    def run_in_language(self):
         try:
             from inspection_engine import (
                 merge_inspection_reports,
@@ -1327,7 +1333,7 @@ class InspectionThread(QThread):
             return False
 
 
-class EvidenceDebugPlanThread(QThread):
+class EvidenceDebugPlanThread(LanguageScopedThread):
     """Build an evidence-bound diagnosis and local patch off the GUI thread."""
 
     plan_ready = pyqtSignal(str, dict)
@@ -1352,7 +1358,7 @@ class EvidenceDebugPlanThread(QThread):
         self.run_id = run_id
         self.effort = effort
 
-    def run(self):
+    def run_in_language(self):
         try:
             from api import (
                 debug_evidence_diagnosis,
@@ -1482,7 +1488,7 @@ class EvidenceDebugExecuteThread(QThread):
                 pythoncom.CoUninitialize()
 
 
-class SimulatorTestPlanThread(QThread):
+class SimulatorTestPlanThread(LanguageScopedThread):
     """Generate and deterministically validate a version-bound Test DSL plan."""
 
     completed = pyqtSignal(str, dict)
@@ -1499,7 +1505,7 @@ class SimulatorTestPlanThread(QThread):
         self.version_id = version_id
         self.effort = effort
 
-    def run(self):
+    def run_in_language(self):
         try:
             from api import generate_simulator_test_suite
             from simulator.planning import (
@@ -1968,7 +1974,7 @@ class SimpleRequirementConfirmDialog(QDialog):
         return copy.deepcopy(self._confirmed_spec)
 
 
-class CompilerThread(QThread):
+class CompilerThread(LanguageScopedThread):
     success = pyqtSignal(str, object)
     failure = pyqtSignal(str, str)
     thinking_updated = pyqtSignal(str, str)
@@ -2032,7 +2038,7 @@ class CompilerThread(QThread):
         except Exception:
             self.model_name = None
     
-    def run(self):
+    def run_in_language(self):
         try:
             import json
 
@@ -2095,6 +2101,9 @@ class CompilerThread(QThread):
                 streaming_succeeded = True
 
             except Exception as stream_err:
+                from model_provider import ResponseRejectedError
+                if isinstance(stream_err, ResponseRejectedError):
+                    raise
                 self.progress_updated.emit(
                     self.task_id,
                     {
@@ -6288,7 +6297,7 @@ class _IndustrialWorkbenchUI(QMainWindow):
             return
         project_id = task["project_id"]
         payload = dict(payload or {})
-        content = naturalize_display_text(
+        content = str(
             payload.get("content") or tr('工具任务已完成。')
         )
         self.store.add_message(
@@ -7977,28 +7986,11 @@ class _IndustrialWorkbenchUI(QMainWindow):
                 self.activity_panel.append_content(rendered)
 
     def _activity_stream_chunk(self, task_id, channel, token):
-        streams = getattr(self, "_activity_display_streams", None)
-        if streams is None:
-            streams = {}
-            self._activity_display_streams = streams
-        key = (str(task_id or ""), str(channel or "content"))
-        stream = streams.get(key)
-        if stream is None:
-            stream = DisplayTextStream()
-            streams[key] = stream
-        return stream.feed(token)
+        # Acceptance owns model language. Rendering must not change JSON keys,
+        # PLC identifiers or quoted evidence, nor re-read a newer UI language.
+        return str(token or "")
 
     def _flush_activity_display_streams(self):
-        streams = getattr(self, "_activity_display_streams", {})
-        for (_task_id, channel), stream in list(streams.items()):
-            rendered = stream.flush()
-            if not rendered or not hasattr(self, "activity_panel"):
-                continue
-            if channel == "reasoning":
-                self.activity_panel.append_reasoning(rendered)
-            else:
-                self.activity_panel.append_content(rendered)
-        streams.clear()
         if hasattr(self, "activity_panel"):
             self.activity_panel.flush_display()
 

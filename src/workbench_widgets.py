@@ -61,7 +61,10 @@ class MessageBubble(QFrame):
             title_text = tr('PLC AI · 工具')
         title = QLabel(title_text)
         title.setObjectName("MessageAuthor")
-        body = QLabel(naturalize_display_text(content))
+        # User text and accepted model text are evidence. Only application-owned
+        # system messages may use the operator-friendly identifier renderer.
+        body = QLabel(naturalize_display_text(content) if kind == "system" else str(content or ""))
+        body.setTextFormat(Qt.TextFormat.PlainText)
         body.setObjectName("MessageBody")
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
