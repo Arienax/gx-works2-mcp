@@ -24,6 +24,12 @@
 
 ## 快速开始
 
+### 本地 Web 工作台
+
+Windows 10/11 用户解压**完整 Web 发布目录**后，双击 `start-web.cmd`，选择工作区文件夹。核对旧工程可选默认的“只读浏览”；需要创建项目和接受候选时选择“工程编辑”。服务准备好后会自动打开本机操作员登录页。使用期间保留服务窗口，结束后在该窗口按 `Ctrl+C` 停止。发布包无需另装 Python 或 Node.js。
+
+源码安装、命令行启动、审批边界和 MCP 服务连接见 [Web 使用指南](docs/integrations/web.md)。启动工作台不会启动 GX Works2 或仿真网关。下方 Qt 入口继续保留；真实 GX/Simulator 集成仍需完成 [Windows 验收核对](docs/architecture/web-migration-checklist.md)。
+
 ### 环境要求
 
 核心桌面工作台：

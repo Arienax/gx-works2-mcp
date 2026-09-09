@@ -24,6 +24,12 @@ The current implementation primarily targets **FX3U + GX Works2**.
 
 ## Quick Start
 
+### Local Web workbench
+
+On Windows 10/11, extract the **complete Web release folder**, double-click `start-web.cmd`, and select a workspace folder. Choose read-only browsing (the default) to inspect an existing workspace, or editing to create and accept candidates. Your browser opens the local operator login page once the service is ready. Keep the service window open; press `Ctrl+C` there to stop it. The release does not require a separate Python or Node.js installation.
+
+Source setup, command-line startup, approval boundaries and MCP service connection are documented in the [Web guide](docs/integrations/web.md). Starting the workbench does not launch GX Works2 or the simulator gateway. The Qt entry below remains available; real GX/Simulator integration still requires the [Windows acceptance checks](docs/architecture/web-migration-checklist.md).
+
 ### Requirements
 
 Core desktop workbench:
