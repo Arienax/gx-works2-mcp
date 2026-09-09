@@ -18,6 +18,10 @@ from plc_ir import (
 
 
 class PLCCorePort(Protocol):
+    def diff_programs(
+        self, before: Optional[Mapping[str, Any]], after: Mapping[str, Any]
+    ) -> Mapping[str, Any]: ...
+
     def read_network(self, program: Mapping[str, Any], network_id: str) -> Mapping[str, Any]: ...
 
     def get_diagnostics(self, program: Mapping[str, Any]) -> Mapping[str, Any]: ...
@@ -102,6 +106,49 @@ def _program_diff(
 
 class PLCCore:
     """Thin facade; all PLC semantics stay in the existing modules."""
+
+    def diff_programs(
+        self, before: Optional[Mapping[str, Any]], after: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Return a deterministic review of two IRs; None denotes first creation.
+
+        The existing network summary remains stable. Each changed network also
+        carries copied old/new values so an operator can review actual edits.
+        No model, rendering, workspace mutation, or GX operation is involved.
+        """
+        if before is not None:
+            validate_plc_ir(before, validate_ladder=False)
+        validate_plc_ir(after, validate_ladder=False)
+        old_program = before if before is not None else {}
+        result = _program_diff(old_program, after)
+        old, new = _network_map(old_program), _network_map(after)
+        for change in result["changes"]:
+            change["before"] = copy.deepcopy(old.get(change["network"]))
+            change["after"] = copy.deepcopy(new.get(change["network"]))
+        comments = lambda program: {
+            str(address): str(record.get("comment") or "")
+            for address, record in (program.get("devices") or {}).items()
+            if isinstance(record, Mapping) and (record.get("comment_declared") or record.get("comment"))
+        }
+        old_comments, new_comments = comments(old_program), comments(after)
+        result["device_comment_changes"] = [
+            {"address": address, "before": old_comments.get(address), "after": new_comments.get(address)}
+            for address in sorted(old_comments.keys() | new_comments.keys())
+            if old_comments.get(address) != new_comments.get(address)
+        ]
+        result["before_network_order"] = list(old)
+        result["after_network_order"] = list(new)
+        result["network_order_changed"] = list(old) != list(new)
+        # Include metadata and non-network semantics instead of silently treating
+        # an unchanged network list as an unchanged program.
+        result["property_changes"] = {
+            key: {"before": copy.deepcopy(old_program.get(key)), "after": copy.deepcopy(after.get(key))}
+            for key in sorted(old_program.keys() | after.keys())
+            if key not in {"networks", "devices"} and old_program.get(key) != after.get(key)
+        }
+        result.update(kind="ladder", has_changes=bool(result["changes"] or result["device_comment_changes"]
+            or result["network_order_changed"] or result["property_changes"]))
+        return result
 
     def read_network(
         self, program: Mapping[str, Any], network_id: str
