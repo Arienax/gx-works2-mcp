@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import re
-from i18n import tr
+from i18n import language_scoped, tr
+from response_language import preserved_annotations
+from workflow_response_contracts import tool_argument_contract
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -114,6 +116,7 @@ def _fallback_content(audit: Sequence[Mapping[str, Any]]) -> str:
     return "\n".join(parts) or str(tr("工具调用已结束。"))
 
 
+@language_scoped
 def run_tool_agent(
     user_text: str,
     *,
@@ -156,6 +159,15 @@ def run_tool_agent(
         request = ModelRequest(
             tuple(messages),
             tools=tuple(runtime.list_tools(context)),
+            tool_response_contracts=tuple(
+                (name, tool_argument_contract(name))
+                for name in ("create_program_candidate", "patch_program")
+            ),
+            preserved_annotations=preserved_annotations(
+                getattr(context, "program_ir", None),
+                getattr(context, "version", None),
+                getattr(context, "ladder", None),
+            ),
             options={
                 "response_format": None,
                 "reasoning_effort": "high",

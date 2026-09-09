@@ -9,6 +9,7 @@ from plc_ir import canonical_sha256
 
 from .planning import normalize_generated_test_suite
 from .service import SimulatorRegressionService
+from .verification import execution_binding
 
 
 class SimulatorWorkflowError(RuntimeError):
@@ -72,7 +73,7 @@ class SimulatorVersionWorkflowService:
         suite = normalize_generated_test_suite(plan.get("suite"), program)
         return version, program, suite
 
-    def _persist_unavailable(self, project_id, version_id, suite, preparation):
+    def _persist_unavailable(self, project_id, version_id, suite, preparation, binding):
         result = {
             "schema_version": 1,
             "name": suite["name"],
@@ -94,7 +95,7 @@ class SimulatorVersionWorkflowService:
             "error": preparation.message,
         }
         record = self.store.save_simulator_run(
-            project_id, version_id, suite, result
+            project_id, version_id, suite, result, execution_snapshot=binding
         )
         return {
             "status": "unavailable",
@@ -105,6 +106,7 @@ class SimulatorVersionWorkflowService:
                 "record": record,
                 "result": result,
                 "preparation": preparation.to_dict(),
+                "verification": record["verification"],
             },
         }
 
@@ -118,6 +120,7 @@ class SimulatorVersionWorkflowService:
         test_progress=None,
     ):
         version, _program, suite = self._validate_plan(project_id, version_id, plan)
+        binding = execution_binding(project_id, version_id, _program, suite)
         artifacts = version.get("artifacts") or {}
         version_dir = self.store.version_dir(project_id, version_id)
         program_csv = version_dir / str(artifacts.get("program_csv") or "")
@@ -130,7 +133,7 @@ class SimulatorVersionWorkflowService:
             checked = preflight(progress=progress)
             if not checked.success:
                 return self._persist_unavailable(
-                    project_id, version_id, suite, checked
+                    project_id, version_id, suite, checked, binding
                 )
 
         self._emit(progress, "stop_simulator", "正在确认 Simulator2 已停止…")
@@ -181,6 +184,7 @@ class SimulatorVersionWorkflowService:
             suite,
             progress=progress,
             test_progress=test_progress,
+            expected_binding=binding,
         )
         result = execution.get("result") or {}
         status = str(result.get("status") or "error")

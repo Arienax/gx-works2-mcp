@@ -11,6 +11,7 @@ from typing import Any, Dict, Mapping, Optional, Protocol
 
 from plc_ir import (
     apply_network_patch,
+    build_plc_ir,
     canonical_sha256,
     validate_plc_ir,
 )
@@ -29,6 +30,15 @@ class PLCCorePort(Protocol):
         self,
         program: Mapping[str, Any],
         patch: Mapping[str, Any],
+        confirmed_spec: Optional[Mapping[str, Any]] = None,
+    ) -> Mapping[str, Any]: ...
+
+    def create_program_candidate(
+        self,
+        ladder: Mapping[str, Any],
+        *,
+        plc_model: str,
+        program_name: str = "MAIN",
         confirmed_spec: Optional[Mapping[str, Any]] = None,
     ) -> Mapping[str, Any]: ...
 
@@ -147,6 +157,64 @@ class PLCCore:
             "candidate_ir": candidate,
             "diff": _program_diff(program, candidate),
             "diagnostics": validation,
+        }
+
+    def create_program_candidate(
+        self,
+        ladder: Mapping[str, Any],
+        *,
+        plc_model: str,
+        program_name: str = "MAIN",
+        confirmed_spec: Optional[Mapping[str, Any]] = None,
+    ) -> Mapping[str, Any]:
+        """Build an unpersisted initial candidate from model-owned ladder_v1."""
+
+        from plc_generation_contract import validate_generation_shape
+        from plc_json_validator import validate_ladder_full
+
+        if not isinstance(ladder, Mapping):
+            raise TypeError("ladder must be an object")
+        if not isinstance(program_name, str) or not program_name.strip() or len(program_name) > 64:
+            raise ValueError("program_name must contain 1 to 64 characters")
+        ladder = copy.deepcopy(dict(ladder))
+        confirmed_spec = copy.deepcopy(confirmed_spec)
+        validate_ladder_full(
+            ladder,
+            plc_model=plc_model,
+            confirmed_spec=confirmed_spec,
+            require_catalogued_instructions=True,
+        )
+        # Narrow import-compatible syntax to the published generation subset.
+        validate_generation_shape(ladder)
+        program_ir = build_plc_ir(
+            ladder,
+            plc_model=plc_model,
+            program_name=program_name,
+            revision=1,
+            confirmed_spec=confirmed_spec,
+        )
+        validation = self.validate_project(program_ir, confirmed_spec)
+        if validation.get("valid") is not True:
+            detail = validation.get("error") or validation.get("findings") or validation.get("counts")
+            raise ValueError("新程序候选未通过 PLC 校验：" + str(detail))
+        devices_by_kind: Dict[str, int] = {}
+        for device in program_ir["devices"].values():
+            kind = device["kind"]
+            devices_by_kind[kind] = devices_by_kind.get(kind, 0) + 1
+        return {
+            "candidate_id": "candidate_" + uuid.uuid4().hex[:16],
+            "revision": 1,
+            "candidate_ir_sha256": canonical_sha256(program_ir),
+            "ladder_sha256": program_ir["source"]["ladder_sha256"],
+            "candidate_ir": program_ir,
+            "diagnostics": validation,
+            "summary": {
+                "network_count": len(program_ir["networks"]),
+                "network_ids": [network["id"] for network in program_ir["networks"]],
+                "instruction_count": sum(len(network["instructions"]) for network in program_ir["networks"]),
+                "device_count": len(program_ir["devices"]),
+                "devices_by_kind": dict(sorted(devices_by_kind.items())),
+            },
         }
 
     def compile_project(

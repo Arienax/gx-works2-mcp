@@ -3,13 +3,19 @@ import json
 import re
 import sys
 import warnings
-from i18n import tr
+from i18n import language_scoped, tr
+from response_language import TEXT_RESPONSE, preserved_annotations as source_annotations
+from workflow_response_contracts import (
+    ANALYSIS_RESPONSE, DEBUG_RESPONSE, DIAGNOSIS_RESPONSE, INSPECTION_RESPONSE,
+    LADDER_RESPONSE, PATCH_RESPONSE, ST_RESPONSE, TEST_SUITE_RESPONSE,
+)
 from approach_contracts import normalize_approach
 from draw import AdvancedSVGLadder
 from config_manager import get_api_key, get_model_profile, load_full_config
 from model_provider import (
     ImageAttachment,
     ModelRequest,
+    ResponseRejectedError,
     UserMessage,
     collect_response,
     get_active_provider,
@@ -179,6 +185,7 @@ def _active_model_name(config=None):
     return str(get_model_profile(config or load_full_config()).get("model") or "")
 
 
+@language_scoped
 def _request_model(
     messages,
     *,
@@ -194,14 +201,18 @@ def _request_model(
     fallback_to_non_stream=False,
     on_fallback=None,
     options=None,
+    response_contract=TEXT_RESPONSE,
+    preserved_annotations=(),
 ):
     """Run one canonical request without exposing provider response shapes."""
 
     request_options = dict(options or {})
     if effort is not None:
         request_options["reasoning_effort"] = effort
-    if stream:
-        request_options["response_format"] = None
+    # Format and transport are independent. Preserve an explicitly supplied
+    # native schema on streaming requests as well as non-streaming requests.
+    if response_contract.format == "text":
+        request_options.setdefault("response_format", None)
     request = ModelRequest.from_messages(
         messages,
         model=model_name or None,
@@ -210,6 +221,8 @@ def _request_model(
         stream=bool(stream),
         timeout=request_timeout,
         max_retries=max_retries,
+        response_contract=response_contract,
+        preserved_annotations=preserved_annotations,
     )
     return collect_response(
         get_active_provider(),
@@ -1009,7 +1022,7 @@ rung 21: M8029 -> MOV K11 D0
 1. **全新生成严格双字段**：全新生成时 JSON 最外层必须且只能包含 `"device_comments"`（字典）和 `"rungs"`（数组）。增量编辑模式允许使用上方 `mode:"partial"`、`rungs`、`device_comments`、`delete_rung_ids` 结构。
 2. **禁止代码块格式**：严禁使用 ```json 和 ``` 包裹，必须直接输出以 `{` 开头、以 `}` 结尾的纯文本 JSON。
 3. **自动步进化**：当需求涉及多阶段顺序执行和延时且未明确指定指令时，必须默认采用状态机步进实现。
-4. **纯 JSON 输出**：response_format 已强制设为 json_object，你必须且只能输出 JSON，不得附带任何解释文本。
+4. **纯 JSON 输出**：你必须且只能输出 JSON，不得附带任何解释文本；应用会独立校验返回结构。
 5. **GX Works2 声明长度限制**：`device_comments` 中的所有注释值以及各 `label` 字段的文本不得超过 **64 个字符**（含中英文及标点）。GX Works2 的软元件注释字段有 64 字符硬限制，超出将导致导入时被截断或报错。请使用简洁缩写（如"1号分拣转向臂"而非"1号分拣单元的转向臂气缸电磁阀输出"）。"""
 
 
@@ -1287,7 +1300,7 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
             add_diagnostic(
                 "non_io_metadata_moved",
                 "suggested_io.%s" % category_text,
-                "非软元件类别已移入 hardware_config，未作为 I/O 使用。",
+                str(tr("非软元件类别已移入 hardware_config，未作为 I/O 使用。")),
                 values,
             )
             continue
@@ -1301,7 +1314,7 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
             add_diagnostic(
                 "invalid_io_container",
                 "suggested_io.%s" % category_text,
-                "I/O 类别必须是地址字典或地址列表，原值已移入 hardware_config。",
+                str(tr("I/O 类别必须是地址字典或地址列表，原值已移入 hardware_config。")),
                 values,
             )
             continue
@@ -1313,7 +1326,7 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
                 parsed_address = parse_device_address(address, plc_model)
                 if parsed_address is None:
                     raise ValueError(
-                        "%s 不是 %s 的合法软元件地址" % (address or "<empty>", plc_model)
+                        str(tr("{address} 不是 {model} 的合法软元件地址", address=address or "<empty>", model=plc_model))
                     )
                 actual_kind, _number = parsed_address
             except (PLCJsonValidationError, ValueError, TypeError) as exc:
@@ -1339,7 +1352,7 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
                 add_diagnostic(
                     "io_category_corrected",
                     path,
-                    "地址前缀与类别不一致，已按真实前缀归类为 %s。" % actual_kind,
+                    str(tr("地址前缀与类别不一致，已按真实前缀归类为 {kind}。", kind=actual_kind)),
                     {"from": category_text, "to": actual_kind},
                 )
 
@@ -1348,7 +1361,7 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
                 add_diagnostic(
                     "io_label_normalized",
                     path,
-                    "结构化标签不能作为 I/O 说明，已转为简短 JSON 文本。",
+                    str(tr("结构化标签不能作为 I/O 说明，已转为简短 JSON 文本。")),
                 )
                 label = json.dumps(label, ensure_ascii=False, separators=(",", ":"))
             else:
@@ -1578,6 +1591,7 @@ turn, reflect that change and do not restore older cached values.
 7. 不要问太琐碎的问题（如"T0还是T1"），软元件编号由后续生成阶段自动分配"""
 
 
+@language_scoped
 def analyze_requirement(
     user_requirement: str,
     conversation_history=None,
@@ -1629,6 +1643,7 @@ def analyze_requirement(
             messages,
             effort="low",
             stream=False,
+            response_contract=ANALYSIS_RESPONSE,
         )
         raw = response.message.content.strip()
 
@@ -1643,11 +1658,14 @@ def analyze_requirement(
         print(f"阶段1 分析完成: {result.get('summary', '')[:80]}...")
         return result
 
+    except ResponseRejectedError:
+        raise
     except Exception as e:
         print(f"阶段1 分析失败: {e}")
         return None
 
 
+@language_scoped
 def analyze_requirement_streaming(
     user_requirement: str,
     on_reasoning_chunk=None,
@@ -1702,6 +1720,7 @@ def analyze_requirement_streaming(
             messages,
             effort="low",
             stream=True,
+            response_contract=ANALYSIS_RESPONSE,
             on_reasoning_chunk=on_reasoning_chunk,
             on_content_chunk=on_content_chunk,
         )
@@ -1719,6 +1738,8 @@ def analyze_requirement_streaming(
         print(f"阶段1 分析完成: {result.get('summary', '')[:80]}...")
         return result
 
+    except ResponseRejectedError:
+        raise
     except Exception as e:
         print(f"阶段1 流式分析失败: {e}")
         return None
@@ -1947,6 +1968,7 @@ def _prepare_api_call(
     return messages_to_send, conversation_history, persist_history
 
 
+@language_scoped
 def debug_ladder(
     user_question,
     current_version_json,
@@ -2013,11 +2035,14 @@ def debug_ladder(
             model_name=model_name,
             effort=effort,
             stream=False,
+            response_contract=DEBUG_RESPONSE,
             request_timeout=request_timeout,
             max_retries=0 if request_timeout is not None else None,
         )
         raw = _clean_json_response(response.message.content)
         report = json.loads(raw)
+    except ResponseRejectedError:
+        raise
     except Exception as error:
         print(f"debug api request failed: {error}")
         if raise_errors:
@@ -2030,7 +2055,7 @@ def _normalize_debug_report(report):
     if not isinstance(report, dict):
         report = {}
     return {
-        "summary": str(report.get("summary", "")).strip() or "调试分析完成",
+        "summary": str(report.get("summary", "")).strip() or str(tr("调试分析完成")),
         "possible_causes": _string_list(report.get("possible_causes")),
         "related_rungs": _int_list(report.get("related_rungs")),
         "recommended_changes": _string_list(report.get("recommended_changes")),
@@ -2100,6 +2125,7 @@ Rules:
 """
 
 
+@language_scoped
 def _call_debug_evidence_json(
     system_prompt,
     payload,
@@ -2111,6 +2137,7 @@ def _call_debug_evidence_json(
     on_reasoning_chunk=None,
     on_content_chunk=None,
     on_progress=None,
+    response_contract=INSPECTION_RESPONSE,
 ):
     config = load_full_config()
     selected_model = model_name or _active_model_name(config)
@@ -2133,6 +2160,8 @@ def _call_debug_evidence_json(
             model_name=selected_model,
             effort=effort,
             stream=wants_stream,
+            response_contract=response_contract,
+            preserved_annotations=source_annotations(payload),
             request_timeout=request_timeout,
             max_retries=0 if request_timeout is not None else None,
             on_reasoning_chunk=on_reasoning_chunk,
@@ -2156,12 +2185,15 @@ def _call_debug_evidence_json(
         if not isinstance(parsed, dict):
             raise ValueError("response must be a JSON object")
         return parsed
+    except ResponseRejectedError:
+        raise
     except Exception as error:
         if raise_errors:
             raise RuntimeError(f"Debug evidence API request failed: {error}") from error
         return None
 
 
+@language_scoped
 def debug_evidence_diagnosis(
     evidence,
     *,
@@ -2175,6 +2207,7 @@ def debug_evidence_diagnosis(
     return _call_debug_evidence_json(
         DEBUG_EVIDENCE_DIAGNOSIS_SYSTEM_PROMPT,
         {"evidence": evidence},
+        response_contract=DIAGNOSIS_RESPONSE,
         model_name=model_name,
         effort=effort,
         request_timeout=request_timeout,
@@ -2182,6 +2215,7 @@ def debug_evidence_diagnosis(
     )
 
 
+@language_scoped
 def debug_evidence_patch(
     evidence,
     diagnosis,
@@ -2196,6 +2230,7 @@ def debug_evidence_patch(
     return _call_debug_evidence_json(
         DEBUG_EVIDENCE_PATCH_SYSTEM_PROMPT,
         {"evidence": evidence, "diagnosis": diagnosis},
+        response_contract=PATCH_RESPONSE,
         model_name=model_name,
         effort=effort,
         request_timeout=request_timeout,
@@ -2262,6 +2297,7 @@ Rules:
 """
 
 
+@language_scoped
 def generate_simulator_test_suite(
     test_context,
     *,
@@ -2278,6 +2314,7 @@ def generate_simulator_test_suite(
     return _call_debug_evidence_json(
         SIMULATOR_TEST_SUITE_SYSTEM_PROMPT,
         {"context": test_context},
+        response_contract=TEST_SUITE_RESPONSE,
         model_name=model_name,
         effort=effort,
         request_timeout=request_timeout,
@@ -2339,6 +2376,7 @@ Rules:
 }
 
 
+@language_scoped
 def run_multi_agent_specialist(
     role,
     payload,
@@ -2377,6 +2415,7 @@ def run_multi_agent_specialist(
     return _call_debug_evidence_json(
         prompt,
         payload,
+        response_contract=INSPECTION_RESPONSE,
         model_name=model_name,
         effort=effort,
         request_timeout=request_timeout,
@@ -2483,6 +2522,7 @@ Rules:
 """
 
 
+@language_scoped
 def inspect_ladder(
     report_type,
     request,
@@ -2559,12 +2599,15 @@ def inspect_ladder(
             stream=False,
             request_timeout=request_timeout,
             max_retries=0 if request_timeout is not None else None,
+            response_contract=INSPECTION_RESPONSE,
         )
         raw = _clean_json_response(response.message.content)
         candidate = json.loads(raw)
         if not isinstance(candidate, dict):
             raise ValueError("inspection response must be a JSON object")
         return candidate
+    except ResponseRejectedError:
+        raise
     except Exception as error:
         print(f"inspection api request failed: {error}")
         if raise_errors:
@@ -2587,6 +2630,7 @@ def review_ladder(
     )
 
 
+@language_scoped
 def stream_model_response(user_requirement, model_name, effort, target_mode,
                              on_reasoning_chunk=None, on_content_chunk=None,
                              is_edit_mode=False, conversation_history=None,
@@ -2627,6 +2671,8 @@ def stream_model_response(user_requirement, model_name, effort, target_mode,
         model_name=model_name,
         effort=effort,
         stream=True,
+        response_contract=LADDER_RESPONSE if target_mode == "ladder" else ST_RESPONSE,
+        preserved_annotations=source_annotations(current_version_json, confirmed_spec, confirmed_context),
         on_reasoning_chunk=on_reasoning_chunk,
         on_content_chunk=on_content_chunk,
     )
@@ -2645,6 +2691,7 @@ def stream_model_response(user_requirement, model_name, effort, target_mode,
     return full_reasoning, full_content
 
 
+@language_scoped
 def generate_model_json(user_requirement: str, model_name: str, effort: str,
                                    target_mode: str, is_edit_mode: bool = False,
                                    conversation_history=None,
@@ -2683,6 +2730,8 @@ def generate_model_json(user_requirement: str, model_name: str, effort: str,
             stream=False,
             request_timeout=request_timeout,
             max_retries=max_retries,
+            response_contract=LADDER_RESPONSE if target_mode == "ladder" else ST_RESPONSE,
+            preserved_annotations=source_annotations(current_version_json, confirmed_spec, confirmed_context),
         )
         assistant_message = response.message
 
@@ -2700,6 +2749,8 @@ def generate_model_json(user_requirement: str, model_name: str, effort: str,
             raw_content = raw_content.rsplit("\n", 1)[0]
         return raw_content.strip()
 
+    except ResponseRejectedError:
+        raise
     except Exception as e:
         print(f"api 接入失败: {e}")
         if raise_errors:

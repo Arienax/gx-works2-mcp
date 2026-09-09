@@ -6,6 +6,7 @@ from typing import Any, Callable, Mapping, Optional
 
 from .api import run_regression_suite
 from .models import normalize_test_suite
+from .verification import execution_binding, require_matching_binding
 
 
 class SimulatorRegressionService:
@@ -24,6 +25,7 @@ class SimulatorRegressionService:
         *,
         progress: Optional[Callable[[str, str], None]] = None,
         test_progress: Optional[Callable[[Mapping[str, Any]], None]] = None,
+        expected_binding=None,
     ):
         program = self.store.load_program_ir(project_id, version_id)
         if not isinstance(program, Mapping):
@@ -32,6 +34,9 @@ class SimulatorRegressionService:
         normalized = normalize_test_suite(suite, plc_model=plc_model)
         if normalized["plc_model"] != plc_model:
             raise ValueError("测试套件 PLC 型号与当前程序不一致。")
+        binding = execution_binding(project_id, version_id, program, normalized)
+        if expected_binding is not None:
+            require_matching_binding(binding, expected_binding)
 
         static_errors = int(
             ((program.get("analysis") or {}).get("counts") or {}).get("error", 0)
@@ -72,11 +77,13 @@ class SimulatorRegressionService:
                     version_id,
                     normalized,
                     result,
+                    execution_snapshot=binding,
                 )
                 return {
                     "record": record,
                     "result": result,
                     "preparation": preparation.to_dict(),
+                    "verification": record["verification"],
                 }
 
         if progress is not None:
@@ -112,10 +119,12 @@ class SimulatorRegressionService:
             version_id,
             normalized,
             result,
+            execution_snapshot=binding,
         )
         return {
             "record": record,
             "result": result,
+            "verification": record["verification"],
             "preparation": (
                 preparation.to_dict()
                 if preparation is not None and hasattr(preparation, "to_dict")

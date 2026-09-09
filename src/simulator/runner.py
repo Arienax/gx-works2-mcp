@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from display_names import naturalize_display_text, naturalize_identifier, preferred_display_name
+from plc_ir import canonical_sha256
 from plc_timing import decode_scan_monitor_values, scan_monitor_profile
 
 from .backends import FaultInjectingBackend
@@ -433,7 +434,9 @@ class PLCTestRunner:
                     raise TimeoutError("test exceeded overall timeout")
                 advance_to(step["at_ms"])
                 if step["set"]:
+                    setup_stage = "stimulus_write"
                     backend.write_many(step["set"])
+                    setup_stage = "steps"
                     self._trace(trace, now_ms, "write", step_id=step["id"], values=step["set"])
                     self._emit_progress(
                         "device_write",
@@ -642,6 +645,7 @@ class PLCTestRunner:
 
         result = {
             "schema_version": TEST_RESULT_SCHEMA_VERSION,
+            "test_sha256": canonical_sha256(case),
             "name": case["name"],
             "description": case.get("description") or "",
             "display_name": case_display_name,
@@ -754,6 +758,7 @@ class PLCTestRunner:
         )
         result = {
             "schema_version": TEST_RESULT_SCHEMA_VERSION,
+            "suite_sha256": canonical_sha256(normalized),
             "name": normalized["name"],
             "display_name": suite_display_name,
             "plc_model": normalized["plc_model"],

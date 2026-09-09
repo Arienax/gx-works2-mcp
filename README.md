@@ -425,6 +425,10 @@ DeepSeek and Zhipu currently share the same OpenAI-compatible transport layer ra
 
 The engineering core is intentionally separated from the model provider so PLC state, validation, and engineering operations do not depend on one specific LLM vendor.
 
+Application-owned model responses now pass a shared language-acceptance boundary before callbacks, structured parsing, or candidate tool execution. Streaming content is buffered until acceptance; detected violations fail explicitly and retain raw diagnostics. This is a conservative check with documented language and evidence exceptions, not a guarantee of arbitrary natural-language identification. See [response-language architecture, investigation, and provider integration](docs/architecture/response-language.md).
+
+Debug candidates now require persisted regression evidence matching the exact candidate and approved test suite before activation. Evidence includes execution snapshots, test/result fingerprints, completeness checks, and failure categories; legacy records remain readable but do not acquire new verification claims. See [the SemaPLC comparison and acceptance contract](docs/research/semaplc_comparison.md) for the design choices and runtime identity limits.
+
 ---
 
 # MCP Integration

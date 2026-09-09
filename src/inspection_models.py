@@ -13,6 +13,7 @@ import json
 import re
 import uuid
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from i18n import tr
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -537,7 +538,7 @@ def _normalize_online_checks(value: Any, base_json: Any) -> List[Dict[str, Any]]
             condition = _clean_text(item.get("condition"))
             reason = _clean_text(item.get("reason"))
             if condition and reason:
-                instruction = "在%s时观察；%s" % (condition, reason)
+                instruction = str(tr("在{condition}时观察；{reason}", condition=condition, reason=reason))
             else:
                 instruction = condition or reason
         if not address and not instruction:

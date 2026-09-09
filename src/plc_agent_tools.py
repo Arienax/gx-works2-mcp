@@ -17,6 +17,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 SAFE_TOOL_NAMES = (
     "get_current_project",
+    "get_generation_context",
+    "create_program_candidate",
     "get_current_program_info",
     "read_network",
     "search_plc_manual",
@@ -276,6 +278,69 @@ def _device_summary(program_ir: Mapping[str, Any]) -> Dict[str, Any]:
         "by_type": dict(sorted(by_type.items())),
         "addresses": addresses[:120],
         "truncated": len(addresses) > 120,
+    }
+
+
+def _get_generation_context(
+    context: ToolContext, _arguments: Mapping[str, Any]
+) -> Dict[str, Any]:
+    from plc_generation_contract import generation_output_contract, generation_specification
+
+    confirmed_spec = _confirmed_spec(context)
+    return {
+        "project_id": context.project_id,
+        "plc_model": context.plc_model,
+        "target_mode": str(context.project.get("target_mode") or "ladder"),
+        "workflow_mode": str(context.project.get("workflow_mode") or "generate"),
+        "has_confirmed_spec": isinstance(confirmed_spec, Mapping),
+        "confirmed_spec": generation_specification(confirmed_spec),
+        "output_contract": generation_output_contract(),
+    }
+
+
+def _create_program_candidate(
+    context: ToolContext, arguments: Mapping[str, Any]
+) -> Dict[str, Any]:
+    from plc_core import PLCCore
+    from plc_ir import canonical_sha256
+
+    if str(context.project.get("target_mode") or "ladder") != "ladder":
+        raise ValueError("只有 ladder 目标模式可以创建新程序候选。")
+    core = PLCCore()
+    confirmed_spec = copy.deepcopy(_confirmed_spec(context))
+    candidate = core.create_program_candidate(
+        arguments["ladder"],
+        plc_model=context.plc_model,
+        program_name=arguments.get("program_name", "MAIN"),
+        confirmed_spec=confirmed_spec,
+    )
+    compiled = core.compile_project(candidate["candidate_ir"])
+    action = {
+        "type": "accept_generated_program",
+        "project_id": context.project_id,
+        "project_name": str(context.project.get("name") or "未命名项目"),
+        "program_name": candidate["candidate_ir"]["program_name"],
+        "candidate_id": candidate["candidate_id"],
+        "revision": candidate["revision"],
+        "candidate_ir_sha256": candidate["candidate_ir_sha256"],
+        "ladder_sha256": candidate["ladder_sha256"],
+        "confirmed_spec_hash": (
+            canonical_sha256(confirmed_spec) if confirmed_spec is not None else None
+        ),
+        "diagnostics": copy.deepcopy(candidate["diagnostics"]),
+        "summary": copy.deepcopy(candidate["summary"]),
+        "artifact_hashes": copy.deepcopy(compiled.get("hashes") or {}),
+        "_candidate_ir": copy.deepcopy(candidate["candidate_ir"]),
+        "_confirmed_spec": confirmed_spec,
+    }
+    return {
+        "requires_confirmation": True,
+        "message": "新程序候选已通过确定性校验和临时编译，等待工程确认；尚未保存版本或导入 GX Works2。",
+        "candidate_id": candidate["candidate_id"],
+        "revision": candidate["revision"],
+        "summary": copy.deepcopy(candidate["summary"]),
+        "diagnostics": copy.deepcopy(candidate["diagnostics"]),
+        "pending_action": action,
     }
 
 
@@ -589,6 +654,8 @@ def _request_gxworks2_import(
 
 
 def build_default_tool_registry() -> ToolRegistry:
+    from plc_generation_contract import ladder_v1_schema
+
     registry = ToolRegistry()
     registry.register(
         ToolDefinition(
@@ -596,6 +663,34 @@ def build_default_tool_registry() -> ToolRegistry:
             "读取当前 PLC AI 项目的摘要、所选版本和工作流状态；不读取文件路径或凭据。",
             _EMPTY_OBJECT_SCHEMA,
             _get_current_project,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "get_generation_context",
+            "读取当前项目的生成约束、确认规格和 ladder_v1 输出协议；无程序版本时也可用，不返回路径或模型配置。",
+            _EMPTY_OBJECT_SCHEMA,
+            _get_generation_context,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "create_program_candidate",
+            "提交自行设计的 ladder_v1 新程序，由 PLC Core 校验、构建 IR 并临时编译，返回待工程确认的候选；不调用模型、不保存版本或导入 GX Works2。",
+            {
+                "type": "object",
+                "properties": {
+                    "program_name": {
+                        "type": "string", "default": "MAIN",
+                        "minLength": 1, "maxLength": 64,
+                    },
+                    "ladder": ladder_v1_schema(),
+                },
+                "required": ["ladder"],
+                "additionalProperties": False,
+            },
+            _create_program_candidate,
+            confirmation_required=True,
         )
     )
     registry.register(

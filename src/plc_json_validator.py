@@ -2,6 +2,7 @@ import json
 import re
 
 from instruction_registry import DEFAULT_INSTRUCTION_REGISTRY, InstructionCategory
+from plc_generation_contract import APP_INSTR_OPCODE_PATTERN, MAX_LABEL_LEN
 
 
 SUPPORTED_PLC_MODELS = {"FX3U", "FX5U"}
@@ -184,7 +185,7 @@ APP_INSTR_EXACT_OPERAND_COUNTS = {
     and spec.min_operands is not None
     and spec.min_operands == spec.max_operands
 }
-APP_INSTR_OPCODE_RE = re.compile(r"^[A-Z0-9_.$@+\-]+$", re.IGNORECASE)
+APP_INSTR_OPCODE_RE = re.compile(APP_INSTR_OPCODE_PATTERN, re.IGNORECASE)
 
 # Operand layouts that can be checked without guessing run-time register
 # values.  Each value is (frequency operand indexes, pulse-output index,
@@ -223,8 +224,6 @@ TIMER_CYCLIC_INTENT_RE = re.compile(
     r"blink|flash|oscillat|clock|square\s*wave|toggle",
     re.IGNORECASE,
 )
-
-MAX_LABEL_LEN = 64
 
 # FX3U positioning values documented as signed 32-bit register pairs.
 # The first address is the low word and the following address is the high word.

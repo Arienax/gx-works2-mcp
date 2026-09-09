@@ -5,11 +5,14 @@ from __future__ import annotations
 import copy
 import base64
 import json
+import hashlib
 import threading
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
-from i18n import get_language, response_language_instruction
+from i18n import get_language, normalize_language, response_language_instruction, translate
+from response_language import ResponseContract, TEXT_RESPONSE, inspect_response, preserved_annotations
+from tool_messages import ToolCall, ToolResult
 
 
 @dataclass(frozen=True)
@@ -49,26 +52,10 @@ class UserMessage:
 
 
 @dataclass(frozen=True)
-class ToolCall:
-    id: str
-    name: str
-    arguments: Any = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
 class AssistantMessage:
     content: str = ""
     tool_calls: Tuple[ToolCall, ...] = ()
     reasoning: str = ""
-
-
-@dataclass(frozen=True)
-class ToolResult:
-    call_id: str
-    name: str
-    content: str
-    data: Mapping[str, Any] = field(default_factory=dict)
-    is_error: bool = False
 
 
 ModelMessage = Union[SystemMessage, UserMessage, AssistantMessage, ToolResult]
@@ -115,6 +102,14 @@ class ModelRequest:
     timeout: Optional[float] = None
     max_retries: Optional[int] = None
     response_language: str = field(default_factory=lambda: get_language())
+    response_contract: ResponseContract = TEXT_RESPONSE
+    tool_response_contracts: Tuple[Tuple[str, ResponseContract], ...] = ()
+    preserved_annotations: Tuple[str, ...] = ()
+
+    def __post_init__(self):
+        object.__setattr__(self, "response_language", normalize_language(self.response_language))
+        object.__setattr__(self, "tool_response_contracts", tuple(tuple(pair) for pair in self.tool_response_contracts))
+        object.__setattr__(self, "preserved_annotations", tuple(self.preserved_annotations))
 
     @classmethod
     def from_messages(
@@ -126,22 +121,40 @@ class ModelRequest:
 
 
 @dataclass(frozen=True)
-class CollectedResponse:
+class RawModelResponse:
     message: AssistantMessage
     usage: Optional[Usage] = None
+    events: Tuple[ModelEvent, ...] = ()
+    stream: bool = True
+    error_code: str = ""
+
+
+@dataclass(frozen=True)
+class CollectedResponse:
+    """An accepted response; callbacks and callers receive these same bytes."""
+    message: AssistantMessage
+    usage: Optional[Usage] = None
+    raw_attempts: Tuple[RawModelResponse, ...] = ()
+    response_language: str = ""
 
 
 def with_response_language(request: ModelRequest) -> ModelRequest:
     """Apply the application preference to every model path without mutating history."""
     instruction = response_language_instruction(request.response_language)
     messages = list(request.messages)
+    first_system = None
     for index, message in enumerate(messages):
         if isinstance(message, SystemMessage):
             content = str(message.content or "")
-            if instruction not in content:
-                messages[index] = replace(message, content=content + "\n\n" + instruction)
-            break
-    else:
+            # Replace only exact application-owned blocks, never source text.
+            for language in ("zh-CN", "en", "ja"):
+                content = content.replace(response_language_instruction(language), "").rstrip()
+            if first_system is None:
+                first_system = index
+                content = (content + "\n\n" if content else "") + instruction
+            if content != message.content:
+                messages[index] = replace(message, content=content)
+    if first_system is None:
         messages.insert(0, SystemMessage(instruction))
     return replace(request, messages=tuple(messages))
 
@@ -159,6 +172,33 @@ class ModelProviderError(RuntimeError):
         self.code = code
         self.retryable = bool(retryable)
         self.status_code = status_code
+
+
+class ResponseRejectedError(ModelProviderError):
+    """A completed generation failed acceptance, not a transport retry signal."""
+
+    def __init__(self, request, attempts, violations):
+        self.response_language = request.response_language
+        self.contract_name = request.response_contract.name
+        self.raw_attempts = tuple(attempts)
+        self.raw_response = attempts[-1]
+        self.violations = tuple(violations)
+        self.response_sha256 = hashlib.sha256(
+            repr(self.raw_response.message).encode("utf-8")
+        ).hexdigest()
+        template = translate(
+            "模型响应未通过语言验收（{language}）。请重试或更换模型。位置：{paths}；诊断：{diagnostic}",
+            request.response_language,
+        )
+        super().__init__(
+            template.format(
+                language=request.response_language,
+                paths=", ".join(f"{v.path}:{v.reason}" for v in violations[:8]),
+                diagnostic=self.response_sha256[:16],
+            ),
+            code="response_language_rejected",
+            retryable=False,
+        )
 
 
 class ModelProvider(Protocol):
@@ -538,40 +578,104 @@ def collect_response(
     fallback_to_non_stream: bool = False,
     on_fallback: Optional[Callable[[ModelProviderError], None]] = None,
 ) -> CollectedResponse:
+    """Collect atomically, accept once, then publish callbacks and tool events.
+
+    Adapters emit raw events. No partial failed attempt or rejected prose is
+    delivered as accepted content, even when the transport falls back. Language
+    failure never triggers transport fallback or automatic PLC regeneration.
+    """
     request = with_response_language(request)
-    def consume(current: ModelRequest) -> CollectedResponse:
+    attempts = []
+
+    def consume(current: ModelRequest) -> RawModelResponse:
         reasoning = []
         content = []
         calls = []
+        events = []
         usage = None
-        for event in provider.stream(current):
-            if on_event is not None:
-                on_event(event)
-            if isinstance(event, ReasoningDelta):
-                reasoning.append(event.text)
-                if on_reasoning_chunk is not None:
-                    on_reasoning_chunk(event.text)
-            elif isinstance(event, TextDelta):
-                content.append(event.text)
-                if on_content_chunk is not None:
-                    on_content_chunk(event.text)
-            elif isinstance(event, ToolCallEnd):
-                calls.append(event.tool_call)
-            elif isinstance(event, Usage):
-                usage = event
-        return CollectedResponse(
-            AssistantMessage("".join(content), tuple(calls), "".join(reasoning)),
-            usage,
-        )
+
+        def snapshot(error_code=""):
+            return RawModelResponse(
+                AssistantMessage("".join(content), tuple(calls), "".join(reasoning)),
+                usage, tuple(events), current.stream, error_code,
+            )
+
+        try:
+            for event in provider.stream(current):
+                events.append(event)
+                if isinstance(event, ReasoningDelta):
+                    reasoning.append(event.text)
+                elif isinstance(event, TextDelta):
+                    content.append(event.text)
+                elif isinstance(event, ToolCallEnd):
+                    calls.append(event.tool_call)
+                elif isinstance(event, Usage):
+                    usage = event
+        except ModelProviderError as error:
+            attempts.append(snapshot(error.code))
+            error.raw_attempts = tuple(attempts)
+            raise
+        raw = snapshot()
+        attempts.append(raw)
+        return raw
 
     try:
-        return consume(request)
+        raw = consume(request)
     except ModelProviderError as error:
         if not (fallback_to_non_stream and request.stream):
             raise
         if on_fallback is not None:
             on_fallback(error)
-        return consume(replace(request, stream=False))
+        raw = consume(replace(request, stream=False))
+
+    # Original quotations may keep the source language. They must be explicitly
+    # quoted and an exact substring of request evidence, never a blanket JSON or
+    # markdown exemption. Tool results remain untouched for the next model turn.
+    sources = []
+    annotations = set(request.preserved_annotations)
+    for message in request.messages:
+        if isinstance(message, (UserMessage, SystemMessage)):
+            sources.append(str(message.content or ""))
+        elif isinstance(message, ToolResult):
+            # Inspect the evidence the model actually saw, not UI-private data.
+            sources.append(message.content)
+            try:
+                annotations.update(preserved_annotations(json.loads(message.content)))
+            except (ValueError, TypeError):
+                pass
+    # A tool-only turn has no final content to parse. The eventual final answer
+    # still has to satisfy the same JSON contract; tool arguments are checked
+    # below before any event or executable call is released.
+    violations = [] if raw.message.tool_calls and not raw.message.content.strip() else list(inspect_response(
+        raw.message.content, request.response_language, request.response_contract,
+        source_texts=sources, annotations=annotations,
+    ))
+    violations.extend(inspect_response(
+        raw.message.reasoning, request.response_language, source_texts=sources,
+        path_prefix="reasoning",
+    ))
+    tool_contracts = dict(request.tool_response_contracts)
+    for index, call in enumerate(raw.message.tool_calls):
+        if call.name in tool_contracts:
+            arguments = call.arguments
+            if not isinstance(arguments, str):
+                arguments = json.dumps(arguments, ensure_ascii=False)
+            violations.extend(inspect_response(
+                arguments, request.response_language, tool_contracts[call.name],
+                source_texts=sources, annotations=annotations,
+                path_prefix=f"tool_calls[{index}].arguments",
+            ))
+    if violations:
+        raise ResponseRejectedError(request, attempts, violations)
+
+    for event in raw.events:
+        if on_event is not None:
+            on_event(event)
+        if isinstance(event, ReasoningDelta) and on_reasoning_chunk is not None:
+            on_reasoning_chunk(event.text)
+        elif isinstance(event, TextDelta) and on_content_chunk is not None:
+            on_content_chunk(event.text)
+    return CollectedResponse(raw.message, raw.usage, tuple(attempts), request.response_language)
 
 
 _provider_lock = threading.Lock()
@@ -658,6 +762,8 @@ __all__ = [
     "ModelProvider",
     "ModelProviderError",
     "ModelRequest",
+    "RawModelResponse",
+    "ResponseRejectedError",
     "OpenAICompatibleProvider",
     "ReasoningDelta",
     "SystemMessage",

@@ -1504,5 +1504,14 @@
   "模拟量控制": "Analog control",
   "串行通信": "Serial communication",
   "PID控制": "PID control",
-  "变频器多段速端子控制": "Inverter multi-speed terminal control"
+  "变频器多段速端子控制": "Inverter multi-speed terminal control",
+  "模型响应未通过语言验收（{language}）。请重试或更换模型。位置：{paths}；诊断：{diagnostic}": "The model response failed language validation ({language}). Retry or choose another model. Locations: {paths}; diagnostic: {diagnostic}",
+  "在{condition}时观察；{reason}": "Observe when {condition}; {reason}",
+  "调试分析完成": "Debug analysis completed",
+  "非软元件类别已移入 hardware_config，未作为 I/O 使用。": "Non-device metadata was moved to hardware_config and was not used as I/O.",
+  "I/O 类别必须是地址字典或地址列表，原值已移入 hardware_config。": "An I/O category must contain an address dictionary or list; the original value was moved to hardware_config.",
+  "{address} 不是 {model} 的合法软元件地址": "{address} is not a valid {model} device address",
+  "地址前缀与类别不一致，已按真实前缀归类为 {kind}。": "The address prefix did not match its category; it was classified as {kind}.",
+  "结构化标签不能作为 I/O 说明，已转为简短 JSON 文本。": "A structured label cannot be used as an I/O description; it was converted to compact JSON text.",
+  "变频器频率给定控制方式": "Inverter frequency command method"
 }

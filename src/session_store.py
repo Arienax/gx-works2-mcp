@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -782,7 +783,7 @@ class SessionStore:
             return None
         return project["versions"][-1]
 
-    def save_simulator_run(self, project_id, version_id, suite, result):
+    def save_simulator_run(self, project_id, version_id, suite, result, *, execution_snapshot=None):
         """Persist one immutable simulator suite/result pair against an exact IR.
 
         Test evidence is append-only.  The stored IR hash and revision prevent a
@@ -801,11 +802,15 @@ class SessionStore:
 
         from plc_ir import canonical_sha256
         from simulator.models import normalize_test_suite
+        from simulator.verification import (
+            EVIDENCE_SCHEMA_VERSION, SimulatorEvidenceError, blocked_verification,
+            evaluate_suite_result, execution_binding, require_matching_binding,
+        )
 
         ir_sha256 = canonical_sha256(program)
         recorded_hash = str(version.get("ir_sha256") or "")
         if recorded_hash and recorded_hash != ir_sha256:
-            raise ValueError("Version IR hash no longer matches its stored metadata")
+            raise SimulatorEvidenceError("version_conflict", "Version IR hash no longer matches its stored metadata")
         normalized_suite = normalize_test_suite(
             suite,
             plc_model=str(program.get("plc", {}).get("cpu") or "FX3U"),
@@ -817,6 +822,20 @@ class SessionStore:
             raise ValueError("Simulator result has an invalid status")
         if str(result.get("plc_model") or "").upper() != normalized_suite["plc_model"]:
             raise ValueError("Simulator result PLC model does not match the suite")
+        result = copy.deepcopy(dict(result))
+        expected = execution_binding(project_id, version_id, program, normalized_suite)
+        if execution_snapshot is not None:
+            require_matching_binding(execution_snapshot, expected)
+        verification = evaluate_suite_result(normalized_suite, result)
+        if status == "passed" and verification["status"] != "passed":
+            raise SimulatorEvidenceError(
+                verification["category"],
+                "仿真结果缺少完整且一致的通过证据：" + verification["detail"],
+            )
+        if execution_snapshot is None:
+            verification = blocked_verification(
+                "legacy_evidence", "No snapshot captured before execution."
+            )
 
         run_id = "sim_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:8]
         run_id = self._validate_record_id(run_id, "simulator run id")
@@ -824,11 +843,11 @@ class SessionStore:
         suite_path = version_path / "tests" / f"{run_id}.suite.json"
         trace_path = version_path / "traces" / f"{run_id}.result.json"
         binding = {
+            **expected,
+            "evidence_schema_version": EVIDENCE_SCHEMA_VERSION,
+            "binding_scope": "execution_snapshot" if execution_snapshot is not None else "persistence_snapshot",
             "run_id": run_id,
-            "project_id": project_id,
-            "version_id": version_id,
-            "revision": program.get("revision"),
-            "ir_sha256": ir_sha256,
+            "result_sha256": canonical_sha256(result),
             "created_at": _utc_now(),
         }
         suite_payload = {"binding": binding, "suite": normalized_suite}
@@ -844,6 +863,7 @@ class SessionStore:
             "test_count": len(normalized_suite["tests"]),
             "counts": dict(result.get("counts") or {}),
             "backend_kinds": list(result.get("backend_kinds") or []),
+            "verification": verification,
             "suite_artifact": str(suite_path.relative_to(version_path)).replace("\\", "/"),
             "trace_artifact": str(trace_path.relative_to(version_path)).replace("\\", "/"),
         }
@@ -1163,7 +1183,63 @@ class SessionStore:
         trace = self._read_json(trace_path)
         if not isinstance(suite, dict) or not isinstance(trace, dict):
             return None
-        return {"record": dict(record), **suite, **trace}
+        from plc_ir import canonical_sha256
+        from simulator.verification import (
+            EVIDENCE_SCHEMA_VERSION, SimulatorEvidenceError, blocked_verification,
+            evaluate_suite_result, execution_binding, require_matching_binding,
+        )
+
+        # Never merge the two envelopes: a trace binding must not overwrite
+        # conflicting suite provenance, nor may either replace the index record.
+        binding = suite.get("binding")
+        if not isinstance(binding, dict) or binding != trace.get("binding"):
+            raise SimulatorEvidenceError("evidence_invalid", "仿真套件与轨迹的版本绑定不一致。")
+        if any(record.get(key) != value for key, value in binding.items()):
+            raise SimulatorEvidenceError("evidence_invalid", "仿真证据与版本索引不一致。")
+        program = self.load_program_ir(project_id, version_id, persist_legacy=False)
+        if not isinstance(program, Mapping):
+            raise SimulatorEvidenceError("version_conflict", "仿真证据对应的程序版本已缺失。")
+        saved_suite, result = suite.get("suite"), trace.get("result")
+        if not isinstance(saved_suite, Mapping) or not isinstance(result, Mapping):
+            raise SimulatorEvidenceError("evidence_invalid", "仿真证据缺少套件或结果。")
+        expected = execution_binding(project_id, version_id, program, saved_suite)
+        if (
+            binding.get("run_id") != run_id
+            or any(binding.get(key) != expected[key] for key in ("project_id", "version_id", "revision", "ir_sha256"))
+            or (version.get("ir_sha256") and version["ir_sha256"] != expected["ir_sha256"])
+        ):
+            raise SimulatorEvidenceError("version_conflict", "仿真证据不属于当前程序版本。")
+        schema = binding.get("evidence_schema_version")
+        if schema is None:
+            # Old artifacts remain readable, without migration writes or
+            # retroactively granting them integrity/execution provenance.
+            verification = blocked_verification("legacy_evidence")
+        elif schema != EVIDENCE_SCHEMA_VERSION:
+            raise SimulatorEvidenceError("evidence_invalid", "不支持的仿真证据版本。")
+        else:
+            require_matching_binding(binding, expected)
+            if (
+                binding.get("suite_sha256") != canonical_sha256(saved_suite)
+                or binding.get("result_sha256") != canonical_sha256(result)
+            ):
+                raise SimulatorEvidenceError("evidence_invalid", "仿真套件或轨迹内容已变化，请重新测试。")
+            verification = evaluate_suite_result(saved_suite, result)
+            if binding.get("binding_scope") != "execution_snapshot":
+                verification = blocked_verification(
+                    "legacy_evidence", "No snapshot captured before execution."
+                )
+            expected_index = {
+                "verification": verification, "status": result.get("status"),
+                "passed": result.get("status") == "passed", "suite_name": saved_suite["name"],
+                "test_count": len(saved_suite["tests"]), "counts": dict(result.get("counts") or {}),
+                "backend_kinds": list(result.get("backend_kinds") or []),
+            }
+            if any(record.get(key) != value for key, value in expected_index.items()):
+                raise SimulatorEvidenceError("evidence_invalid", "仿真验收结果与索引不一致。")
+        return {
+            "record": copy.deepcopy(record), "binding": dict(binding),
+            "suite": saved_suite, "result": result, "verification": verification,
+        }
 
     @staticmethod
     def _report_payload(report):
