@@ -571,6 +571,16 @@
             ],
             "title": "Error Code"
           },
+          "error_details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobErrorDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -731,6 +741,63 @@
           "request_id"
         ],
         "title": "JobCreate",
+        "type": "object"
+      },
+      "JobErrorDetails": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_name": {
+            "title": "Contract Name",
+            "type": "string"
+          },
+          "diagnostic_id": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{16}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostic Id"
+          },
+          "response_language": {
+            "enum": [
+              "zh-CN",
+              "en",
+              "ja",
+              "unknown"
+            ],
+            "title": "Response Language",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "violation_count": {
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Violation Count",
+            "type": "integer"
+          },
+          "violations": {
+            "items": {
+              "$ref": "#/components/schemas/ResponseViolation"
+            },
+            "maxItems": 16,
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "response_language",
+          "contract_name",
+          "violation_count",
+          "truncated"
+        ],
+        "title": "JobErrorDetails",
         "type": "object"
       },
       "JobEvent": {
@@ -2149,6 +2216,36 @@
           "report_id"
         ],
         "title": "ReportSummary",
+        "type": "object"
+      },
+      "ResponseViolation": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "unsupported_script",
+              "non_english_script",
+              "japanese_script",
+              "latin_prose",
+              "ambiguous_han_only",
+              "invalid_prose_field",
+              "invalid_json_object",
+              "invalid_code_field",
+              "invalid_response"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "title": "ResponseViolation",
         "type": "object"
       },
       "SFCInput": {

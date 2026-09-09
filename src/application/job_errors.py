@@ -1,0 +1,99 @@
+"""Bounded response-acceptance diagnostics without response text or credentials."""
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+from typing import Mapping
+
+
+_REASONS = frozenset({"unsupported_script", "non_english_script", "japanese_script", "latin_prose",
+                      "ambiguous_han_only", "invalid_prose_field", "invalid_json_object", "invalid_code_field"})
+_CONTRACTS = frozenset({"text", "analysis", "ladder", "st", "debug", "diagnosis", "patch", "inspection",
+                       "test_suite", "tool_candidate", "tool_patch"})
+_MAX_VIOLATIONS = 16
+
+
+@lru_cache(maxsize=1)
+def _schema_segments():
+    from response_language import ResponseContract
+    import workflow_response_contracts
+    result = {"ladder", "patch", "arguments", "comment"}
+    for contract in vars(workflow_response_contracts).values():
+        if isinstance(contract, ResponseContract):
+            for selector in contract.human_paths + contract.st_paths + contract.annotation_paths + contract.structured_paths:
+                result.update(segment for segment in selector.split(".") if segment not in ("*", "**"))
+    return frozenset(result)
+
+
+def _diagnostic_path(value):
+    """Keep schema locations, masking wildcard keys supplied by a model.
+
+    A JSON object key can itself be a secret or a filesystem path. A lexical
+    identifier check alone therefore is not sufficient for a public location.
+    """
+    if not isinstance(value, str) or len(value) > 4096:
+        return "response"
+    match = re.match(r"^(content|reasoning|tool_calls\[[0-9]{1,6}\]\.arguments)(\$?)(.*)$", value)
+    if not match:
+        return "response"
+    prefix, dollar, tail = match.groups()
+    if not tail:
+        return prefix + dollar
+    if not tail.startswith("."):
+        return prefix + dollar + ".*"
+    segments = []
+    for segment in tail[1:].split(".")[:24]:
+        if segment in _schema_segments() or re.fullmatch(r"[0-9]{1,6}", segment):
+            segments.append(segment)
+        elif re.fullmatch(r"comment\[[0-9]{1,6}\]", segment):
+            segments.append(segment)
+        else:
+            segments.append("*")
+    return prefix + dollar + "." + ".".join(segments)
+
+
+def public_error_details(value):
+    """Reproject persisted diagnostics as well as newly classified failures."""
+    if not isinstance(value, Mapping):
+        return None
+    language = value.get("response_language")
+    contract = value.get("contract_name")
+    digest = value.get("diagnostic_id")
+    violations = value.get("violations")
+    violations = violations if isinstance(violations, (list, tuple)) else ()
+    rows = []
+    for violation in violations[:_MAX_VIOLATIONS]:
+        if isinstance(violation, Mapping):
+            reason = violation.get("reason")
+            rows.append({"path": _diagnostic_path(violation.get("path")),
+                         "reason": reason if isinstance(reason, str) and reason in _REASONS else "invalid_response"})
+    count = value.get("violation_count", len(violations))
+    if isinstance(count, bool) or not isinstance(count, int):
+        count = len(violations)
+    count = max(len(rows), min(count, 1000000))
+    return {"response_language": language if isinstance(language, str) and language in ("zh-CN", "en", "ja") else "unknown",
+            "contract_name": contract if isinstance(contract, str) and contract in _CONTRACTS else "custom",
+            "diagnostic_id": digest if isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{16}", digest) else None,
+            "violations": rows, "violation_count": count, "truncated": count > len(rows)}
+
+
+def acceptance_error_details(error):
+    """Recognize a real acceptance exception, including workflow wrappers."""
+    seen = set()
+    while isinstance(error, BaseException) and id(error) not in seen and len(seen) < 8:
+        seen.add(id(error))
+        if type(error).__name__ == "ResponseRejectedError":
+            from model_provider import ResponseRejectedError
+            if isinstance(error, ResponseRejectedError):
+                digest = getattr(error, "response_sha256", "")
+                violations = getattr(error, "violations", ())
+                violations = violations if isinstance(violations, (list, tuple)) else ()
+                return public_error_details({
+                    "response_language": error.response_language, "contract_name": error.contract_name,
+                    "diagnostic_id": digest[:16] if isinstance(digest, str) else None,
+                    "violation_count": len(violations),
+                    "violations": [{"path": getattr(item, "path", None), "reason": getattr(item, "reason", None)}
+                                   for item in violations[:_MAX_VIOLATIONS]],
+                })
+        error = error.__cause__ or error.__context__
+    return None

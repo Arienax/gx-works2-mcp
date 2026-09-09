@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .events import append_event, utc_now
+from .job_errors import acceptance_error_details
 from .workspace import (ConflictError, atomic_json, bind_workspace_state, canonical_hash, contained,
                         private_state_dir, public_payload, read_json, record_id)
 
@@ -19,7 +20,7 @@ class JobCancelled(Exception):
 
 _ACTIVE = frozenset({"queued", "running", "cancelling"})
 _JOB_FIELDS = ("id", "kind", "status", "created_at", "updated_at", "cancel_requested",
-               "last_sequence", "result", "error_code")
+               "last_sequence", "result", "error_code", "error_details")
 
 
 def _check_snapshot(value):
@@ -68,7 +69,7 @@ class JobManager:
             for path in self.directory.glob("*.json"):
                 record = read_json(contained(path, self.directory))
                 if record.get("status") in _ACTIVE:
-                    record.update(status="interrupted", error_code="process_interrupted")
+                    record.update(status="interrupted", error_code="process_interrupted", error_details=None)
                     append_event(record, "interrupted", {"error_code": "process_interrupted"})
                     self._save(record)
 
@@ -134,7 +135,7 @@ class JobManager:
             record = {"id": "job_" + uuid.uuid4().hex, "kind": str(kind), "status": "queued",
                       "created_at": now, "updated_at": now, "snapshot": frozen,
                       "input_hash": digest, "request_id": request_id, "cancel_requested": False,
-                      "last_sequence": 0, "events": [], "result": None, "error_code": None}
+                      "last_sequence": 0, "events": [], "result": None, "error_code": None, "error_details": None}
             append_event(record, "queued")
             self._save(record)
             self._futures[record["id"]] = self._executor.submit(self._run, record["id"], worker)
@@ -150,6 +151,7 @@ class JobManager:
             return copy.deepcopy(event)
 
     def _run(self, job_id, worker):
+        error_details = None
         try:
             with self._record_lock:
                 record = self._load(job_id)
@@ -168,10 +170,13 @@ class JobManager:
             safe_codes = {"ResponseRejectedError": "response_rejected", "ConflictError": "input_conflict",
                           "ContextUnavailableError": "context_unavailable"}
             status, error_code, result = "failed", safe_codes.get(type(exc).__name__, "job_failed"), None
+            error_details = acceptance_error_details(exc)
+            if error_details is not None:
+                error_code = "response_rejected"
         with self._record_lock:
             record = self._load(job_id)
-            record.update(status=status, error_code=error_code, result=public_payload(result))
-            append_event(record, status, {"result": record["result"], "error_code": error_code})
+            record.update(status=status, error_code=error_code, error_details=error_details, result=public_payload(result))
+            append_event(record, status, {"result": record["result"], "error_code": error_code, "error_details": error_details})
             self._save(record)
 
     def cancel(self, job_id):

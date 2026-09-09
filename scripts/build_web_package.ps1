@@ -2,6 +2,8 @@ param(
     [string]$Python = "",
     [string]$NpmCommand = "npm.cmd",
     [string]$GatewayDirectory = "",
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')]
+    [string]$StageName = "",
     [switch]$AllowWithoutGateway,
     [switch]$SkipInstall,
     [switch]$ValidateOnly
@@ -10,6 +12,40 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$distRoot = Join-Path $repositoryRoot "dist"
+$buildRoot = Join-Path $repositoryRoot "build"
+if (-not [string]::IsNullOrWhiteSpace($StageName)) {
+    $distRoot = [IO.Path]::GetFullPath((Join-Path $distRoot ("staging\" + $StageName)))
+    $buildRoot = [IO.Path]::GetFullPath((Join-Path $buildRoot ("staging\" + $StageName)))
+    # PyInstaller may remove its COLLECT target. Keep staging inside this
+    # repository and reject junctions/symlinks instead of following them.
+    foreach ($buildPath in @($distRoot, $buildRoot)) {
+        if (-not $buildPath.StartsWith($repositoryRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "The staging destination must stay inside this repository."
+        }
+        $ancestor = $buildPath
+        while ($ancestor -and $ancestor -ne $repositoryRoot) {
+            if (Test-Path -LiteralPath $ancestor) {
+                if (((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    throw "The staging destination must not traverse a junction or symbolic link."
+                }
+            }
+            $ancestor = [IO.Path]::GetDirectoryName($ancestor)
+        }
+    }
+    if (Test-Path -LiteralPath (Join-Path $distRoot "GXWorks-Agent-Web")) {
+        throw "This staging package already exists. Choose a new StageName; existing packages are not replaced in staging mode."
+    }
+}
+$packageExecutable = [IO.Path]::GetFullPath((Join-Path $distRoot "GXWorks-Agent-Web\GXWorks-Agent-Web.exe"))
+if (-not $ValidateOnly) {
+    $runningPackage = @(Get-Process -Name "GXWorks-Agent-Web" -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and [string]::Equals($_.Path, $packageExecutable, [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($runningPackage.Count -gt 0) {
+        throw "The destination Web executable is running. Use -StageName to build an isolated update; this script never stops a running service."
+    }
+}
 if ([string]::IsNullOrWhiteSpace($Python)) {
     $Python = Join-Path $repositoryRoot ".venv\Scripts\python.exe"
 }
@@ -66,6 +102,8 @@ try {
 }
 if ($ValidateOnly) {
     Write-Output "Web release resources and selected packaging dependencies are present. No executable was built or started."
+    Write-Output ("Package destination: " + $packageExecutable)
+    Write-Output ("Archive destination: " + (Join-Path $buildRoot "web\PYZ-00.pyz"))
     return
 }
 
@@ -76,7 +114,7 @@ try {
     $env:GX_WEB_PACKAGE_ALLOW_WITHOUT_GATEWAY = $(if ($AllowWithoutGateway) { "1" } else { "0" })
     Push-Location $repositoryRoot
     try {
-        & $Python -m PyInstaller --noconfirm web.spec
+        & $Python -m PyInstaller --noconfirm --distpath $distRoot --workpath $buildRoot web.spec
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller Web package build failed." }
     } finally {
         Pop-Location
@@ -85,7 +123,7 @@ try {
     [Environment]::SetEnvironmentVariable("GX_WEB_PACKAGE_GATEWAY_DIR", $previousGateway, "Process")
     [Environment]::SetEnvironmentVariable("GX_WEB_PACKAGE_ALLOW_WITHOUT_GATEWAY", $previousWithoutGateway, "Process")
 }
-Write-Output (Join-Path $repositoryRoot "dist\GXWorks-Agent-Web\GXWorks-Agent-Web.exe")
+Write-Output $packageExecutable
 if ($AllowWithoutGateway -and [string]::IsNullOrWhiteSpace($resolvedGateway)) {
     Write-Warning "This package does not include the Simulator2 gateway; real simulator acceptance has not been performed."
 }

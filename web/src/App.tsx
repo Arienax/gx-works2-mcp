@@ -51,6 +51,7 @@ import { Badge, Button, Modal } from "./components/ui";
 import { statusText, statusTone, translate } from "./i18n";
 import type { Locale } from "./i18n";
 import { SpecEditor } from "./features/SpecEditor";
+import { JobFailure } from "./features/JobFailure";
 import { Settings } from "./features/Settings";
 
 let bootstrapToken =
@@ -117,6 +118,7 @@ export default function App() {
   const [steps, setSteps] = useState([
     { name: "", action: "", transition: "" },
   ]);
+  const [specIssues, setSpecIssues] = useState<{ path: string; message: string }[]>([]);
   const uploadRef = useRef<HTMLInputElement>(null);
   const specBinding = useRef("");
   const activeProjectRef = useRef(pid);
@@ -134,6 +136,7 @@ export default function App() {
     setAnalysisOutput(null);
     setProposals([]);
     setSpec(null);
+    setSpecIssues([]);
     setNetwork(null);
   }, [pid]);
   const version = project?.versions?.find((v) => v.id === vid);
@@ -390,7 +393,7 @@ export default function App() {
   }
   async function saveSpec(value: Spec) {
     const epoch = projectEpoch.current;
-    const result = await api<{ valid: boolean; issues?: unknown }>(
+    const result = await api<{ valid: boolean; spec?: Spec; issues?: { errors?: { path: string; message: string }[] } }>(
       `/projects/${pid}/spec`,
       "PUT",
       { spec: value, expected_hash: project?.confirmed_spec_hash ?? null },
@@ -398,10 +401,11 @@ export default function App() {
     if (activeProjectRef.current !== pid || epoch !== projectEpoch.current)
       return;
     if (!result.valid) {
-      setReport(result.issues as Json);
-      setModal("report");
+      setSpecIssues(result.issues?.errors || []);
       return;
     }
+    setSpecIssues([]);
+    if (result.spec) setSpec(result.spec);
     setNotice(t("规格已确认"));
     setIntent("generation");
     refreshAll();
@@ -1212,9 +1216,7 @@ export default function App() {
                       t={t}
                     />
                   )}
-                  {currentJob.error_code && (
-                    <p className="error-text">{currentJob.error_code}</p>
-                  )}
+                  <JobFailure job={currentJob} t={t} />
                   {!!analysisOutput?.spec_draft && (
                     <div>
                       <Button
@@ -1227,6 +1229,7 @@ export default function App() {
                         }
                         onClick={() => {
                           setSpec(analysisOutput.spec_draft as Spec);
+                          setSpecIssues([]);
                           setPanel("spec");
                         }}
                       >
@@ -1350,6 +1353,8 @@ export default function App() {
         ) : panel === "spec" ? (
           <SpecEditor
             value={spec}
+            issues={specIssues}
+            onChange={(value) => { setSpec(value); setSpecIssues([]); }}
             t={t}
             disabled={!canWrite || !pid}
             onSave={(s) => void guarded(() => saveSpec(s))}

@@ -156,6 +156,21 @@ class ProjectList(PublicResource):
     projects: list[Project] = Field(default_factory=list)
 
 
+class ResponseViolation(PublicResource):
+    path: str
+    reason: Literal["unsupported_script", "non_english_script", "japanese_script", "latin_prose",
+                    "ambiguous_han_only", "invalid_prose_field", "invalid_json_object", "invalid_code_field", "invalid_response"]
+
+
+class JobErrorDetails(PublicResource):
+    response_language: Literal["zh-CN", "en", "ja", "unknown"]
+    contract_name: str
+    diagnostic_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{16}$")
+    violations: list[ResponseViolation] = Field(default_factory=list, max_length=16)
+    violation_count: int = Field(ge=0, le=1000000)
+    truncated: bool
+
+
 class Job(PublicResource):
     id: str
     kind: str
@@ -168,6 +183,7 @@ class Job(PublicResource):
     cancel_requested: bool | None = None
     result: JsonObject | None = None
     error_code: str | None = None
+    error_details: JobErrorDetails | None = None
 
 
 class JobList(PublicResource):

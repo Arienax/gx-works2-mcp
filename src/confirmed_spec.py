@@ -531,6 +531,15 @@ def validate_spec_draft(spec, plc_model=None):
                     row=index,
                 )
             )
+        if value and _asks_contact_type(name) and _io_parameter_kind(parameter) and not _has_contact_type(value):
+            errors.append(
+                _validation_issue(
+                    "contact_type_missing",
+                    f"参数“{name}”还需明确常开或常闭",
+                    f"{path}.value",
+                    row=index,
+                )
+            )
 
     io_table = spec.get("io_table")
     if io_table is None:
@@ -922,6 +931,17 @@ def _suggested_io_to_table(suggested_io):
     return rows
 
 
+def _parameter_choice_metadata(item):
+    """Keep choices separate from prose and from the user's confirmed value."""
+    metadata = {}
+    if isinstance(item.get("options"), (list, tuple)):
+        metadata["options"] = [str(option) for option in item["options"] if str(option).strip()]
+    if "suggested_default" in item:
+        suggestion = item["suggested_default"]
+        metadata["suggested_default"] = "" if suggestion is None else str(suggestion)
+    return metadata
+
+
 def _missing_info_to_parameters(missing_info):
     parameters = []
     for item in normalize_missing_info(missing_info):
@@ -946,7 +966,10 @@ def _missing_info_to_parameters(missing_info):
             "source": str(item.get("source", "")).strip() or "analysis",
             "required": bool(item.get("required", True)),
             "note": " / ".join(notes),
+            "options": options,
         }
+        if default is not None:
+            parameter["suggested_default"] = str(default)
         if isinstance(item.get("required_when"), dict):
             parameter["required_when"] = copy.deepcopy(item["required_when"])
         parameters.append(parameter)
@@ -1011,6 +1034,7 @@ def _merge_parameters(base_parameters, incoming_parameters):
             "required": bool(item.get("required", False)),
             "note": str(item.get("note", "")).strip(),
         }
+        clean.update(_parameter_choice_metadata(item))
         if isinstance(item.get("required_when"), dict):
             clean["required_when"] = copy.deepcopy(item["required_when"])
         stable_id = clean["id"].casefold()
@@ -1020,6 +1044,8 @@ def _merge_parameters(base_parameters, incoming_parameters):
             position = by_name.get(name_key)
         if position is not None:
             existing = merged[position]
+            for key, value in _parameter_choice_metadata(existing).items():
+                clean.setdefault(key, value)
             # A newly generated unanswered question must not erase a value
             # that the user already confirmed in an earlier specification.
             # Stable ids also merge wording variants such as a trailing "？".
@@ -1136,7 +1162,87 @@ def build_review_draft(analysis, previous_spec=None):
         ),
     }
     draft["hardware_profile"] = build_hardware_profile(draft, plc_model)
-    return draft
+    return restore_review_choices(draft, analysis)
+
+
+def _io_parameter_kind(parameter):
+    parameter_id = str(parameter.get("id", "")).strip().casefold()
+    explicit_ids = {"start_input": "X", "stop_input": "X", "output_coil": "Y"}
+    if parameter_id in explicit_ids:
+        return explicit_ids[parameter_id]
+    question = str(parameter.get("name", "")).replace(" ", "").upper()
+    for kind, phrases in (("X", ("哪个输入", "哪个X", "接什么输入")),
+                          ("Y", ("哪个输出", "哪个Y", "接什么输出"))):
+        if any(phrase in question for phrase in phrases):
+            return kind
+    return None
+
+
+def _asks_contact_type(question):
+    text = str(question).casefold()
+    return ("常开" in text and ("常闭" in text or "常閉" in text)) or (
+        "normally open" in text and "normally closed" in text
+    )
+
+
+def _has_contact_type(value):
+    return bool(re.search(r"常[开闭閉]|normally\s+(?:open|closed)|\b(?:NO|NC)\b", str(value), re.IGNORECASE))
+
+
+def _restore_io_parameter_choices(parameter, io_rows):
+    """Offer only addresses already allocated, with no assumed contact type."""
+    if parameter.get("options"):
+        return
+    kind = _io_parameter_kind(parameter)
+    if kind is None:
+        return
+    question = str(parameter.get("name", ""))
+    candidates = {}
+    for row in io_rows:
+        if not isinstance(row, dict):
+            continue
+        address = str(row.get("address", "")).strip().upper()
+        if re.fullmatch(kind + r"\d+", address):
+            candidates[address] = max(candidates.get(address, 0), _similarity(question, row.get("label", "")))
+    addresses = sorted(candidates, key=lambda address: (-candidates[address], address))
+    if not addresses:
+        return
+    if _asks_contact_type(question):
+        parameter["options"] = [f"{address}，{contact}" for address in addresses for contact in ("常开", "常闭")]
+    else:
+        parameter["options"] = addresses
+        if candidates[addresses[0]] >= 0.25:
+            parameter.setdefault("suggested_default", addresses[0])
+
+
+def restore_review_choices(draft, analysis):
+    """Enrich an older draft from its own analysis without changing answers.
+
+    Older v3 drafts retained only a prose note. Recover structured choices on
+    read, never by splitting that note: legitimate choices can contain slashes.
+    """
+    restored = copy.deepcopy(draft)
+    if not isinstance(restored, dict) or not isinstance(analysis, dict):
+        return restored
+    questions = _missing_info_to_parameters(analysis.get("missing_info", []))
+    by_id = {item["id"].casefold(): item for item in questions if item.get("id")}
+    by_name = {item["name"].casefold(): item for item in questions}
+    io_rows = list(restored.get("io_table") or [])
+    if not io_rows:
+        io_rows = _suggested_io_to_table(analysis.get("suggested_io") or analysis.get("io_allocation") or {})
+    if not io_rows:
+        io_rows = raw_to_io_table(restored.get("io_allocation_raw", ""))
+    for parameter in restored.get("parameters", []) or []:
+        if not isinstance(parameter, dict):
+            continue
+        item = by_id.get(str(parameter.get("id", "")).strip().casefold())
+        if item is None:
+            item = by_name.get(str(parameter.get("name", "")).strip().casefold())
+        if item is not None:
+            for key, value in _parameter_choice_metadata(item).items():
+                parameter.setdefault(key, value)
+        _restore_io_parameter_choices(parameter, io_rows)
+    return restored
 
 
 def canonicalize_confirmed_spec(spec):
@@ -1184,6 +1290,7 @@ def canonicalize_confirmed_spec(spec):
             "required": bool(item.get("required", False)),
             "note": str(item.get("note", "")).strip(),
         }
+        parameter.update(_parameter_choice_metadata(item))
         if isinstance(item.get("required_when"), dict):
             parameter["required_when"] = copy.deepcopy(item["required_when"])
         if not parameter["name"]:
@@ -1201,6 +1308,10 @@ def canonicalize_confirmed_spec(spec):
         if applied:
             io_text = updated_io
             applied_io_answers.update(applied)
+            # Preserve the user's contact answer alongside the allocation,
+            # without interpreting physical wiring as a ladder contact type.
+            if _has_contact_type(parameter["value"]):
+                parameters.append(parameter)
         else:
             parameters.append(parameter)
 

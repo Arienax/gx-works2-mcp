@@ -82,7 +82,8 @@ MCP 则是 `外部客户端 → MCP → ToolRuntime → PLC Core`，没有模型
 
 | 输出 | 检查的内容 | 保持原样的内容 |
 | --- | --- | --- |
-| 普通正文、推理 | 模型新写的 prose；可见推理同样验收 | 机器 token、路径；明确标记且在请求中逐字出现的引述 |
+| 普通正文 | 模型新写的 prose；不合格则拒绝整轮正文与工具调用 | 机器 token、路径；明确标记且在请求中逐字出现的引述 |
+| 推理 | 独立检查；不合格则隐藏整个推理通道，不独立阻断合格正文和工具参数 | 合格推理保留原文；不改写或翻译不合格推理 |
 | 需求分析 | summary、方案说明、问题、I/O 说明、假设、流程标签 | control_type 旧中文枚举、options/default/required_when 比较值、hardware_config 参数、execution_semantics.evidence |
 | ladder / patch / candidate tool arguments | device_comments、label、debug_note/comment | 地址、指令、表达式、rung/network/branch ID、版本绑定、枚举；输入中明确存在的旧注释可原样保留 |
 | ST | `st_code` 内 `//` 与 `(* ... *)` 注释，识别嵌套注释和字符串转义 | 可执行代码、标识符、字面量，包括字面量里的中文或类似注释的字符 |
@@ -95,11 +96,15 @@ MCP 则是 `外部客户端 → MCP → ToolRuntime → PLC Core`，没有模型
 
 ## streaming、失败与兼容性
 
-每次尝试先收集完整 `TextDelta`、`ReasoningDelta`、完整工具调用和 usage。验收通过才发布该尝试的事件，回调和 `CollectedResponse.message` 是同一份内容。chunk 被任意切分不会改变接受结果。JSON-final 工作流允许仅含工具调用的中间轮，最终正文仍必须通过 JSON 契约。
+每次尝试先收集完整 `TextDelta`、`ReasoningDelta`、完整工具调用和 usage。正文与工具参数验收通过后才发布该尝试的事件；推理另行检查，若不合格，`CollectedResponse.message.reasoning` 置空，所有 `ReasoningDelta` 都从事件回调与推理回调中移除，连同其中原本合格的推理片段一并隐藏。合格正文、工具参数与 usage 保持原值，不新增请求或重试。chunk 被任意切分不会改变接受结果。JSON-final 工作流允许仅含工具调用的中间轮，最终正文仍必须通过 JSON 契约。
+
+这一调整依据真实 Edge 界面发送“起保停”的诊断：正文没有违规，唯一拒绝位置为 `reasoning:latin_prose`。隐藏不合格推理后仍须回到实际界面重试验收；隔离测试证明通道处理与拒绝边界，不替代真实模型/UI证据。
+
+思考模型的多轮工具协议仍可能要求回放该轮原始推理。collector 将被隐藏的原值保留在规范 `AssistantMessage._provider_reasoning` 私有字段，只有适配器 `_wire_message` 将它转为厂商 `reasoning_content`。字段不进入消息常规表示、不从历史/不可信字典接收；公开消息投影剔除它。Agent 当前轮的后端消息历史保留该私有值，因此下一轮工具请求保持兼容；`message.reasoning`、公开回调和 Agent 最终结果仍不含被隐藏的推理。
 
 传输失败时可以按既有设置切非流式，语言不变；失败尝试的回调不会泄漏。`ResponseRejectedError` 在传输 fallback 之外产生，且 `retryable=False`，编译器不因它重发生成。拒绝结果不会写入 assistant history、返回工程候选或调用候选工具。
 
-成功调用保留原参数、返回值及 chunk/event 类型；增加的 `raw_attempts` 记录实际尝试。行为变化是内容回调延后到完整验收之后，以及语言/JSON 接受失败明确抛 `ResponseRejectedError`，即使旧 helper 的 `raise_errors=False` 也不把它转成“成功空值”。只需本地检查，没有新增模型 token 或 SDK 依赖。
+成功调用保留原参数、合格正文及 chunk/event 类型；增加的 `raw_attempts` 仅供后端诊断，记录实际尝试，可能包含已隐藏的推理，不能序列化为公开结果或重新发布事件。`CollectedResponse` 的常规表示不包含这些原始尝试。正文或工具参数的语言/JSON 接受失败仍明确抛 `ResponseRejectedError`，即使旧 helper 的 `raise_errors=False` 也不把它转成“成功空值”。只需本地检查，没有新增模型 token 或 SDK 依赖。
 
 异常携带 `response_language`、`contract_name`、`violations`、`raw_response`、`raw_attempts` 与 `response_sha256`。UI 显示本地化错误、失败位置/原因和摘要诊断号；原始响应在异常对象中供 API 调用方诊断，不自动写入磁盘或项目。collector 内的流式 fallback 保存两次 raw 尝试；编译器工作流级的两次独立 API 调用仍分别拥有自己的诊断，不伪装成一次 HTTP 请求。
 

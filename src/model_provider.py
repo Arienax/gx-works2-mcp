@@ -56,6 +56,9 @@ class AssistantMessage:
     content: str = ""
     tool_calls: Tuple[ToolCall, ...] = ()
     reasoning: str = ""
+    # Canonical backend messages alone may carry provider-required replay.
+    # This is never visible prose and is deliberately absent from dict coercion.
+    _provider_reasoning: str = field(default="", repr=False)
 
 
 ModelMessage = Union[SystemMessage, UserMessage, AssistantMessage, ToolResult]
@@ -134,7 +137,9 @@ class CollectedResponse:
     """An accepted response; callbacks and callers receive these same bytes."""
     message: AssistantMessage
     usage: Optional[Usage] = None
-    raw_attempts: Tuple[RawModelResponse, ...] = ()
+    # Backend-only diagnostics can contain suppressed reasoning or failed
+    # attempts. Keep them out of routine accepted-result representations.
+    raw_attempts: Tuple[RawModelResponse, ...] = field(default=(), repr=False)
     response_language: str = ""
 
 
@@ -249,6 +254,8 @@ def coerce_message(value: Union[ModelMessage, Mapping[str, Any]]) -> ModelMessag
             )
         return UserMessage(value.get("content", ""), tuple(images))
     if role == "assistant":
+        # Do not accept _provider_reasoning from untrusted/history dictionaries.
+        # Only collect_response may populate the canonical private replay field.
         return AssistantMessage(
             content=str(value.get("content") or ""),
             reasoning=str(
@@ -275,7 +282,7 @@ def strip_legacy_provider_fields(value: Mapping[str, Any]) -> Dict[str, Any]:
     return {
         key: copy.deepcopy(item)
         for key, item in value.items()
-        if key not in {"reasoning_content", "raw_response"}
+        if key not in {"reasoning_content", "raw_response", "raw_attempts", "_provider_reasoning"}
     }
 
 
@@ -327,10 +334,11 @@ def _wire_message(message: ModelMessage) -> Dict[str, Any]:
         "role": "assistant",
         "content": message.content or None,
     }
-    if message.reasoning:
+    replay_reasoning = message._provider_reasoning or message.reasoning
+    if replay_reasoning:
         # Both supported OpenAI-compatible providers require this replay during
         # an interleaved thinking/tool turn.  It never leaves this adapter.
-        payload["reasoning_content"] = message.reasoning
+        payload["reasoning_content"] = replay_reasoning
     if message.tool_calls:
         payload["tool_calls"] = [
             {
@@ -686,10 +694,10 @@ def collect_response(
         raw.message.content, request.response_language, request.response_contract,
         source_texts=sources, annotations=annotations,
     ))
-    violations.extend(inspect_response(
+    reasoning_violations = inspect_response(
         raw.message.reasoning, request.response_language, source_texts=sources,
         path_prefix="reasoning",
-    ))
+    )
     tool_contracts = dict(request.tool_response_contracts)
     for index, call in enumerate(raw.message.tool_calls):
         if call.name in tool_contracts:
@@ -704,14 +712,21 @@ def collect_response(
     if violations:
         raise ResponseRejectedError(request, attempts, violations)
 
-    for event in raw.events:
+    # Reasoning is optional display material. A mismatch hides that entire
+    # channel; it never relaxes content/tool acceptance, modifies their bytes,
+    # or triggers another request. Raw attempts remain backend-only evidence.
+    accepted_message = (replace(raw.message, reasoning="", _provider_reasoning=raw.message.reasoning)
+                        if reasoning_violations else raw.message)
+    accepted_events = tuple(event for event in raw.events
+                            if not (reasoning_violations and isinstance(event, ReasoningDelta)))
+    for event in accepted_events:
         if on_event is not None:
             on_event(event)
         if isinstance(event, ReasoningDelta) and on_reasoning_chunk is not None:
             on_reasoning_chunk(event.text)
         elif isinstance(event, TextDelta) and on_content_chunk is not None:
             on_content_chunk(event.text)
-    return CollectedResponse(raw.message, raw.usage, tuple(attempts), request.response_language)
+    return CollectedResponse(accepted_message, raw.usage, tuple(attempts), request.response_language)
 
 
 _provider_lock = threading.Lock()

@@ -137,17 +137,17 @@ def split_text(text, width):
 
 @pytest.mark.parametrize("language,good,bad", LANGUAGE_CASES)
 @pytest.mark.parametrize("stream", [False, True])
-@pytest.mark.parametrize("bad_channel", ["content", "reasoning"])
-def test_wrong_language_is_rejected_before_any_callback_or_tool_publication(
+@pytest.mark.parametrize("bad_channel", ["content", "content_and_reasoning"])
+def test_wrong_content_is_rejected_before_any_callback_or_tool_publication(
     language, good, bad, stream, bad_channel
 ):
     published = []
     call = ToolCall("call-1", "search_plc_manual", {"query": "X0"})
     events = [
-        ReasoningDelta(bad if bad_channel == "reasoning" else good),
+        ReasoningDelta(bad if bad_channel == "content_and_reasoning" else good),
         ToolCallStart(call.id, call.name),
         ToolCallEnd(call),
-        TextDelta(bad if bad_channel == "content" else good),
+        TextDelta(bad),
         Usage(12, 8, 20),
     ]
     provider = FakeProvider([events])
@@ -167,10 +167,66 @@ def test_wrong_language_is_rejected_before_any_callback_or_tool_publication(
     error = captured.value
     assert error.response_language == language
     assert error.retryable is False
-    assert getattr(error.raw_response.message, bad_channel) == bad
+    assert error.raw_response.message.content == bad
     assert error.raw_response.message.tool_calls == (call,)
     assert error.raw_attempts[-1] == error.raw_response
     assert error.violations
+
+
+@pytest.mark.parametrize("language,good,bad", LANGUAGE_CASES)
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("width", [1, 7, 100000])
+def test_wrong_reasoning_is_fully_hidden_without_rejecting_valid_content_or_tools(language, good, bad, stream, width):
+    content_seen, reasoning_seen, event_seen = [], [], []
+    call = ToolCall("call-1", "search_plc_manual", {"query": "X0"})
+    reasoning = good + "\n" + bad
+    content = "\r\n" + good + "\n  "
+    events = [*(ReasoningDelta(chunk) for chunk in split_text(reasoning, width)),
+              ToolCallStart(call.id, call.name), ToolCallEnd(call),
+              *(TextDelta(chunk) for chunk in split_text(content, width)), Usage(12, 8, 20)]
+    def unpublished_during_generation():
+        assert content_seen == reasoning_seen == event_seen == []
+    provider = FakeProvider([events], before_event=unpublished_during_generation)
+    result = collect_response(provider, request_for(language, stream=stream),
+        on_event=event_seen.append, on_content_chunk=content_seen.append, on_reasoning_chunk=reasoning_seen.append,
+        fallback_to_non_stream=True)
+    assert len(provider.requests) == 1
+    assert result.message.content == content and "".join(content_seen) == content
+    assert result.message.reasoning == "" and reasoning_seen == []
+    assert result.message.tool_calls == (call,) and result.usage == Usage(12, 8, 20)
+    assert event_seen == [event for event in events if not isinstance(event, ReasoningDelta)]
+    # Suppressed text remains only in explicit backend diagnostics, not the
+    # accepted message, callback events or routine result representation.
+    assert result.raw_attempts[-1].message.reasoning == reasoning
+    assert result.raw_attempts[-1].events == tuple(events)
+    assert bad not in repr(result)
+
+
+@pytest.mark.parametrize("invalid_channel", ["none", "content", "tool", "both"])
+def test_hidden_reasoning_does_not_weaken_content_or_candidate_argument_acceptance(invalid_channel):
+    good, bad = "启动后保持输出，停止时复位。", "The output remains enabled."
+    content = json.dumps({"summary": bad if invalid_channel in ("content", "both") else good}, ensure_ascii=False)
+    call = ToolCall("candidate-1", "patch_program", {"patch": {"operations": [{"ladder": {
+        "debug_note": bad if invalid_channel in ("tool", "both") else good}}]}})
+    events = [ReasoningDelta(bad), TextDelta(content), ToolCallStart(call.id, call.name), ToolCallEnd(call)]
+    provider = FakeProvider([events])
+    published = []
+    request = request_for("zh-CN", response_contract=ANALYSIS_RESPONSE,
+        tool_response_contracts=((call.name, tool_argument_contract(call.name)),))
+    if invalid_channel == "none":
+        result = collect_response(provider, request, on_event=published.append)
+        assert result.message.content == content and result.message.reasoning == ""
+        assert result.message.tool_calls == (call,)
+        assert published == events[1:]
+    else:
+        with pytest.raises(ResponseRejectedError) as captured:
+            collect_response(provider, request, on_event=published.append, fallback_to_non_stream=True)
+        assert published == []
+        paths = [violation.path for violation in captured.value.violations]
+        assert any(path.startswith("content") for path in paths) == (invalid_channel in ("content", "both"))
+        assert any(path.startswith("tool_calls") for path in paths) == (invalid_channel in ("tool", "both"))
+        assert not any(path.startswith("reasoning") for path in paths)
+    assert len(provider.requests) == 1
 
 
 @pytest.mark.parametrize("language,good,bad", LANGUAGE_CASES)

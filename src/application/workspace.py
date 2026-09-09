@@ -129,7 +129,14 @@ _PUBLIC_FIELDS = frozenset({
 
 def public_payload(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: public_payload(item) for key, item in value.items() if key in _PUBLIC_FIELDS}
+        result = {key: public_payload(item) for key, item in value.items() if key in _PUBLIC_FIELDS}
+        if "error_details" in value:
+            # Diagnostic JSON paths are schema locations, not arbitrary file
+            # paths. Reproject this one typed resource without widening the
+            # general job/proposal field whitelist.
+            from .job_errors import public_error_details
+            result["error_details"] = public_error_details(value["error_details"])
+        return result
     if isinstance(value, (list, tuple)):
         return [public_payload(item) for item in value]
     if isinstance(value, str):

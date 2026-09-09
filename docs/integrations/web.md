@@ -135,4 +135,19 @@ powershell -ExecutionPolicy Bypass -File scripts\build_web_package.ps1 `
 
 完整目录一起分发；模拟器网关位于可执行文件旁的 `simulator-gateway`。发布前按核对表检查实际包中的资源、登录、无 Qt 启动、旧工程只读和 Windows 实机工作流；PyInstaller 完成不等于实机验收完成。
 
+### 正在使用发布包时准备更新
+
+构建脚本不会停止正在运行的服务。若默认发布目录中的程序仍在使用，请加 `-StageName` 在仓库内生成独立更新包；暂存名称只能包含字母、数字、点、下划线和连字符，并以字母或数字开头。暂存模式拒绝覆盖已有同名包，也不允许输出路径经过目录联接或符号链接。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_web_package.ps1 `
+  -StageName "web-fix-20260910-01" -SkipInstall `
+  -GatewayDirectory "C:\release-inputs\simulator-gateway"
+python scripts/web_package_smoke.py `
+  --package-dir "dist\staging\web-fix-20260910-01\GXWorks-Agent-Web" `
+  --archive "build\staging\web-fix-20260910-01\web\PYZ-00.pyz"
+```
+
+加 `-ValidateOnly` 可只校验依赖、资源和目标路径，不构建、不启动，也不创建暂存目录。更新包验证完成后，再等待原服务任务停止并正常关闭服务，备份原发布目录后替换程序文件。原程序目录中的 `config.json` 是用户模型设置，应单独保留；Windows 凭据存储、工作区和原私有状态目录也必须保留，重启时继续使用相同工作区和 `--state-dir`（原来没有指定时仍不指定）。不要用清空目录或镜像删除方式更新正在使用的包。
+
 构建机可运行 `python scripts/web_package_smoke.py`：该脚本校验发布资源与 Qt 排除项，只启动 Web 可执行文件，对临时空工作区执行只读登录/静态页面烟测，再关闭自己启动的进程。它不启动网关，也不调用 GX/MX。输出中的 `native_gx_not_tested=true` 必须保留为实际验收边界。

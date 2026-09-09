@@ -60,6 +60,57 @@ def _change_artifact(store, project_id, artifact_id, path):
     store.save_project(project)
 
 
+def test_legacy_analysis_output_restores_choices_without_writing(workbench, saved):
+    store, project, _, _ = saved
+    job = workbench.jobs.submit("analysis", {"project_id": project["id"]}, lambda context: {})
+    workbench.jobs._futures[job["id"]].result(timeout=5)
+    directory = workbench.state_dir / "outputs"
+    directory.mkdir(exist_ok=True)
+    output = {"analysis": {"missing_info": [{"id": "start_input", "question": "启动接哪个输入？", "options": ["X0", "X2"]}]},
+              "spec_draft": {"parameters": [{"id": "start_input", "name": "旧问题措辞", "value": "X3", "source": "user"}]}}
+    (directory / (job["id"] + ".json")).write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
+    state_before, workspace_before = _bytes(workbench.state_dir), _bytes(store.base_dir)
+    result = workbench.output(job["id"])
+    assert result["spec_draft"]["parameters"][0] == {"id": "start_input", "name": "旧问题措辞", "value": "X3", "source": "user", "options": ["X0", "X2"]}
+    assert _bytes(workbench.state_dir) == state_before
+    assert _bytes(store.base_dir) == workspace_before
+
+
+def test_spec_save_rejects_duplicate_raw_rows_before_canonicalization(workbench, saved):
+    store, project, _, _ = saved
+    spec = {"summary": "启停", "plc_model": "FX3U", "io_table": [
+        {"address": "X0", "kind": "X", "label": "启动"},
+        {"address": "X0", "kind": "X", "label": "停止"},
+    ], "parameters": []}
+    before = _bytes(store.base_dir)
+    result = workbench.set_spec(project["id"], spec, None)
+    assert result["valid"] is False
+    assert any(issue["code"] == "duplicate_io_address" for issue in result["issues"]["errors"])
+    assert _bytes(store.base_dir) == before
+
+
+def test_saved_address_answers_return_actual_hash_and_keep_contact_choice(workbench, saved):
+    from confirmed_spec import build_review_draft
+    from plc_ir import canonical_sha256
+
+    store, project, _, _ = saved
+    draft = build_review_draft({"summary": "启停", "suggested_io": {"X": {"X0": "启动", "X1": "停止"}, "Y": {"Y0": "输出"}},
+        "missing_info": [{"id": "start_input", "question": "启动接哪个输入？"},
+                         {"id": "stop_input", "question": "停止接哪个输入？常开还是常闭？"}]})
+    draft["parameters"][0].update(value="X2", source="user")
+    draft["parameters"][1].update(value="X1，常闭", source="user")
+    result = workbench.set_spec(project["id"], draft, None)
+    assert result["valid"] is True
+    persisted = store.get_project(project["id"])["confirmed_spec"]
+    assert result["spec"] == persisted
+    assert result["hash"] == canonical_sha256(persisted)
+    assert persisted["parameters"][0]["value"] == "X1，常闭"
+    repeated = workbench.set_spec(project["id"], persisted, result["hash"])
+    assert repeated["valid"] is True
+    assert repeated["hash"] == result["hash"]
+    assert repeated["spec"] == persisted
+
+
 def test_project_reads_and_legacy_program_loading_never_write(saved):
     store, project, version, program = saved
     changed = store.get_project(project["id"])

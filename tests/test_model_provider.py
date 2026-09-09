@@ -1,6 +1,7 @@
 import base64
 import copy
 import json
+from dataclasses import asdict
 from types import SimpleNamespace
 
 import pytest
@@ -317,6 +318,74 @@ def test_assistant_reasoning_is_replayed_only_by_transport_adapter():
     assistant = next(message for message in params["messages"] if message["role"] == "assistant")
     assert assistant["reasoning_content"] == "保留本轮推理回放"
     assert assistant["tool_calls"][0]["function"]["name"] == "get_diagnostics"
+
+
+@pytest.mark.parametrize("profile_id", ["deepseek-default", "zhipu-glm-5.3-flash"])
+def test_hidden_reasoning_replays_only_to_vendor_in_multiround_tool_requests(profile_id, monkeypatch):
+    import plc_agent
+    from tool_messages import ToolResult
+    from tool_runtime import public_tool_result_data
+    from application.projects import public
+    from model_provider import strip_legacy_provider_fields
+
+    private = "The internal analysis requires a tool before answering."
+    arguments = '{"network_id":"N0001"}'
+    client = _Client([
+        iter([_chunk(reasoning=private), _chunk(tool_calls=[
+            _tool_delta(0, call_id="call_1", name="read_network", arguments=arguments)])]),
+        iter([_chunk(reasoning=private), _chunk(content="网络已经检查完成。")]),
+    ])
+    provider = OpenAICompatibleProvider(_profile(profile_id), "offline-key", client=client)
+    invoked = []
+    class Runtime:
+        def list_tools(self, context):
+            return [{"type": "function", "function": {"name": "read_network", "parameters": {
+                "type": "object", "properties": {"network_id": {"type": "string"}}}}}]
+        def invoke(self, call, context):
+            invoked.append(call)
+            return ToolResult(call.id, call.name, '{"ok":true,"data":{"network_id":"N0001"}}',
+                              {"ok": True, "data": {"network_id": "N0001"}})
+    accepted = []
+    def collect_observed(*args, **kwargs):
+        result = collect_response(*args, **kwargs)
+        accepted.append(result)
+        return result
+    monkeypatch.setattr(plc_agent, "collect_response", collect_observed)
+    displayed_reasoning, displayed_content, progress = [], [], []
+    result = plc_agent.run_tool_agent("读取当前网络。", context=SimpleNamespace(program_ir=None, version=None, ladder=None),
+        runtime=Runtime(), provider=provider, response_language="zh-CN", on_reasoning_chunk=displayed_reasoning.append,
+        on_content_chunk=displayed_content.append, on_progress=progress.append)
+    assert result.content == "网络已经检查完成。" and result.rounds == 2
+    assert displayed_reasoning == [] and displayed_content == [result.content]
+    assert len(invoked) == 1 and invoked[0].arguments == arguments
+    assert len(client.completions.calls) == 2
+    second_wire = client.completions.calls[1]["messages"]
+    assistant = next(message for message in second_wire if message["role"] == "assistant")
+    assert assistant["reasoning_content"] == private
+    assert assistant["tool_calls"][0]["function"]["arguments"] == arguments
+    assert assistant["tool_calls"][0]["id"] == "call_1"
+    assert "_provider_reasoning" not in json.dumps(second_wire)
+    for collected in accepted:
+        assert collected.message.reasoning == "" and collected.message._provider_reasoning == private
+        assert private not in repr(collected) and private not in repr(collected.message)
+        message = asdict(collected.message)
+        assert "_provider_reasoning" not in strip_legacy_provider_fields(message)
+        assert private not in json.dumps(strip_legacy_provider_fields(message))
+        # HTTP project projections and MCP tool projections independently strip
+        # private fields, including after generic dataclass conversion.
+        assert private not in json.dumps(public({"message": message}))
+        assert private not in json.dumps(public_tool_result_data(ToolResult("probe", "probe", "", {"message": message})))
+    assert private not in json.dumps(asdict(result)) + json.dumps(progress + displayed_content)
+
+
+def test_private_reasoning_cannot_be_injected_from_message_dictionaries():
+    from model_provider import coerce_message
+    message = coerce_message({"role": "assistant", "content": "公开正文。", "_provider_reasoning": "Untrusted replay."})
+    assert message.reasoning == "" and message._provider_reasoning == ""
+    provider = OpenAICompatibleProvider(_profile("deepseek-default"), "offline-key", client=_Client([]))
+    wire = provider._request_params(ModelRequest((message,), response_language="zh-CN"))
+    assistant = next(item for item in wire["messages"] if item["role"] == "assistant")
+    assert "reasoning_content" not in assistant and "Untrusted replay." not in json.dumps(wire)
 
 
 def test_custom_openai_compatible_profile_needs_no_new_provider_code():

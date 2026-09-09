@@ -754,6 +754,7 @@ export interface components {
             created_at: string;
             /** Error Code */
             error_code?: string | null;
+            error_details?: components["schemas"]["JobErrorDetails"] | null;
             /** Id */
             id: string;
             /** Kind */
@@ -806,6 +807,24 @@ export interface components {
             text: string;
             /** Version Id */
             version_id?: string | null;
+        };
+        /** JobErrorDetails */
+        JobErrorDetails: {
+            /** Contract Name */
+            contract_name: string;
+            /** Diagnostic Id */
+            diagnostic_id?: string | null;
+            /**
+             * Response Language
+             * @enum {string}
+             */
+            response_language: "zh-CN" | "en" | "ja" | "unknown";
+            /** Truncated */
+            truncated: boolean;
+            /** Violation Count */
+            violation_count: number;
+            /** Violations */
+            violations?: components["schemas"]["ResponseViolation"][];
         };
         /** JobEvent */
         JobEvent: {
@@ -1231,6 +1250,16 @@ export interface components {
             status?: string | null;
             /** Summary */
             summary?: string | null;
+        };
+        /** ResponseViolation */
+        ResponseViolation: {
+            /** Path */
+            path: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "unsupported_script" | "non_english_script" | "japanese_script" | "latin_prose" | "ambiguous_han_only" | "invalid_prose_field" | "invalid_json_object" | "invalid_code_field" | "invalid_response";
         };
         /** SFCInput */
         SFCInput: {

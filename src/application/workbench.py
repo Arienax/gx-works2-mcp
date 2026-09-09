@@ -89,12 +89,16 @@ class WorkbenchService:
             current = project.get("confirmed_spec")
             if (canonical_sha256(current) if current is not None else None) != expected_hash:
                 raise ConflictError("确认规格已变化，请重新加载。")
+            issues = validate_spec_draft(spec, project.get("plc_model"))
+            if issues.get("errors"):
+                return {"valid": False, "issues": public(issues)}
             normalized = canonicalize_confirmed_spec(spec)
             issues = validate_spec_draft(normalized, project.get("plc_model"))
             if issues.get("errors"):
                 return {"valid": False, "issues": public(issues)}
             self.store.set_confirmed_spec(project_id, normalized)
-            return {"valid": True, "spec": public(normalized), "hash": canonical_sha256(normalized)}
+            persisted = self.projects.raw_project(project_id)["confirmed_spec"]
+            return {"valid": True, "spec": public(persisted), "hash": canonical_sha256(persisted)}
 
     def upload_attachment(self, project_id, filename, data_base64):
         from session_store import detect_image_media_type
@@ -147,7 +151,12 @@ class WorkbenchService:
         path = contained(self.state_dir / "outputs" / (record_id(job_id) + ".json"), self.state_dir)
         if not path.is_file():
             raise KeyError("No output is available yet")
-        return public(read_json(path))
+        output = read_json(path)
+        if isinstance(output, dict) and isinstance(output.get("analysis"), dict):
+            from confirmed_spec import restore_review_choices
+            if isinstance(output.get("spec_draft"), dict):
+                output["spec_draft"] = restore_review_choices(output["spec_draft"], output["analysis"])
+        return public(output)
 
     def submit(self, command):
         self.writable()

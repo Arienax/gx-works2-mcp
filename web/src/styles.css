@@ -1222,6 +1222,17 @@ pre {
 .spec-editor textarea {
   font-size: 13px;
 }
+.spec-question { margin-bottom: 17px; font-size: 13px; }
+.spec-question > label { display: flex; gap: 8px; margin-bottom: 7px; }
+.required-mark { color: var(--muted); font-size: 11px; }
+.spec-question > p, .approach-description { font-size: 12px; margin: 7px 0; }
+.approach-description { color: var(--muted); margin-top: -9px; }
+.choice-input { position: relative; }
+.choice-input > input { width: 100%; padding-right: 34px; }
+.choice-toggle { position: absolute; top: 0; right: 0; bottom: 0; width: 34px; background: transparent; color: var(--text); border: 0; display: grid; place-items: center; cursor: pointer; }
+.choice-options { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; max-height: 240px; overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px #0002; }
+.choice-options > [role="option"] { padding: 10px 12px; cursor: pointer; overflow-wrap: anywhere; }
+.choice-options > [role="option"]:hover, .choice-options > .active, .choice-options > [aria-selected="true"] { background: var(--hover); }
 .spec-editor textarea {
   min-height: 75px;
 }
