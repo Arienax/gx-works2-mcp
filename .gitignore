@@ -76,3 +76,9 @@ Desktop.ini
 /real_import_program.csv
 /test.csv
 /temp_program.st
+# Local web build/dependency outputs and ephemeral workbench state.
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+.gxworks-state/
+dist-web/

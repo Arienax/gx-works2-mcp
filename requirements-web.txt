@@ -1,0 +1,7 @@
+# Optional local web runtime (Python 3.10+). Keep separate from Win7/Qt.
+fastapi==0.141.1
+uvicorn==0.52.4
+numpy==2.3.2
+openai==2.43.0
+pywinauto==0.6.9; sys_platform == "win32"
+pywin32>=310; sys_platform == "win32"

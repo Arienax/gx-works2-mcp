@@ -1,0 +1,150 @@
+"""Migration boundaries stay enforceable without a GUI or optional web runtime."""
+import ast
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "src"
+APPLICATION = SOURCE / "application"
+WEB = SOURCE / "integrations" / "web"
+GUI_MODULES = {"main", "qt_compat", "qtpy", "PyQt5", "PyQt6", "PySide2", "PySide6"}
+VENDOR_SDKS = {"openai", "anthropic", "zhipuai"}
+
+
+def _module_references(path):
+    """Include local imports and literal dynamic imports, even inside functions."""
+    package = list(path.relative_to(SOURCE).parts[:-1])
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                yield node.lineno, alias.name
+        elif isinstance(node, ast.ImportFrom):
+            prefix = package[:len(package) - node.level + 1] if node.level else []
+            module = ".".join(prefix + ([node.module] if node.module else []))
+            if module:
+                yield node.lineno, module
+            for alias in node.names:
+                yield node.lineno, ".".join(filter(None, (module, alias.name)))
+        elif isinstance(node, ast.Call) and node.args:
+            function = node.func
+            name = function.id if isinstance(function, ast.Name) else getattr(function, "attr", "")
+            if name in {"__import__", "import_module"} and isinstance(node.args[0], ast.Constant):
+                module = node.args[0].value
+                if isinstance(module, str):
+                    yield node.lineno, module.lstrip(".")
+
+
+def _assert_no_dependencies(paths, forbidden):
+    violations = []
+    for path in paths:
+        for line, module in _module_references(path):
+            root = module.removeprefix("src.").split(".", 1)[0]
+            if root in forbidden:
+                violations.append(f"{path.relative_to(ROOT)}:{line} -> {module}")
+    assert not violations, "\n".join(violations)
+
+
+def test_application_and_web_never_import_qt_desktop_or_vendor_sdks():
+    _assert_no_dependencies(
+        [*APPLICATION.rglob("*.py"), *WEB.rglob("*.py")], GUI_MODULES | VENDOR_SDKS
+    )
+
+
+def test_http_adapters_use_application_services_not_engineering_or_model_implementations():
+    _assert_no_dependencies(WEB.rglob("*.py"), {
+        "api", "model_provider", "plc_core", "plc_ir", "plc_agent", "plc_agent_tools",
+        "plc_json_validator", "plc_static_analyzer", "draw", "gxworks2", "simulator",
+        "pywinauto", "pythoncom", "credential_store", "config_manager",
+    })
+
+
+def test_deterministic_core_does_not_depend_on_application_or_model_protocol():
+    paths = {SOURCE / name for name in (
+        "plc_core.py", "plc_ir.py", "plc_generation_contract.py", "plc_semantics.py",
+        "plc_static_analyzer.py", "plc_timing.py", "plc_st_renderer.py", "draw.py",
+        "contract_repair.py", "ladder_repair.py",
+    )} | set(SOURCE.glob("plc_*validator.py"))
+    _assert_no_dependencies(paths, GUI_MODULES | VENDOR_SDKS | {
+        "api", "model_provider", "plc_agent", "application", "integrations", "mcp",
+    })
+
+
+def test_model_protocol_does_not_import_application_or_engineering_implementation():
+    _assert_no_dependencies([SOURCE / "model_provider.py", SOURCE / "tool_messages.py"],
+        GUI_MODULES | {"application", "integrations", "api", "plc_agent", "plc_core",
+                       "plc_ir", "gxworks2", "simulator", "draw", "pywinauto", "pythoncom"})
+
+
+def test_all_application_and_web_modules_import_with_gui_and_desktop_execution_blocked(tmp_path):
+    if importlib.util.find_spec("fastapi") is None:
+        pytest.skip("Optional requirements-web.txt is not installed")
+    modules = []
+    for path in [*APPLICATION.rglob("*.py"), *WEB.rglob("*.py")]:
+        parts = list(path.relative_to(SOURCE).with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        modules.append(".".join(parts))
+    script = '''
+import importlib, importlib.abc, json, sys
+blocked = {"main", "qt_compat", "qtpy", "PyQt5", "PyQt6", "PySide2", "PySide6",
+           "pywinauto", "pythoncom", "simulator.runtime"}
+attempts = []
+class BlockDesktop(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if any(fullname == name or fullname.startswith(name + ".") for name in blocked):
+            attempts.append(fullname)
+            raise ImportError("Desktop dependency attempted: " + fullname)
+sys.meta_path.insert(0, BlockDesktop())
+for module in json.loads(sys.argv[1]):
+    importlib.import_module(module)
+assert not attempts, attempts
+assert not any(name in sys.modules for name in blocked)
+'''
+    env = dict(os.environ, PYTHONPATH=str(SOURCE), PYTHONDONTWRITEBYTECODE="1")
+    completed = subprocess.run([sys.executable, "-c", script, json.dumps(sorted(set(modules)))],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=45)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert not list(tmp_path.iterdir()), "Importing modules must not create local service state"
+
+
+def _requirements(path, seen=None):
+    seen = set() if seen is None else seen
+    path = path.resolve()
+    if path in seen:
+        return set()
+    seen.add(path)
+    names = set()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        include = re.match(r"^(?:-r\s*|--requirement(?:\s+|=))(.+)$", line)
+        if include:
+            names.update(_requirements(path.parent / include.group(1).strip(), seen))
+            continue
+        name = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", line)
+        if name:
+            names.add(re.sub(r"[-_.]+", "-", name.group()).lower())
+    return names
+
+
+@pytest.mark.parametrize("manifest", ["requirements.txt", "requirements-win7.txt"])
+def test_optional_web_server_dependencies_do_not_enter_desktop_manifests(manifest):
+    web_only = {"fastapi", "uvicorn", "starlette", "sse-starlette", "httptools",
+                "watchfiles", "python-multipart", "pydantic-settings"}
+    assert not _requirements(ROOT / manifest).intersection(web_only)
+
+
+def test_web_runtime_has_its_own_manifest_without_qt():
+    names = _requirements(ROOT / "requirements-web.txt")
+    assert {"fastapi", "uvicorn"} <= names
+    assert not names.intersection({"pyqt5", "pyqt6", "pyside2", "pyside6", "qtpy"})
