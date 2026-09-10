@@ -37,6 +37,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      artifact_name: ${{ steps.version.outputs.artifact_name }}
     defaults:
       run:
         shell: pwsh
@@ -79,6 +80,7 @@ jobs:
           if (($tag -split '-')[0] -ne "v$version") { throw 'Tag must match web/package.json version.' }
           $pre = $tag.Contains('-') -or ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and $env:INPUT_PRERELEASE -eq 'true')
           "tag=$tag" >> $env:GITHUB_OUTPUT
+          "artifact_name=windows-web-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
           "prerelease=$($pre.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
       - name: Install Web runtime and packaging dependencies
@@ -178,7 +180,7 @@ jobs:
       - name: Retain verified release assets
         uses: actions/upload-artifact@v4
         with:
-          name: windows-web-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.version.outputs.artifact_name }}
           path: release-assets/*
           if-no-files-found: error
           compression-level: 0
@@ -209,15 +211,18 @@ jobs:
       - name: Download verified Windows assets
         uses: actions/download-artifact@v4
         with:
-          name: windows-web-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.build.outputs.artifact_name }}
           path: release-assets
       - name: Publish only after all assets are uploaded and verified
         shell: python
         run: |
           import hashlib, json, os, subprocess
           from pathlib import Path
-          def gh(*args, check=True):
-              return subprocess.run(['gh', *args], check=check, text=True, capture_output=True)
+          def gh(*args):
+              result = subprocess.run(['gh', *args], text=True, capture_output=True)
+              if result.returncode:
+                  raise RuntimeError(result.stderr)
+              return result
           tag, repo, sha = os.environ['RELEASE_TAG'], os.environ['GH_REPO'], os.environ['GITHUB_SHA']
           assets = Path('release-assets')
           for line in (assets / 'SHA256SUMS.txt').read_text(encoding='utf-8').splitlines():
@@ -225,14 +230,23 @@ jobs:
               assert Path(name).name == name, 'Unsafe asset name'
               with (assets / name).open('rb') as stream:
                   assert hashlib.file_digest(stream, 'sha256').hexdigest() == digest, 'Artifact checksum mismatch'
-          assert json.loads((assets / 'build-info.json').read_text())['source_commit'] == sha
+          info = json.loads((assets / 'build-info.json').read_text())
+          assert info['source_commit'] == sha and info['tag'] == tag
           assert json.loads((assets / 'package-smoke.json').read_text())['ok'] is True
           refs = json.loads(gh('api', f'repos/{repo}/git/matching-refs/tags/{tag}').stdout)
           if any(ref['ref'] == f'refs/tags/{tag}' for ref in refs):
               target = json.loads(gh('api', f'repos/{repo}/commits/{tag}').stdout)['sha']
               assert target == sha, 'Existing tag points at a different commit; refusing to move it'
-          if gh('release', 'view', tag, check=False).returncode == 0:
-              raise RuntimeError('Release already exists; no release or asset will be overwritten. Use a new tag.')
+          def find_release():
+              # The by-tag endpoint excludes drafts. List drafts, then use their numeric ID.
+              pages = json.loads(gh('api', f'repos/{repo}/releases?per_page=100', '--paginate', '--slurp').stdout)
+              matches = [item for page in pages for item in page if item['tag_name'] == tag]
+              assert len(matches) <= 1, 'Ambiguous release tag'
+              return matches[0] if matches else None
+          release = find_release()
+          if release is not None:
+              assert release['target_commitish'] == sha, 'Existing release belongs to another source commit'
+              assert release['prerelease'] == (os.environ['IS_PRERELEASE'] == 'true'), 'Existing release type differs'
           notes = Path('release-notes.md')
           notes.write_text(
               f'# GXWorks Agent Web {tag}\n\n'
@@ -259,8 +273,24 @@ jobs:
                   '--title', f'GXWorks Agent Web {tag} (Windows x64)', '--notes-file', str(notes), '--draft']
           if os.environ['IS_PRERELEASE'] == 'true':
               args += ['--prerelease', '--latest=false']
-          gh(*args)
-          release = json.loads(gh('api', f'repos/{repo}/releases/tags/{tag}').stdout)
+          if release is None:
+              gh(*args)
+              release = find_release()
+              assert release is not None, 'Created draft was not found'
+          # Never replace an existing asset, including when retrying a failed upload.
+          present = {asset['name']: asset for asset in release['assets']}
+          assert len(present) == len(release['assets']), 'Duplicate existing asset names'
+          assert set(present) <= {path.name for path in paths}, 'Unexpected existing release assets'
+          for path in paths:
+              if path.name in present:
+                  with path.open('rb') as stream:
+                      assert present[path.name].get('digest') == 'sha256:' + hashlib.file_digest(stream, 'sha256').hexdigest(), 'Existing asset differs; use a new tag'
+          missing = [str(path) for path in paths if path.name not in present]
+          if missing:
+              assert release['draft'], 'Never modify a published release'
+              gh('release', 'upload', tag, *missing)
+          release_id = release['id']
+          release = json.loads(gh('api', f'repos/{repo}/releases/{release_id}').stdout)
           uploaded = {asset['name']: asset for asset in release['assets']}
           for path in paths:
               remote = uploaded[path.name]
@@ -268,9 +298,11 @@ jobs:
               if remote.get('digest'):
                   with path.open('rb') as stream:
                       assert remote['digest'] == 'sha256:' + hashlib.file_digest(stream, 'sha256').hexdigest()
-          gh('release', 'edit', tag, '--draft=false')
-          published = json.loads(gh('api', f'repos/{repo}/releases/tags/{tag}').stdout)
+          if release['draft']:
+              gh('api', f'repos/{repo}/releases/{release_id}', '--method', 'PATCH', '-F', 'draft=false')
+          published = json.loads(gh('api', f'repos/{repo}/releases/{release_id}').stdout)
           assert published['draft'] is False and len(published['assets']) == 4
+          assert json.loads(gh('api', f'repos/{repo}/commits/{tag}').stdout)['sha'] == sha
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
               summary.write(f"Published [{tag}]({published['html_url']}) with four verified assets.\n")
           print(published['html_url'])
