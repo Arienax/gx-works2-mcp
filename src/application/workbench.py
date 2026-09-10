@@ -164,6 +164,77 @@ class WorkbenchService:
                 output["spec_draft"] = restore_review_choices(output["spec_draft"], output["analysis"])
         return public(output)
 
+    def _render_ladder_preview(self, program, *, theme=None, confirmed_spec=None):
+        """Deterministic, in-memory view. Never trust an old rendered-file cache."""
+        from plc_ir import ir_to_ladder, validate_plc_ir
+        from plc_st_renderer import render_plc_ir_to_st
+        from draw import AdvancedSVGLadder
+
+        validate_plc_ir(program, confirmed_spec=confirmed_spec)
+        ladder = ir_to_ladder(program)
+        svg = AdvancedSVGLadder().generate_ladder(json.dumps(ladder, ensure_ascii=False))
+        return {"target_mode": "ladder", "ladder": ladder, "program": public(program),
+                "svg": self.projects.themed_svg(svg, theme), "st": render_plc_ir_to_st(program)}
+
+    def version_preview(self, project_id, version_id, *, theme=None):
+        """Re-render a saved ladder from its verified IR without changing a version.
+
+        A missing/corrupt SVG can be recovered as a display-only response. The
+        original files, approval state, project history and GX state stay intact.
+        """
+        from plc_ir import canonical_sha256
+
+        version = self.projects.raw_version(project_id, version_id)
+        if version.get("target_mode") != "ladder":
+            raise ValueError("Only a ladder version has a regenerable ladder preview")
+        program = self.projects.program(project_id, version_id)
+        if not program:
+            raise KeyError("Canonical program is unavailable")
+        if version.get("ir_sha256") and canonical_sha256(program) != version["ir_sha256"]:
+            raise ConflictError("Version IR changed after validation")
+        return {**self._render_ladder_preview(program, theme=theme,
+                    confirmed_spec=version.get("confirmed_spec_snapshot")),
+                "version_id": version_id, "read_only": True}
+
+    def generation_preview(self, job_id, *, theme=None):
+        """Inspect a completed candidate, including explicitly blocked diagnostics.
+
+        This is not an acceptance route. Legacy completed jobs retain their
+        staged IR and can be inspected without paying for another generation.
+        """
+        from plc_ir import canonical_sha256
+
+        if not self.jobs:
+            raise KeyError("Generation jobs are unavailable")
+        job = self.jobs.get(job_id)
+        if job["kind"] != "generation" or job["status"] != "completed":
+            raise KeyError("No completed generation is available")
+        self.projects.raw_project(job["project_id"])
+        output = self.output(job_id)
+        if output.get("proposal_id"):
+            proposal = self.proposals.get(output["proposal_id"])
+            if proposal["project_id"] != job["project_id"]:
+                raise ConflictError("Generation proposal belongs to another project")
+            return {**self.proposal_preview(proposal["id"], theme=theme), "job_id": job_id,
+                    "read_only": True, "proposal_id": proposal["id"]}
+        metadata = output.get("generation") or {}
+        mismatch = metadata.get("contract_mismatch")
+        if not mismatch or output.get("status") != "contract_mismatch" or metadata.get("target_mode") != "ladder":
+            raise KeyError("No inspectable generation candidate is available")
+        root = contained(self.state_dir / "staging" / record_id(job_id), self.state_dir / "staging")
+        path = contained(root / "program.ir.json", root)
+        if not path.is_file():
+            raise KeyError("Generated IR is unavailable")
+        program = read_json(path)
+        if canonical_sha256(program) != metadata.get("ir_sha256"):
+            raise ConflictError("Generated IR changed after validation")
+        # Display the known approach mismatch; do not waive it for acceptance.
+        # Structural, instruction and IR consistency checks remain mandatory.
+        return {**self._render_ladder_preview(program, theme=theme),
+                "job_id": job_id, "read_only": True, "status": "contract_mismatch",
+                "contract_mismatch": public(mismatch),
+                "validation": public(metadata.get("validation") or {})}
+
     def submit(self, command):
         self.writable()
         # Retry identity is the original HTTP command, not a newly observed
@@ -279,6 +350,8 @@ class WorkbenchService:
             if metadata.get("contract_mismatch"):
                 output["status"] = "contract_mismatch"
                 atomic_json(self.state_dir / "outputs" / (ctx.job_id + ".json"), output)
+                ctx.emit("progress", {"stage": "contract_mismatch", "severity": "warning",
+                    "message": "候选与确认方案冲突，仅可查看诊断预览，未创建可接受的提案。"})
                 return {"status": "contract_mismatch", "summary": "候选与确认规格存在冲突，请检查诊断。"}
             payload = {"project_id": project_id, "target_mode": metadata["target_mode"],
                        "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec")}
@@ -295,6 +368,8 @@ class WorkbenchService:
                     public_summary={"summary": text[:500], "validation": metadata["validation"], "diff": self._diff_summary(payload["_preview_diff"])},
                     base_version_id=(version or {}).get("id"), request_id=ctx.job_id)
             output["proposal_id"] = proposal["id"]
+            ctx.emit("progress", {"stage": "candidate_ready", "proposal_id": proposal["id"],
+                "message": "候选已保存，等待预览及人工接受。"})
         elif kind == "agent":
             from plc_agent import run_tool_agent
             result = run_tool_agent(text, context=context, runtime=self.projects.runtime, provider=provider,
@@ -478,7 +553,6 @@ class WorkbenchService:
         return payload
 
     def proposal_preview(self, proposal_id, *, theme=None):
-        from plc_ir import ir_to_ladder
         record = self.proposals.get(proposal_id)
         payload = self.proposals.read_private(proposal_id)
         if payload.get("target_mode") == "fbd":
@@ -487,16 +561,10 @@ class WorkbenchService:
             return {"target_mode": "fbd", "program": public(json.loads(artifacts["fbd"])),
                     "svg": artifacts["svg"].decode("utf-8"), "diff": public(payload["_preview_diff"])}
         if "_candidate_ir" in payload:
-            from plc_core import PLCCore
-            program = payload["_candidate_ir"]
-            # Managed, deterministic previews; no transient file names cross HTTP.
-            root = self.state_dir / "previews" / proposal_id
-            with self.lock.thread_lock:
-                if not (root / "ladder.svg").is_file():
-                    PLCCore().compile_project(program, root)
-            return {"target_mode": "ladder", "ladder": ir_to_ladder(program), "program": public(program),
-                    "svg": self.projects.themed_svg((root / "ladder.svg").read_text(encoding="utf-8"), theme),
-                    "st": (root / "program_from_ir.st").read_text(encoding="utf-8"),
+            # read_private verified the frozen payload hash. Re-render each read
+            # instead of returning a stale/corrupt cache. No project writes occur.
+            return {**self._render_ladder_preview(payload["_candidate_ir"], theme=theme,
+                        confirmed_spec=payload.get("_confirmed_spec")),
                     "diff": public(payload.get("_preview_diff") or self._candidate_diff(record["project_id"], record["base_version_id"], payload))}
         if payload.get("target_mode") == "st":
             entry = payload["artifacts"]["st"]

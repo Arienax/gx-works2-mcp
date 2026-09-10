@@ -166,6 +166,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     def program(project_id: str, version_id: str):
         return public(service.projects.program(project_id, version_id))
 
+    @app.get("/api/projects/{project_id}/versions/{version_id}/preview", response_model=dto.PublicObject)
+    def version_preview(project_id: str, version_id: str, theme: Literal["light", "dark"] | None = None):
+        return service.version_preview(project_id, version_id, theme=theme)
+
     @app.get("/api/projects/{project_id}/versions/{version_id}/diagnostics", response_model=dto.PublicObject)
     def diagnostics(project_id: str, version_id: str):
         return service.projects.diagnostics(project_id, version_id)
@@ -208,6 +212,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.get("/api/jobs/{job_id}/output", response_model=dto.JobOutput, response_model_exclude_unset=True)
     def output(job_id: str):
         return service.output(job_id)
+
+    @app.get("/api/jobs/{job_id}/preview", response_model=dto.PublicObject)
+    def generation_preview(job_id: str, theme: Literal["light", "dark"] | None = None):
+        return service.generation_preview(job_id, theme=theme)
 
     @app.post("/api/jobs/{job_id}/cancel", response_model=dto.Job, response_model_exclude_unset=True)
     def cancel(job_id: str):

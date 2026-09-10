@@ -4,7 +4,7 @@ name: Windows Web Release
 # requested bootstrap release; later releases use a v* tag or workflow_dispatch.
 on:
   push:
-    branches: [main]
+    branches: [main, fix/generation-result-refresh]
     tags: ['v*']
     paths: ['.github/workflows/windows-release.yml']
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/v') ||
-      (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release-windows]'))
+      ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/generation-result-refresh') && contains(github.event.head_commit.message, '[release-windows]'))
     runs-on: windows-2022
     timeout-minutes: 40
     outputs:
@@ -97,6 +97,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Test dependency installation failed.' }
           python -m pytest -q tests/test_generation_repair_assembly.py tests/test_generation_repair_workflow.py tests/test_generation_workflow.py tests/test_application_job_errors.py --junitxml=generation-repair-tests.xml
           if ($LASTEXITCODE -ne 0) { throw 'Generation regression tests failed.' }
+      - name: Validate real generation delivery HTTP boundary
+        run: |
+          python -m pytest -q tests/test_generation_delivery.py tests/test_web_api.py tests/test_web_contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'Generation delivery API regression failed.' }
       - name: Validate materialized knowledge resources
         shell: python
         run: |
@@ -191,6 +195,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Browser installation failed.' }
           python scripts/web_spec_handoff_smoke.py --web-dist dist/GXWorks-Agent-Web/web/dist --report release-assets/web-spec-handoff.json
           if ($LASTEXITCODE -ne 0) { throw 'Specification handoff browser regression failed.' }
+      - name: Real backend and packaged frontend result delivery acceptance
+        run: |
+          python scripts/web_generation_e2e.py --web-dist dist/GXWorks-Agent-Web/web/dist --report release-assets/generation-delivery-e2e.json
+          if ($LASTEXITCODE -ne 0) { throw 'Real backend/browser delivery regression failed.' }
       - name: Refresh checksums including browser test evidence
         shell: python
         run: |
@@ -287,7 +295,8 @@ jobs:
               '- Includes built frontend, real LFS knowledge resources, and the repository-built x86 simulator gateway.\n'
               '- The extracted ZIP passed server startup, static asset, operator login, read-only workspace, and Qt-exclusion checks.\n'
               '- SHA256SUMS.txt, build-info.json, package-smoke.json and web-spec-handoff.json are attached.\n'
-              '- Browser checks cover confirmation, empty-input generation, preview navigation and approval boundaries using a mocked API; no model or PLC is called by these UI tests.\n\n'
+              '- Browser checks cover confirmation, empty-input generation, preview navigation and approval boundaries using a mocked API; no model or PLC is called by these UI tests.\n'
+              '- generation-delivery-e2e.json additionally checks a real HTTP backend against the packaged frontend, including visible SVG decoding, refresh, reload, blocked outcomes, retry and explicit acceptance. Only model replies are fixtures; no live API call or PLC operation is made.\n\n'
               '## Scope and limitations\n'
               '- Preview software; unsigned executable and portable ZIP, not a signed installer.\n'
               '- GX Works2, GX Simulator2 and MX Component are not bundled; install licensed software separately for those integrations.\n'
@@ -296,7 +305,7 @@ jobs:
               encoding='utf-8',
           )
           paths = sorted(path for path in assets.iterdir() if path.is_file())
-          assert len(paths) == 5 and len(list(assets.glob('*-Windows-x64.zip'))) == 1
+          assert len(paths) == 6 and len(list(assets.glob('*-Windows-x64.zip'))) == 1
           args = ['release', 'create', tag, *map(str, paths), '--target', sha,
                   '--title', f'GXWorks Agent Web {tag} (Windows x64)', '--notes-file', str(notes), '--draft']
           if os.environ['IS_PRERELEASE'] == 'true':
@@ -329,8 +338,8 @@ jobs:
           if release['draft']:
               gh('api', f'repos/{repo}/releases/{release_id}', '--method', 'PATCH', '-F', 'draft=false')
           published = json.loads(gh('api', f'repos/{repo}/releases/{release_id}').stdout)
-          assert published['draft'] is False and len(published['assets']) == 5
+          assert published['draft'] is False and len(published['assets']) == 6
           assert json.loads(gh('api', f'repos/{repo}/commits/{tag}').stdout)['sha'] == sha
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
-              summary.write(f"Published [{tag}]({published['html_url']}) with five verified assets.\n")
+              summary.write(f"Published [{tag}]({published['html_url']}) with six verified assets.\n")
           print(published['html_url'])

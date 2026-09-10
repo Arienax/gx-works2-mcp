@@ -1,5 +1,32 @@
 export type Locale = "zh-CN" | "en" | "ja";
 const words: Record<string, [string, string]> = {
+  "刷新结果 / 重绘梯形图": ["Refresh / redraw ladder", "結果更新・ラダー再描画"],
+  "正在刷新预览": ["Refreshing preview", "プレビュー更新中"],
+  "从已校验的程序重新绘制预览，不调用模型、不接受版本、不导入 GX。": ["Render the validated program again, without model calls, acceptance or GX import.", "検証済みプログラムを再描画します。モデル呼出・承認・GXインポートは行いません。"],
+  "预览已刷新，未调用模型或修改程序。": ["Preview refreshed. No model was called and no program was changed.", "プレビューを更新しました。モデル呼出やプログラム変更はありません。"],
+  "未取得有效的梯形图预览，请检查诊断。": ["No valid ladder preview was returned. Check diagnostics.", "有効なラダープレビューがありません。診断を確認してください。"],
+  "当前没有可重绘的已校验程序。": ["There is no validated program to redraw.", "再描画できる検証済みプログラムがありません。"],
+  "梯形图加载失败，请点击“刷新结果 / 重绘梯形图”。": ["The diagram did not load. Click Refresh / redraw ladder.", "図を読み込めません。「結果更新・ラダー再描画」を押してください。"],
+
+  "生成结果": ["Generation result", "生成結果"],
+  "候选与确认方案冲突，未创建可接受的程序。": ["The candidate conflicts with the confirmed approach; no acceptable program was created.", "候補が確認済み方式と一致しないため、承認可能なプログラムは作成されていません。"],
+  "可以查看受阻候选及诊断；不能接受、导入或运行该候选。": ["Inspect the blocked candidate and diagnostics. It cannot be accepted, imported or executed.", "ブロックされた候補と診断を確認できます。承認・インポート・実行はできません。"],
+  "查看受阻候选": ["Inspect blocked candidate", "ブロックされた候補を確認"],
+  "检查确认规格": ["Review confirmed specification", "確認済み仕様を確認"],
+  "候选已生成，查看预览后再人工接受。": ["Candidate generated. Review the preview before explicitly accepting it.", "候補を生成しました。プレビュー確認後に手動で承認してください。"],
+  "查看候选与校验": ["Review candidate and validation", "候補と検証を確認"],
+  "正在读取生成结果": ["Loading generation result", "生成結果を読み込み中"],
+  "任务已结束，但尚未取得可显示的候选结果。": ["The task ended, but a displayable candidate result is not available.", "タスクは終了しましたが、表示可能な候補結果を取得できていません。"],
+  "请重试读取结果；不要重复调用模型或重新建立工程。": ["Retry loading the result; do not call the model again or recreate the project.", "結果の読み込みを再試行してください。モデルの再呼び出しやプロジェクトの再作成は不要です。"],
+  "重新读取结果": ["Reload result", "結果を再読み込み"],
+  "受阻候选预览（不可接受）": ["Blocked candidate preview (cannot accept)", "ブロックされた候補のプレビュー（承認不可）"],
+  "未满足确认方案；不提供接受或导入操作。": ["Confirmed approach not satisfied; acceptance and import are unavailable.", "確認済み方式を満たしていません。承認・インポートはできません。"],
+  "候选与确认方案冲突": ["Candidate conflicts with confirmed approach", "候補が確認済み方式と不一致"],
+  "候选已生成，等待查看": ["Candidate generated, awaiting review", "候補を生成済み・確認待ち"],
+  "生成结果暂不可用": ["Generation result unavailable", "生成結果を取得できません"],
+  "请在 Agent 面板查看生成结果及具体诊断。": ["See the Agent panel for the result and diagnostic details.", "Agent パネルで生成結果と診断の詳細を確認してください。"],
+  "查看生成结果": ["Show generation result", "生成結果を表示"],
+
   "公共串联输入中不能包含并联块；请在分支输入中表达并联逻辑。": ["Shared series inputs cannot contain a parallel block; express parallel logic inside branch inputs.", "共通直列入力に並列ブロックは使えません。分岐入力で並列条件を表してください。"],
   "梯形图结构、指令或扫描语义未通过检查。": ["Ladder structure, instructions or scan semantics failed validation.", "ラダー構造、命令、またはスキャン動作の検証に失敗しました。"],
   "缺少可合并的完整候选，修复必须返回完整程序。": ["There is no complete candidate to merge; the repair must return a full program.", "結合可能な完全候補がないため、修正にはプログラム全体が必要です。"],
@@ -320,6 +347,9 @@ const states: Record<string, [string, string, string]> = {
   imported: ["已导入 GX", "Imported", "インポート済み"],
   import_failed: ["导入失败", "Import failed", "インポート失敗"],
   local_only: ["仅本地检查", "Local only", "ローカル検査のみ"],
+  candidate_ready: ["候选待确认", "Candidate awaiting review", "候補確認待ち"],
+  loading_result: ["读取结果中", "Loading result", "結果読み込み中"],
+  result_unavailable: ["结果不可用", "Result unavailable", "結果取得不可"],
   contract_mismatch: ["规格冲突", "Specification mismatch", "仕様の不一致"],
 };
 export const statusText = (locale: Locale, state: string) =>
@@ -331,10 +361,11 @@ export const statusTone = (state: string) =>
     "interrupted",
     "unavailable",
     "import_failed",
+    "result_unavailable",
   ].includes(state)
     ? "bad"
     : ["accepted", "passed", "completed", "imported"].includes(state)
       ? "good"
-      : ["pending", "queued", "cancelling", "contract_mismatch"].includes(state)
+      : ["pending", "queued", "cancelling", "contract_mismatch", "candidate_ready"].includes(state)
         ? "warn"
         : "neutral";

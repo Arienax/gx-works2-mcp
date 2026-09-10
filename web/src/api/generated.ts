@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Generation Preview */
+        get: operations["generation_preview_api_jobs__job_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/openapi.json": {
         parameters: {
             query?: never;
@@ -390,6 +407,23 @@ export interface paths {
         };
         /** Diagnostics */
         get: operations["diagnostics_api_projects__project_id__versions__version_id__diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/versions/{version_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Version Preview */
+        get: operations["version_preview_api_projects__project_id__versions__version_id__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1945,6 +1979,39 @@ export interface operations {
             };
         };
     };
+    generation_preview_api_jobs__job_id__preview_get: {
+        parameters: {
+            query?: {
+                theme?: ("light" | "dark") | null;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     schema_api_openapi_json_get: {
         parameters: {
             query?: never;
@@ -2292,6 +2359,40 @@ export interface operations {
     diagnostics_api_projects__project_id__versions__version_id__diagnostics_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    version_preview_api_projects__project_id__versions__version_id__preview_get: {
+        parameters: {
+            query?: {
+                theme?: ("light" | "dark") | null;
+            };
             header?: never;
             path: {
                 project_id: string;

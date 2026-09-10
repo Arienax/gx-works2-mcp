@@ -111,6 +111,8 @@ class MockAPI:
         elif path == "/proposals":
             pid = parse_qs(url.query).get("project_id", [None])[0]
             data = {"proposals": [p for p in self.proposals if pid in (None, p["project_id"])]}
+        elif path == "/proposals/candidate-1":
+            data = next(p for p in self.proposals if p["id"] == "candidate-1")
         elif path == "/proposals/candidate-1/preview":
             self.preview_reads.append(path)
             data = {"target_mode": "ladder", "program": {"networks": []}, "diff": {},
