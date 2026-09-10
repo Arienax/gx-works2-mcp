@@ -124,6 +124,9 @@ _PUBLIC_FIELDS = frozenset({
     "outcome", "passed", "environment", "reasoning",
     "gx_compile_status", "simulation_status", "operation", "approval_id",
     "success", "attempt_id", "candidate_version_id", "source_run_id",
+    # Explicit model activity/preview fields; no provider configuration or
+    # tool-call arguments are included in these presentation events.
+    "phase", "received_characters", "request_number", "provisional", "truncated", "content",
 })
 
 

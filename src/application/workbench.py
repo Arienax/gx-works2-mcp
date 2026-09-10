@@ -206,9 +206,17 @@ class WorkbenchService:
                 return self._read_gx(ctx, snapshot)
             from api import provider_scope
             from i18n import language_context
+            from model_provider import response_policy_scope
+            from application.model_progress import ModelJobContext, ModelProgressReporter
             ctx.checkpoint()
-            with language_context(snapshot["response_language"]), provider_scope(provider, model_name=model.get("model")):
-                result = self._run_job(ctx, snapshot, context, images, provider)
+            model_context = ModelJobContext(ctx)
+            model_progress = ModelProgressReporter(model_context)
+            with language_context(snapshot["response_language"]), provider_scope(provider, model_name=model.get("model")), response_policy_scope(
+                    enforce_language=False, on_progress=model_progress, on_preview=model_progress.preview):
+                try:
+                    result = self._run_job(model_context, snapshot, context, images, provider)
+                finally:
+                    model_context.flush()
             return result
         return self.jobs.submit(command["kind"], snapshot, worker, request_id=command["request_id"])
 
@@ -243,7 +251,8 @@ class WorkbenchService:
             analysis = analyze_requirement_streaming(text, confirmed_spec=project.get("confirmed_spec"),
                 conversation_history=project.get("messages", []), image_attachments=images,
                 on_reasoning_chunk=lambda t: ctx.emit("reasoning", {"text": t}),
-                on_content_chunk=lambda t: ctx.emit("content", {"text": t}), response_language=language)
+                on_content_chunk=lambda t: ctx.emit("content", {"text": t}), response_language=language,
+                on_format_repair=lambda: ctx.emit("progress", {"message": "正在修正需求分析的回复格式"}))
             if not isinstance(analysis, dict):
                 raise ValueError("需求分析未完成。")
             output = {"analysis": analysis, "spec_draft": build_review_draft(analysis, project.get("confirmed_spec")),

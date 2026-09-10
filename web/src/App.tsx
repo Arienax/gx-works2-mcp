@@ -52,6 +52,7 @@ import { statusText, statusTone, translate } from "./i18n";
 import type { Locale } from "./i18n";
 import { SpecEditor } from "./features/SpecEditor";
 import { JobFailure } from "./features/JobFailure";
+import { JobProgress } from "./features/JobProgress";
 import { Settings } from "./features/Settings";
 import { FBDPanel, FBDImport, emptyFBD } from "./features/FBDPanel";
 import type { FBDModel } from "./features/FBDPanel";
@@ -123,6 +124,8 @@ export default function App() {
   const [specIssues, setSpecIssues] = useState<{ path: string; message: string }[]>([]);
   const uploadRef = useRef<HTMLInputElement>(null);
   const specBinding = useRef("");
+  const specDirty = useRef(false);
+  const openedDrafts = useRef(new Set<string>());
   const activeProjectRef = useRef(pid);
   const projectEpoch = useRef(0);
   useEffect(() => {
@@ -139,6 +142,7 @@ export default function App() {
     setProposals([]);
     setSpec(null);
     setSpecIssues([]);
+    specDirty.current = false;
     setNetwork(null);
   }, [pid]);
   const version = project?.versions?.find((v) => v.id === vid);
@@ -343,6 +347,11 @@ export default function App() {
       if (value.sequence <= sequence) return;
       sequence = value.sequence;
       setEvents((old) => [...old, value]);
+      if (["running", "completed", "failed", "cancelled", "interrupted"].includes(value.event_type)) {
+        setJobs((old) => old.map((job) => job.id === value.job_id
+          ? { ...job, status: value.event_type, ...(value.payload?.result ? { result: value.payload.result as Record<string, Json> } : {}) }
+          : job));
+      }
       if (
         ["completed", "failed", "cancelled", "interrupted"].includes(
           value.event_type,
@@ -368,6 +377,16 @@ export default function App() {
     };
   }, [jobId, session]);
   useEffect(() => {
+    if (!analysisOutput?.spec_draft || !project || project.id !== pid ||
+        jobId !== jobs[0]?.id || openedDrafts.current.has(jobId) || specDirty.current ||
+        (analysisOutput.spec_base_hash ?? null) !== (project.confirmed_spec_hash ?? null) ||
+        (analysisOutput.base_version_id ?? null) !== (vid || null)) return;
+    openedDrafts.current.add(jobId);
+    setSpec(analysisOutput.spec_draft as Spec);
+    setSpecIssues([]);
+    setPanel("spec");
+  }, [analysisOutput, project, pid, vid, jobId, jobs]);
+  useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(timer);
@@ -392,6 +411,7 @@ export default function App() {
     if (activeProjectRef.current !== pid || epoch !== projectEpoch.current)
       return;
     setJobId(job.id);
+    if (kind === "analysis") specDirty.current = false;
     setJobs((old) => [job, ...old]);
     setPanel("agent");
     setAttachments([]);
@@ -411,6 +431,7 @@ export default function App() {
       return;
     }
     setSpecIssues([]);
+    specDirty.current = false;
     if (result.spec) setSpec(result.spec);
     setNotice(t("规格已确认"));
     setIntent("generation");
@@ -1207,13 +1228,14 @@ export default function App() {
                     <span>{currentJob.kind}</span>
                     {status(currentJob.status)}
                   </div>
+                  <JobProgress job={currentJob} events={events} t={t} />
                   {events.some((e) =>
-                    ["reasoning", "progress"].includes(e.event_type),
+                    e.event_type === "progress",
                   ) && (
                     <details className="reasoning">
                       <summary>
                         <Workflow size={14} />
-                        {t("思考与工具记录")}
+                        {t("任务记录")}
                         <ChevronDown size={14} />
                       </summary>
                       {events
@@ -1221,20 +1243,17 @@ export default function App() {
                         .map((e) => (
                           <p key={e.sequence}>
                             <Check size={11} />
-                            {String(
+                            {t(String(
                               e.payload?.message ||
                                 e.payload?.text ||
                                 e.payload?.stage ||
                                 "",
-                            )}
+                            ))}
                           </p>
                         ))}
-                      {eventText("reasoning") && (
-                        <pre>{eventText("reasoning")}</pre>
-                      )}
                     </details>
                   )}
-                  {eventText("content") && (
+                  {currentJob.kind !== "analysis" && currentJob.status === "completed" && eventText("content") && (
                     <AcceptedMessage
                       kind={currentJob.kind}
                       text={eventText("content")}
@@ -1254,11 +1273,12 @@ export default function App() {
                         }
                         onClick={() => {
                           setSpec(analysisOutput.spec_draft as Spec);
+                          specDirty.current = false;
                           setSpecIssues([]);
                           setPanel("spec");
                         }}
                       >
-                        {t("查看规格草稿")}
+                        {t("编辑并确认规格")}
                       </Button>
                       {(analysisOutput.spec_base_hash ?? null) !==
                         (project?.confirmed_spec_hash ?? null) && (
@@ -1290,7 +1310,7 @@ export default function App() {
               )}
               <p className="acceptance-note">
                 <ShieldCheck size={13} />
-                {t("模型内容通过验收后显示。")}
+                {t("生成期间显示实时进度，完成后查看结果并确认。")}
               </p>
             </div>
             <div className="composer">
@@ -1379,7 +1399,7 @@ export default function App() {
           <SpecEditor
             value={spec}
             issues={specIssues}
-            onChange={(value) => { setSpec(value); setSpecIssues([]); }}
+            onChange={(value) => { specDirty.current = true; setSpec(value); setSpecIssues([]); }}
             t={t}
             disabled={!canWrite || !pid}
             onSave={(s) => void guarded(() => saveSpec(s))}
@@ -1736,34 +1756,16 @@ function AcceptedMessage({
   } catch {
     /* Accepted prose is rendered verbatim. */
   }
-  if (kind === "generation" && structured)
+  if (kind === "generation")
     return (
       <div className="accepted-content">
         <p>{t("候选内容已通过响应验收，请在待审批中查看校验结果与差异。")}</p>
-        <details>
-          <summary>{t("查看完整响应")}</summary>
-          <pre>{text}</pre>
-        </details>
       </div>
     );
   if (kind === "analysis" && structured)
     return (
       <div className="accepted-content">
         <p>{String(structured.summary || "")}</p>
-        {["missing_info", "assumptions"].map((field) =>
-          Array.isArray(structured[field]) && structured[field].length > 0 ? (
-            <div key={field}>
-              <strong>
-                {t(field === "missing_info" ? "待补充信息" : "假设")}
-              </strong>
-              <DataView value={structured[field]} />
-            </div>
-          ) : null,
-        )}
-        <details>
-          <summary>{t("查看完整响应")}</summary>
-          <DataView value={structured} />
-        </details>
       </div>
     );
   return <pre className="accepted-content">{text}</pre>;

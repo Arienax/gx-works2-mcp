@@ -7,6 +7,8 @@ import base64
 import json
 import hashlib
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
@@ -96,6 +98,43 @@ ModelEvent = Union[TextDelta, ReasoningDelta, ToolCallStart, ToolCallEnd, Usage]
 
 
 @dataclass(frozen=True)
+class ResponseProgress:
+    """Transport activity only, with no unaccepted text or executable calls."""
+    phase: str
+    received_characters: int = 0
+
+
+@dataclass(frozen=True)
+class ResponsePreview:
+    """Optional, explicitly provisional text; never used as a tool event."""
+    kind: str
+    text: str = ""
+
+
+_language_enforcement = ContextVar("model_language_enforcement", default=True)
+_progress_observer = ContextVar("model_progress_observer", default=None)
+_preview_observer = ContextVar("model_preview_observer", default=None)
+
+
+@contextmanager
+def response_policy_scope(*, enforce_language=True, on_progress=None, on_preview=None):
+    """Select presentation policy for this task without changing wire options.
+
+    The workbench uses language as a preference. Existing strict callers keep
+    their contract; neither policy relaxes JSON or declared field types.
+    """
+    language_token = _language_enforcement.set(bool(enforce_language))
+    progress_token = _progress_observer.set(on_progress)
+    preview_token = _preview_observer.set(on_preview)
+    try:
+        yield
+    finally:
+        _preview_observer.reset(preview_token)
+        _progress_observer.reset(progress_token)
+        _language_enforcement.reset(language_token)
+
+
+@dataclass(frozen=True)
 class ModelRequest:
     messages: Tuple[ModelMessage, ...]
     model: Optional[str] = None
@@ -108,6 +147,7 @@ class ModelRequest:
     response_contract: ResponseContract = TEXT_RESPONSE
     tool_response_contracts: Tuple[Tuple[str, ResponseContract], ...] = ()
     preserved_annotations: Tuple[str, ...] = ()
+    enforce_response_language: bool = field(default_factory=lambda: _language_enforcement.get())
 
     def __post_init__(self):
         object.__setattr__(self, "response_language", normalize_language(self.response_language))
@@ -622,6 +662,12 @@ def collect_response(
     """
     request = with_response_language(request)
     attempts = []
+    progress_observer = _progress_observer.get()
+    preview_observer = _preview_observer.get()
+
+    def preview(kind, text=""):
+        if preview_observer is not None:
+            preview_observer(ResponsePreview(kind, text))
 
     def consume(current: ModelRequest) -> RawModelResponse:
         reasoning = []
@@ -629,6 +675,11 @@ def collect_response(
         calls = []
         events = []
         usage = None
+        received_characters = 0
+
+        def progress(phase):
+            if progress_observer is not None:
+                progress_observer(ResponseProgress(phase, received_characters))
 
         def snapshot(error_code=""):
             return RawModelResponse(
@@ -637,17 +688,26 @@ def collect_response(
             )
 
         try:
+            progress("waiting")
+            preview("start")
             for event in provider.stream(current):
                 events.append(event)
                 if isinstance(event, ReasoningDelta):
                     reasoning.append(event.text)
+                    received_characters += len(event.text)
+                    progress("thinking")
+                    preview("reasoning", event.text)
                 elif isinstance(event, TextDelta):
                     content.append(event.text)
+                    received_characters += len(event.text)
+                    progress("receiving")
+                    preview("content", event.text)
                 elif isinstance(event, ToolCallEnd):
                     calls.append(event.tool_call)
                 elif isinstance(event, Usage):
                     usage = event
         except Exception as error:
+            preview("discard")
             safe_error = public_model_error(error)
             attempts.append(snapshot(safe_error.code))
             safe_error.raw_attempts = tuple(attempts)
@@ -659,6 +719,7 @@ def collect_response(
             raise safe_error from error
         raw = snapshot()
         attempts.append(raw)
+        progress("validating")
         return raw
 
     try:
@@ -709,7 +770,15 @@ def collect_response(
                 source_texts=sources, annotations=annotations,
                 path_prefix=f"tool_calls[{index}].arguments",
             ))
+    if not request.enforce_response_language:
+        # Human-language preference must not reject an otherwise usable
+        # engineering response. JSON syntax and schema field failures remain
+        # hard failures; PLC/GXW validators still run in their existing layers.
+        language_reasons = {"unsupported_script", "non_english_script", "japanese_script",
+                            "latin_prose", "ambiguous_han_only"}
+        violations = [v for v in violations if v.reason not in language_reasons]
     if violations:
+        preview("discard")
         raise ResponseRejectedError(request, attempts, violations)
 
     # Reasoning is optional display material. A mismatch hides that entire
@@ -719,6 +788,7 @@ def collect_response(
                         if reasoning_violations else raw.message)
     accepted_events = tuple(event for event in raw.events
                             if not (reasoning_violations and isinstance(event, ReasoningDelta)))
+    preview("complete")
     for event in accepted_events:
         if on_event is not None:
             on_event(event)
@@ -815,6 +885,9 @@ __all__ = [
     "ModelRequest",
     "RawModelResponse",
     "ResponseRejectedError",
+    "ResponseProgress",
+    "ResponsePreview",
+    "response_policy_scope",
     "OpenAICompatibleProvider",
     "ReasoningDelta",
     "SystemMessage",

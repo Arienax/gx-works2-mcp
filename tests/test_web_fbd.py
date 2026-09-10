@@ -158,6 +158,34 @@ def test_generation_uses_model_contract_and_freezes_gxw_before_worker(service, m
         service._check_snapshot(snapshot)
 
 
+@pytest.mark.parametrize("invalid_connection", [False, True])
+def test_english_fbd_summary_is_allowed_but_dangling_connection_is_rejected(service, invalid_connection):
+    from model_provider import ReasoningDelta, TextDelta
+    model = two_timers()
+    if invalid_connection:
+        model["wires"][0]["from"] = "nonexistent_node.Q"
+    class Provider:
+        def stream(self, request):
+            assert request.enforce_response_language is False
+            yield ReasoningDelta("Checking the connections.")
+            yield TextDelta(json.dumps({"summary": "Two connected timers.", "model": model}))
+    service.model_factory = lambda: (Provider(), {"model": "offline"})
+    project = service.create_project(name="English FBD summary", target_mode="fbd")
+    job = service.submit({"kind": "generation", "project_id": project["id"], "request_id": "language-preference",
+                         "text": "两个定时器串接", "response_language": "zh-CN"})
+    service.jobs._futures[job["id"]].result(timeout=15)
+    state = service.jobs.get(job["id"])
+    assert state["status"] == ("failed" if invalid_connection else "completed")
+    assert not service.projects.raw_project(project["id"])["versions"]
+    proposals = service.proposals.list(project["id"])
+    if invalid_connection:
+        assert proposals == []
+        assert not list((service.state_dir / "staging").rglob("*.gxw"))
+    else:
+        assert len(proposals) == 1 and proposals[0]["status"] == "pending"
+        assert service.proposal_preview(proposals[0]["id"])["target_mode"] == "fbd"
+
+
 def test_approved_gx_import_uses_own_copy_on_com_queue(service, tmp_path):
     p, _, candidate = generate(service)
     vid = accept(service, candidate)

@@ -447,7 +447,38 @@ def test_refresh_during_generation_reads_same_running_job_without_restart(offlin
         assert not store.get_project(project)["versions"]
 
 
-def test_language_rejection_is_a_failed_job_without_candidate_or_artifacts(offline, tmp_path):
+def test_live_activity_is_persisted_before_final_content_or_candidate_exists(offline, tmp_path):
+    entered, release = threading.Event(), threading.Event()
+    class PausedProvider(_Provider):
+        def stream(self, request):
+            yield TextDelta('{"summary":"')
+            entered.set()
+            assert release.wait(10)
+            yield TextDelta('启停控制","approaches":[],"missing_info":[]}')
+    service = WorkbenchService(tmp_path / "workspace", tmp_path / "state",
+                              model_factory=lambda: (PausedProvider(), {"model": "offline"}))
+    with TestClient(_app(tmp_path / "workspace", tmp_path / "state", service=service), base_url=ORIGIN) as client:
+        headers = _login(client)
+        project = service.create_project(name="Live analysis")["id"]
+        response = client.post("/api/jobs", headers=headers, json={"kind": "analysis", "project_id": project,
+            "request_id": "live-analysis", "text": "起保停", "response_language": "zh-CN"})
+        try:
+            assert response.status_code == 202
+            job = response.json()["id"]
+            assert entered.wait(5)
+            assert client.get("/api/jobs/" + job).json()["status"] == "running"
+            events = service.jobs.events(job)
+            assert any(e["event_type"] == "model_progress" and e["payload"]["phase"] == "receiving" for e in events)
+            assert any(e["event_type"] == "model_preview" and e["payload"].get("content") == '{"summary":"' for e in events)
+            assert not any(e["event_type"] in ("content", "reasoning", "completed") for e in events)
+            assert client.get(f"/api/jobs/{job}/output").status_code == 404
+            assert client.get("/api/proposals").json()["proposals"] == []
+        finally:
+            release.set()
+        _complete(client, service, response)
+
+
+def test_language_preference_does_not_block_a_valid_candidate_or_accept_it(offline, tmp_path):
     workspace = tmp_path / "workspace"
     store = SessionStore(base_dir=workspace, legacy_dir=tmp_path)
     project = store.create_project("Rejected language")["id"]
@@ -465,15 +496,13 @@ def test_language_rejection_is_a_failed_job_without_candidate_or_artifacts(offli
         job = response.json()["id"]
         service.jobs._futures[job].result(timeout=15)
         state = client.get("/api/jobs/" + job).json()
-        assert state["status"] == "failed"
-        assert state["result"] is None
+        assert state["status"] == "completed"
         assert len(provider.requests) == 1
-        assert client.get("/api/proposals").json()["proposals"] == []
-        events = client.get(f"/api/jobs/{job}/events").text
-        assert "正在检查输入并准备输出" not in events
-        assert not list((tmp_path / "state" / "staging").rglob("*.json"))
-        assert not list((tmp_path / "state" / "staging").rglob("*.svg"))
-        assert client.get(f"/api/jobs/{job}/output").status_code == 404
+        assert provider.requests[0].enforce_response_language is False
+        proposals = client.get("/api/proposals").json()["proposals"]
+        assert len(proposals) == 1 and proposals[0]["status"] == "pending"
+        assert client.get(f"/api/jobs/{job}/output").status_code == 200
+        assert list((tmp_path / "state" / "staging").rglob("*.svg"))
     assert _files(workspace) == before
 
 

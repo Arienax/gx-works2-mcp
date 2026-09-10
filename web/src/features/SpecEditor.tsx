@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Plus, Check } from "lucide-react";
 import type { Spec, Json } from "../api/client";
 import { Button } from "../components/ui";
@@ -22,6 +22,7 @@ export function SpecEditor({
   const [draft, setDraft] = useState<Spec | null>(value);
   const [raw, setRaw] = useState("");
   const [parseError, setParseError] = useState(false);
+  const approachGroup = useId();
   const parseSpec = (text: string): Spec => {
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
@@ -45,7 +46,11 @@ export function SpecEditor({
   const rows = draft.io_table || [];
   const parameters = draft.parameters || [];
   return (
-    <div className="spec-editor">
+    <fieldset className="spec-editor" disabled={disabled}>
+      <div className="spec-intro">
+        <h3>{t("确认控制需求")}</h3>
+        <p>{t("选择方案和实际接线，确认后再生成候选程序。")}</p>
+      </div>
       <label>
         {t("需求摘要")}
         <textarea
@@ -54,28 +59,20 @@ export function SpecEditor({
         />
       </label>
       {(draft.approaches || []).length > 0 && (
-        <label>
-          {t("程序形式")}
-          <select
-            value={approachId(draft.selected_approach)}
-            onChange={(e) =>
-              patch({
-                ...draft,
-                selected_approach: draft.approaches?.find(
-                  (p) => approachId(p) === e.target.value,
-                ),
-              })
-            }
-          >
-            {draft.approaches?.map((a, i) => (
-              <option key={approachId(a) || i} value={approachId(a)}>
-                {String(a.name || a.title || approachId(a) || i + 1)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="approach-choices">
+          <legend>{t("编程方案")}</legend>
+          {draft.approaches?.map((a, i) => (
+            <label key={approachId(a) || i} className={approachId(draft.selected_approach) === approachId(a) ? "selected" : ""}>
+              <input type="radio" name={approachGroup} value={approachId(a)}
+                checked={approachId(draft.selected_approach) === approachId(a)}
+                onChange={() => patch({ ...draft, selected_approach: a })} />
+              <span><strong>{String(a.name || a.title || approachId(a) || i + 1)}</strong>
+                {!!a.description && <small>{String(a.description)}</small>}
+              </span>
+            </label>
+          ))}
+        </fieldset>
       )}
-      {!!draft.selected_approach?.description && <p className="approach-description">{String(draft.selected_approach.description)}</p>}
       {parameters.length > 0 && <div className="section-label">{t("确认问题")}</div>}
       {parameters.map((p, i) => (
         <ChoiceInput key={String(p.id || i)} t={t}
@@ -205,6 +202,6 @@ export function SpecEditor({
         <Check size={15} />
         {t("确认规格")}
       </Button>
-    </div>
+    </fieldset>
   );
 }

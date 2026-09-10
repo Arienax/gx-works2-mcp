@@ -1228,7 +1228,31 @@ pre {
 .spec-question > p, .approach-description { font-size: 12px; margin: 7px 0; }
 .approach-description { color: var(--muted); margin-top: -9px; }
 .choice-input { position: relative; }
-.choice-input > input { width: 100%; padding-right: 34px; }
+.live-progress { padding: 14px 0; }
+.stream-preview { margin-top: 12px; font-size: 12px; }
+.stream-preview summary { cursor: pointer; color: var(--muted); }
+.stream-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: 12px; }
+.stream-preview .stream-reasoning { color: var(--muted); }
+.live-progress-label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 13px; }
+.live-progress-label small { color: var(--muted); white-space: nowrap; }
+.live-progress-track { overflow: hidden; height: 5px; background: var(--hover); border-radius: 5px; }
+.live-progress-track > span { display: block; width: 35%; height: 100%; border-radius: inherit; background: var(--accent); animation: task-progress 1.6s ease-in-out infinite; }
+@keyframes task-progress { from { transform: translateX(-100%); } to { transform: translateX(390%); } }
+@media (prefers-reduced-motion: reduce) { .live-progress-track > span { animation: none; width: 100%; opacity: .6; } }
+.choice-input > input { width: 100%; }
+.choice-buttons { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+.choice-buttons > button { padding: 8px 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
+.choice-buttons > button[aria-pressed="true"] { border-color: var(--accent); background: var(--hover); box-shadow: inset 0 0 0 1px var(--accent); }
+.spec-editor { border: 0; min-width: 0; margin: 0; }
+.spec-intro h3 { margin: 0 0 6px; font-size: 16px; }
+.spec-intro p { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+.approach-choices { border: 0; padding: 0; margin: 0 0 20px; min-width: 0; }
+.approach-choices legend { margin-bottom: 8px; font-size: 13px; }
+.approach-choices > label { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+.approach-choices > label.selected { border-color: var(--accent); background: var(--hover); }
+.approach-choices input { width: auto; margin: 3px 0 0; }
+.approach-choices strong { display: block; font-size: 13px; }
+.approach-choices small { display: block; color: var(--muted); line-height: 1.6; margin-top: 4px; }
 .choice-toggle { position: absolute; top: 0; right: 0; bottom: 0; width: 34px; background: transparent; color: var(--text); border: 0; display: grid; place-items: center; cursor: pointer; }
 .choice-options { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; max-height: 240px; overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px #0002; }
 .choice-options > [role="option"] { padding: 10px 12px; cursor: pointer; overflow-wrap: anywhere; }

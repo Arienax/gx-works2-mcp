@@ -5,6 +5,7 @@ import sys
 import warnings
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import replace
 from i18n import language_scoped, tr
 from response_language import TEXT_RESPONSE, preserved_annotations as source_annotations
 from workflow_response_contracts import (
@@ -1459,6 +1460,52 @@ def _parse_analysis_response(raw, plc_model="FX3U", user_text=""):
     return _normalize_analysis_result(result, plc_model, user_text)
 
 
+def _request_analysis_response(messages, *, on_format_repair=None, **kwargs):
+    """Allow one syntax correction of an unconfirmed analysis draft only.
+
+    Keep the shared collector strict. Language/field rejection, transport
+    errors and valid JSON with the wrong root type are not repair signals.
+    Neither attempt publishes content until its normal acceptance succeeds.
+    """
+    with provider_scope():
+        try:
+            return _request_model(messages, response_contract=ANALYSIS_RESPONSE, **kwargs)
+        except ResponseRejectedError as rejected:
+            if [(v.path, v.reason) for v in rejected.violations] != [
+                ("content", "invalid_json_object")
+            ]:
+                raise
+            raw = rejected.raw_response.message.content.strip()
+            if raw.startswith("```") and raw.endswith("```") and "\n" in raw:
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            if not raw.startswith("{"):
+                raise
+            try:
+                json.loads(raw)
+            except json.JSONDecodeError as syntax_error:
+                location = f"line {syntax_error.lineno}, column {syntax_error.colno}"
+            else:
+                raise rejected
+            if on_format_repair is not None:
+                on_format_repair()
+            correction = (
+                "Your previous analysis draft is not valid JSON (" + location + "). "
+                "Return the complete corrected JSON object only, using the analysis schema above. "
+                "Correct JSON syntax and missing schema keys only; preserve the requirement, "
+                "devices, alternatives and questions. Do not invent confirmed answers or generate PLC code. "
+                "Each flowchart_steps item has separate type and label keys, for example "
+                '{"type":"transition","label":"X0"}. No markdown or explanations.'
+            )
+            repair_messages = [*messages, rejected.raw_response.message,
+                               UserMessage(correction)]
+            try:
+                repaired = _request_model(repair_messages, response_contract=ANALYSIS_RESPONSE, **kwargs)
+            except ResponseRejectedError as error:
+                error.raw_attempts = (*rejected.raw_attempts, *error.raw_attempts)
+                raise
+            return replace(repaired, raw_attempts=(*rejected.raw_attempts, *repaired.raw_attempts))
+
+
 ANALYSIS_SYSTEM_PROMPT = """# Role
 你是 PLC 需求分析助手。只分析需求，不生成梯形图 JSON 或 ST 代码。
 
@@ -1507,10 +1554,11 @@ turn, reflect that change and do not restore older cached values.
 - 方案B「独立非重叠位令牌法」：仅在确需位移指令且传送源位位于目标区外时使用 → guide:"SFTLP源位区与目标区不得重叠；先保存回卷位；按FX3U手册验证K6710约束"
 
 # 输出要求
+control_type 从 启停、顺序、定位、计数、模拟量、通讯、PID 中选择 1–3 个字符串。
 返回纯JSON（不要```json包裹），格式：
 {
   "summary": "一句话总结",
-  "control_type": ["启停","顺序","定位","计数","模拟量","通讯","PID"] 中选1-3个,
+  "control_type": ["启停"],
   "approaches": [
     {
       "approach_id":"direct_logic",
@@ -1610,7 +1658,8 @@ turn, reflect that change and do not restore older cached values.
 - 第一个元素必须为 step，最后一个元素必须为 step
 - 简单流程：step 和 transition 交替
 - **并行分支**：插入 `{"type":"fork","label":"分两路"}` 开始分支，之后每条分支的块加 `"branch":0`、`"branch":1` 等区分，最后 `{"type":"join","label":"汇合"}` 合并
-- 示例：[step"初始化", transition"X0启动", fork"双通道", step"通道0动作" branch:0, transition"T0到" branch:0, step"通道1动作" branch:1, transition"T1到" branch:1, join"汇合", step"完成"]
+- 每个节点必须使用独立的 type 和 label 键：`{"type":"transition","label":"X0启动"}`。
+- 示例：[{"type":"step","label":"初始化"},{"type":"transition","label":"X0启动"},{"type":"fork","label":"双通道"},{"type":"step","label":"通道0动作","branch":0},{"type":"transition","label":"T0到","branch":0},{"type":"step","label":"通道1动作","branch":1},{"type":"transition","label":"T1到","branch":1},{"type":"join","label":"汇合"},{"type":"step","label":"完成"}]
 - label 简洁：动作类"Y0 ON T0延时"，条件类"X0触发"或"T0延时到"
 
 # 缺失信息提问原则
@@ -1634,6 +1683,7 @@ def analyze_requirement(
     confirmed_spec=None,
     task_type=None,
     image_attachments=None,
+    on_format_repair=None,
 ) -> dict:
     """
     Phase 1: fast analysis with effort=low.
@@ -1674,11 +1724,11 @@ def analyze_requirement(
     )
 
     try:
-        response = _request_model(
+        response = _request_analysis_response(
             messages,
             effort="low",
             stream=False,
-            response_contract=ANALYSIS_RESPONSE,
+            on_format_repair=on_format_repair,
         )
         raw = response.message.content.strip()
 
@@ -1710,6 +1760,7 @@ def analyze_requirement_streaming(
     confirmed_spec=None,
     task_type=None,
     image_attachments=None,
+    on_format_repair=None,
 ):
     """
     阶段1 流式版：分析用户需求，实时显示思考过程。
@@ -1751,11 +1802,11 @@ def analyze_requirement_streaming(
     )
 
     try:
-        response = _request_model(
+        response = _request_analysis_response(
             messages,
             effort="low",
             stream=True,
-            response_contract=ANALYSIS_RESPONSE,
+            on_format_repair=on_format_repair,
             on_reasoning_chunk=on_reasoning_chunk,
             on_content_chunk=on_content_chunk,
         )
