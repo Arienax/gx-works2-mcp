@@ -123,6 +123,9 @@ export default function App() {
   ]);
   const [specIssues, setSpecIssues] = useState<{ path: string; message: string }[]>([]);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const busyRef = useRef(false);
+  const consumedDrafts = useRef(new Set<string>());
+  const shownCandidates = useRef(new Set<string>());
   const specBinding = useRef("");
   const specDirty = useRef(false);
   const openedDrafts = useRef(new Set<string>());
@@ -149,10 +152,16 @@ export default function App() {
   const currentJob = jobs.find((j) => j.id === jobId);
   const pendingCount = proposals.filter((p) => p.status === "pending").length;
   const canWrite = !!session && !session.read_only && !busy && !loading;
+  const canGenerate = !!project && project.id === pid &&
+    !!project.confirmed_spec && !specDirty.current && !jobs.some(activeJob);
+  const canSubmit = canWrite && !!pid && project?.id === pid &&
+    (intent === "generation" ? canGenerate : !!text.trim());
   const operations = version?.capabilities?.operations || {};
   const refreshAll = () => setRefresh((n) => n + 1);
   const guarded = async (action: () => Promise<void>) => {
-    if (busy) return;
+    // State updates are asynchronous: hold a synchronous submission lock too.
+    if (busyRef.current) return;
+    busyRef.current = true;
     const epoch = projectEpoch.current;
     setBusy(true);
     setError("");
@@ -162,6 +171,7 @@ export default function App() {
       if (epoch === projectEpoch.current)
         setError(String((e as Error).message));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -363,7 +373,7 @@ export default function App() {
             .then((output) => {
               if (stopped || activeProjectRef.current !== value.project_id)
                 return;
-              if (output.spec_draft) {
+              if (output.spec_draft && !consumedDrafts.current.has(jobId)) {
                 setAnalysisOutput(output);
               }
             })
@@ -392,18 +402,32 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    if (!canWrite || specDirty.current || currentJob?.kind !== "generation" ||
+        currentJob.status !== "completed" || jobId !== jobs[0]?.id) return;
+    const candidate = proposals.find((p) => p.id === currentJob.result?.proposal_id &&
+      p.project_id === pid && p.action === "accept_local" && p.status === "pending");
+    if (!candidate || shownCandidates.current.has(candidate.id)) return;
+    shownCandidates.current.add(candidate.id);
+    // Preview only. Accepting a local version or executing GX still needs approval.
+    void guarded(() => showProposal(candidate));
+  }, [currentJob, proposals, jobs, jobId, canWrite, pid]);
+
   async function submitJob(
     kind: JobKind = intent,
     extra: Record<string, unknown> = {},
   ) {
-    if (!project) return;
+    if (!project || project.id !== pid) return;
+    if (kind === "generation" && !canGenerate) return;
     const epoch = projectEpoch.current;
     const job = await api<Job>("/jobs", "POST", {
       kind,
       project_id: pid,
       version_id: vid || null,
       request_id: key(),
-      text,
+      text: kind === "generation"
+        ? text.trim() || t("请严格按照已确认规格生成候选程序。")
+        : text,
       response_language: locale,
       attachment_ids: attachments.map((a) => a.attachment_id),
       ...extra,
@@ -419,7 +443,7 @@ export default function App() {
   }
   async function saveSpec(value: Spec) {
     const epoch = projectEpoch.current;
-    const result = await api<{ valid: boolean; spec?: Spec; issues?: { errors?: { path: string; message: string }[] } }>(
+    const result = await api<{ valid: boolean; spec?: Spec; hash?: string; issues?: { errors?: { path: string; message: string }[] } }>(
       `/projects/${pid}/spec`,
       "PUT",
       { spec: value, expected_hash: project?.confirmed_spec_hash ?? null },
@@ -430,11 +454,23 @@ export default function App() {
       setSpecIssues(result.issues?.errors || []);
       return;
     }
+    if (!result.spec || !result.hash)
+      throw new Error(t("确认规格响应不完整，请刷新后重试。"));
+    const savedSpec = result.spec;
+    const savedHash = result.hash;
     setSpecIssues([]);
     specDirty.current = false;
-    if (result.spec) setSpec(result.spec);
+    setSpec(savedSpec);
+    // Adopt the persisted spec/hash together, before the background refresh.
+    specBinding.current = pid + ":" + savedHash;
+    setProject((current) => current?.id === pid
+      ? { ...current, confirmed_spec: savedSpec, confirmed_spec_hash: savedHash }
+      : current);
+    if (currentJob?.kind === "analysis") consumedDrafts.current.add(jobId);
+    setAnalysisOutput(null);
     setNotice(t("规格已确认"));
     setIntent("generation");
+    setPanel("agent");
     refreshAll();
   }
   async function showProposal(value: Proposal, previewTheme = theme) {
@@ -1222,6 +1258,20 @@ export default function App() {
                   )}
                 </div>
               </div>
+              {project?.id === pid && !!project.confirmed_spec && (
+                <div className="candidate-diff">
+                  <p>{t("规格已确认。下一步生成候选程序，无需重新输入需求。")}</p>
+                  <Button
+                    variant="primary"
+                    disabled={!canWrite || !canGenerate}
+                    onClick={() => void guarded(() => submitJob("generation"))}
+                  >
+                    <Play size={14} />
+                    {t("按已确认规格生成候选")}
+                  </Button>
+                  {specDirty.current && <p className="muted">{t("规格有未确认修改，请先确认后再生成。")}</p>}
+                </div>
+              )}
               {currentJob && (
                 <div className="job-conversation">
                   <div className="job-line">
@@ -1283,7 +1333,9 @@ export default function App() {
                       {(analysisOutput.spec_base_hash ?? null) !==
                         (project?.confirmed_spec_hash ?? null) && (
                         <p className="muted">
-                          {t("规格已变化，请重新分析后再应用草稿。")}
+                          {t(project?.confirmed_spec
+                            ? "该分析草稿早于当前确认规格，可直接使用当前规格生成。"
+                            : "规格已变化，请重新分析后再应用草稿。")}
                         </p>
                       )}
                     </div>
@@ -1334,17 +1386,20 @@ export default function App() {
               </div>
               <textarea
                 aria-label={t("描述你的控制需求…")}
-                placeholder={t("描述你的控制需求…")}
+                placeholder={t(intent === "generation"
+                  ? "可补充生成要求；留空则按已确认规格生成。"
+                  : "描述你的控制需求…")}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (
                     (e.ctrlKey || e.metaKey) &&
                     e.key === "Enter" &&
-                    text.trim() &&
-                    canWrite
-                  )
+                    canSubmit
+                  ) {
+                    e.preventDefault();
                     void guarded(() => submitJob());
+                  }
                 }}
               />
               {attachments.length > 0 && (
@@ -1386,11 +1441,11 @@ export default function App() {
                 <span className="muted">Ctrl ↵</span>
                 <Button
                   variant="primary"
-                  disabled={!canWrite || !pid || !text.trim()}
+                  disabled={!canSubmit}
                   onClick={() => void guarded(() => submitJob())}
                 >
                   <Send size={14} />
-                  {t("发送")}
+                  {t(intent === "generation" ? "生成候选" : "发送")}
                 </Button>
               </div>
             </div>

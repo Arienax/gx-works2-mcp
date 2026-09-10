@@ -1,5 +1,12 @@
 export type Locale = "zh-CN" | "en" | "ja";
 const words: Record<string, [string, string]> = {
+  "请严格按照已确认规格生成候选程序。": ["Generate a candidate program strictly according to the confirmed specification.", "確認済み仕様に厳密に従ってプログラム候補を生成してください。"],
+  "确认规格响应不完整，请刷新后重试。": ["The specification confirmation response is incomplete. Refresh and retry.", "仕様確認の応答が不完全です。更新して再試行してください。"],
+  "规格已确认。下一步生成候选程序，无需重新输入需求。": ["Specification confirmed. Generate a candidate next; there is no need to re-enter requirements.", "仕様を確認しました。要件を再入力せずにプログラム候補を生成できます。"],
+  "按已确认规格生成候选": ["Generate from confirmed specification", "確認済み仕様から候補を生成"],
+  "规格有未确认修改，请先确认后再生成。": ["The specification has unconfirmed changes. Confirm them before generating.", "仕様に未確認の変更があります。確認してから生成してください。"],
+  "该分析草稿早于当前确认规格，可直接使用当前规格生成。": ["This analysis draft predates the current confirmed specification. You can generate using the current specification.", "この分析案は現在の確認済み仕様より古いものです。現在の仕様から生成できます。"],
+  "可补充生成要求；留空则按已确认规格生成。": ["Optional generation instructions; leave blank to use the confirmed specification.", "生成の追加指示（任意）。空欄の場合は確認済み仕様を使用します。"],
   "正在等待模型响应": ["Waiting for the model", "モデルの応答を待っています"],
   "模型正在处理需求": ["The model is processing the requirements", "モデルが要件を処理しています"],
   "正在接收模型回复": ["Receiving the model response", "モデルの応答を受信しています"],
