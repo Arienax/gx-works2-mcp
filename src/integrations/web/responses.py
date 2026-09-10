@@ -159,7 +159,9 @@ class ProjectList(PublicResource):
 class ResponseViolation(PublicResource):
     path: str
     reason: Literal["unsupported_script", "non_english_script", "japanese_script", "latin_prose",
-                    "ambiguous_han_only", "invalid_prose_field", "invalid_json_object", "invalid_code_field", "invalid_response"]
+                    "ambiguous_han_only", "invalid_prose_field", "invalid_json_object", "invalid_code_field", "invalid_response",
+                    "invalid_shared_input", "invalid_ladder_structure", "repair_base_invalid",
+                    "repair_identity_invalid", "repair_shape_invalid", "repair_scope_violation", "repair_no_progress"]
 
 
 class JobErrorDetails(PublicResource):
@@ -169,6 +171,10 @@ class JobErrorDetails(PublicResource):
     violations: list[ResponseViolation] = Field(default_factory=list, max_length=16)
     violation_count: int = Field(ge=0, le=1000000)
     truncated: bool
+    stage: Literal["generation_validation"] | None = None
+    attempt_count: int | None = Field(default=None, ge=0, le=3)
+    max_attempts: int | None = Field(default=None, ge=0, le=3)
+    stop_reason: Literal["attempt_limit", "time_budget", "final_validation"] | None = None
 
 
 class Job(PublicResource):

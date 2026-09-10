@@ -248,6 +248,26 @@ async def localized(page, model):
     assert model.posts[0]["text"] != DEFAULT_TEXT
 
 
+async def generation_failure(page, model):
+    await page.get_by_role("button", name=CTA, exact=True).click()
+    model.jobs[0].update(status="failed", error_code="generation_validation_failed", error_details={
+        "stage": "generation_validation", "attempt_count": 3, "max_attempts": 3,
+        "response_language": "zh-CN", "contract_name": "ladder", "diagnostic_id": "a" * 16,
+        "violation_count": 1, "truncated": False, "stop_reason": "attempt_limit",
+        "violations": [{"path": "content$.rungs.36.shared_inputs.3.type", "reason": "invalid_shared_input"}]})
+    await expect(page.get_by_text("梯形图候选未通过硬校验，未接受任何程序。", exact=True)).to_be_visible()
+    await expect(page.get_by_text("content$.rungs.36.shared_inputs.3.type", exact=True)).to_be_visible()
+    await expect(page.get_by_text("公共串联输入中不能包含并联块；请在分支输入中表达并联逻辑。", exact=True)).to_be_visible()
+    assert len(model.posts) == 1 and not model.proposals and model.project["confirmed_spec"]
+
+
+async def generation_timeout(page, model):
+    await page.get_by_role("button", name=CTA, exact=True).click()
+    model.jobs[0].update(status="failed", error_code="model_timeout", error_details=None)
+    await expect(page.get_by_text("模型服务请求超时，请稍后重试。", exact=True)).to_be_visible()
+    assert len(model.posts) == 1 and not model.proposals
+
+
 async def run(origin, baseline_only):
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
@@ -255,6 +275,8 @@ async def run(origin, baseline_only):
             if baseline_only:
                 return [await exercise(browser, origin, "baseline: stuck panel, empty-input block, stale draft warning", MockAPI(), baseline)]
             cases = [
+                ("generation validation failure keeps exact safe location and confirmed spec", MockAPI(confirmed=True, history=False), generation_failure),
+                ("model timeout displays actionable classification", MockAPI(confirmed=True, history=False), generation_timeout),
                 ("confirm -> explicit generation -> preview; no duplicate or automatic approval", MockAPI(), handoff),
                 ("restored confirmed project: empty-input keyboard generation", MockAPI(confirmed=True, history=False), keyboard),
                 ("unconfirmed project cannot generate", MockAPI(history=False), blocked),

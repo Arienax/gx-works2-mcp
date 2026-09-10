@@ -574,7 +574,7 @@ rung 21: M8029 -> MOV K11 D0
 - `rung_id`: 整数，递增行号。
 - `debug_note`: 字符串（可选），用于在需求模糊或自动补全逻辑时，输出简短解释。
 - `header_element`: 状态机比较块（如 `{"type": "BLOCK_INPUT", "expression": "= D0 K1"}`），传统非状态机模式下必须为 `null`。
-- `shared_inputs`: 列表（可选），位于所有 `branches` 分叉之前的公共串联触点。M8029 与定位指令并联时，公共使能条件必须放这里。
+- `shared_inputs`: 列表（可选），位于所有 `branches` 分叉之前的公共串联输入。只允许 NO、NC、P、F、COMPARE、BLOCK_INPUT 等简单输入元素，**禁止 parallel_block**。局部并联块只能放在下方 branch.inputs 中，不能嵌套。M8029 与定位指令并联时，公共使能条件必须放这里。
 - `branches`: 列表，包含该梯级下的并联母线分支。内部包含：
   - `branch_id`: 整数，从 1 开始。
   - `y_offset_level`: 整数，从 0 开始。
@@ -1018,6 +1018,7 @@ rung 21: M8029 -> MOV K11 D0
 | 4 | **无双 COIL** | 每个 Y/M 地址最多一个 `COIL`；多条件已合并到一个 `parallel_block` |
 | 5 | **硬规则** | COMPARE 无运算；状态可复位；自动补全遵循动态补全规则 |
 | 6 | **型号完成标志** | 定位/脉冲完成逻辑使用所选型号的 M/SM 状态并保持同 rung 归属 |
+| 8 | **并联块位置** | parallel_block 只在 branch.inputs 中出现；shared_inputs 和并联块内部没有 parallel_block |
 | 7 | **方案一致性** | 最终结构、指令和指定软元件完整满足 selected_approach.generation_contract，未混用其他候选方案 |
 
 ---
@@ -1092,6 +1093,10 @@ def _select_system_prompt(
         if target_mode == "ladder"
         else _st_system_prompt_for_model(selected_vendor)
     )
+    if target_mode == "ladder":
+        from plc_generation_contract import ladder_response_schema
+        base_prompt += "\n\n# Machine-readable output schema (authoritative structure)\n" + json.dumps(
+            ladder_response_schema(allow_partial=is_edit_mode), ensure_ascii=False, separators=(",", ":"))
     # The selected base prompt already owns role/schema/core platform rules.
     # Keep the dynamic layer focused on matched patterns and examples so the
     # retrieved manual evidence replaces duplication instead of only adding

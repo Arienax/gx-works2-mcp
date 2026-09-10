@@ -359,7 +359,10 @@ export default function App() {
       setEvents((old) => [...old, value]);
       if (["running", "completed", "failed", "cancelled", "interrupted"].includes(value.event_type)) {
         setJobs((old) => old.map((job) => job.id === value.job_id
-          ? { ...job, status: value.event_type, ...(value.payload?.result ? { result: value.payload.result as Record<string, Json> } : {}) }
+          ? { ...job, status: value.event_type,
+              ...(value.event_type === "failed" ? {error_code: value.payload?.error_code as Job["error_code"],
+                error_details: value.payload?.error_details as Job["error_details"]} : {}),
+              ...(value.payload?.result ? { result: value.payload.result as Record<string, Json> } : {}) }
           : job));
       }
       if (

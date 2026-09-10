@@ -273,7 +273,7 @@ class WorkbenchService:
                     confirmed_context=project.get("confirmed_spec"), conversation_history=project.get("messages", []),
                     plc_model=project.get("plc_model", "FX3U"), revision=(program or {}).get("revision", 0) + 1,
                     requirement_text=text, image_attachments=images, model_name=snapshot.get("model", {}).get("model"), response_language=language)
-                metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider)).run()
+                metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider, check_cancelled=ctx.checkpoint)).run()
             ctx.checkpoint()
             output = {"generation": metadata}
             if metadata.get("contract_mismatch"):

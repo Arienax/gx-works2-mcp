@@ -136,5 +136,48 @@ def test_http_job_and_sse_deliver_same_safe_diagnostic(manager, tmp_path):
         response = client.get("/api/jobs/" + job["id"] + "/events?after=2")
         assert response.status_code == 200
         event = JobEvent.model_validate(json.loads(next(line[6:] for line in response.text.splitlines() if line.startswith("data: "))))
-        assert event.payload["error_details"] == parsed.error_details.model_dump()
+        assert event.payload["error_details"] == parsed.error_details.model_dump(exclude_unset=True)
         assert "raw-secret-sentinel" not in response.text + result.text
+
+
+def test_generation_failure_details_survive_job_http_and_sse(manager, tmp_path):
+    from application.generation_repair import GenerationValidationError
+    from plc_json_validator import PLCJsonValidationError
+    from fastapi.testclient import TestClient
+    from application.workbench import WorkbenchService
+    from integrations.web.app import create_app
+    from integrations.web.responses import Job, JobEvent
+    error = GenerationValidationError([PLCJsonValidationError(
+        "$.rungs[36].shared_inputs[3].type: unknown type 'parallel_block'; raw-secret-sentinel")],
+        attempts=3, language="zh-CN")
+    def worker(ctx): raise error
+    job = manager.submit("generation", {}, worker)
+    manager._futures[job["id"]].result(timeout=5)
+    completed = manager.get(job["id"])
+    assert completed["error_code"] == "generation_validation_failed"
+    assert completed["error_details"]["attempt_count"] == 3
+    assert completed["error_details"]["violations"] == [
+        {"path": "content$.rungs.36.shared_inputs.3.type", "reason": "invalid_shared_input"}]
+    assert "raw-secret-sentinel" not in json.dumps(manager.events(job["id"]))
+    origin = "http://127.0.0.1:8765"
+    service = WorkbenchService(manager.lock.workspace, tmp_path / "read-state", read_only=True)
+    service.jobs = manager
+    with TestClient(create_app(manager.lock.workspace, service=service, origin=origin,
+                    operator_token="test-operator"), base_url=origin) as client:
+        client.post("/api/session", json={"token": "test-operator"}, headers={"Origin": origin})
+        resource = Job.model_validate(client.get("/api/jobs/" + job["id"]).json())
+        stream = client.get("/api/jobs/" + job["id"] + "/events?after=2")
+        event = JobEvent.model_validate(json.loads(next(line[6:] for line in stream.text.splitlines() if line.startswith("data: "))))
+        assert resource.error_details.stage == "generation_validation"
+        assert event.payload["error_details"] == resource.error_details.model_dump(exclude_unset=True)
+
+
+def test_generation_diagnostics_remain_bounded_when_read_from_disk():
+    from application.job_errors import public_error_details
+    data = {"stage": "generation_validation", "attempt_count": 99999, "max_attempts": True,
+            "stop_reason": "secret-sentinel", "response_language": "zh-CN", "contract_name": "ladder",
+            "violations": [{"path": "content$.rungs.36.secret_sentinel", "reason": "secret-sentinel"}]}
+    result = public_error_details(data)
+    assert result["attempt_count"] == 3 and result["max_attempts"] == 0
+    assert "sentinel" not in json.dumps(result)
+    assert public_error_details(result) == result

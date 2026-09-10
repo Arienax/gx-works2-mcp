@@ -291,3 +291,17 @@ def _project_logic_contracts(source, target):
             for address, value in source["terminal_states"].items()
             if isinstance(address, str) and re.fullmatch(r"D\d+", address, re.IGNORECASE)
         }
+
+
+def ladder_response_schema(*, allow_partial=False):
+    """Share the same generation schema with API prompts and external tools."""
+    full = ladder_v1_schema()
+    if not allow_partial:
+        return full
+    partial = _object({
+        "mode": {"const": "partial"},
+        "device_comments": copy.deepcopy(full["properties"]["device_comments"]),
+        "rungs": _array(copy.deepcopy(full["properties"]["rungs"]["items"])),
+        "delete_rung_ids": _array({"type": "integer", "minimum": 0}),
+    }, ["mode"])
+    return {"oneOf": [full, partial]}

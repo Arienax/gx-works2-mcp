@@ -8,9 +8,16 @@ from pathlib import Path
 from typing import Callable, Optional
 import copy
 import hashlib
+import time
 
 import api
 from application.base import model_call
+from application.jobs import JobCancelled
+from application.generation_repair import (
+    GenerationError, GenerationValidationError, MAX_VALIDATION_REPAIRS,
+    REPAIR_BUDGET_SECONDS, assemble_validation_repair, candidate_base,
+    materialize_partial, validation_diagnostic, check_candidate_containers,
+)
 from i18n import get_language, language_context, tr
 from config_manager import get_active_model_name, load_full_config
 from contract_repair import patch_device_addresses
@@ -23,7 +30,7 @@ from plc_json_validator import (
     validate_ladder_full, validate_ladder_partial, validate_st_json,
 )
 from plc_ir import (
-    IR_SCHEMA_VERSION, apply_ladder_partial_to_ir, build_plc_ir,
+    IR_SCHEMA_VERSION, PLCIRValidationError, apply_ladder_partial_to_ir, build_plc_ir,
     canonical_sha256, ir_to_ladder, is_plc_ir, validate_plc_ir,
 )
 
@@ -63,10 +70,8 @@ class GenerationDependencies:
     stream_response: Optional[Callable] = None
     generate_json: Optional[Callable] = None
     provider: object = None
+    check_cancelled: Optional[Callable] = None
 
-
-class GenerationError(RuntimeError):
-    """A rejected or invalid candidate; no project version has been activated."""
 
 
 class GenerationWorkflow:
@@ -102,6 +107,8 @@ class GenerationWorkflow:
                 self.model_name = None
 
     def _emit(self, event_type, payload):
+        if self.dependencies.check_cancelled:
+            self.dependencies.check_cancelled()
         if self.on_event:
             if not isinstance(payload, dict):
                 payload = {"text": str(payload)}
@@ -129,6 +136,9 @@ class GenerationWorkflow:
             validation_messages = []
             contract_mismatch = None
             semantic_requirements = []
+            last_candidate = None
+            repair_attempts = 0
+            repair_errors = []
             if self.target_mode == "ladder":
                 from plc_semantics import semantic_requirements_from_spec
 
@@ -176,7 +186,7 @@ class GenerationWorkflow:
 
             except Exception as stream_err:
                 from model_provider import ResponseRejectedError
-                if isinstance(stream_err, ResponseRejectedError):
+                if isinstance(stream_err, (ResponseRejectedError, JobCancelled)):
                     raise
                 self._emit("progress", {
                         "stage": "fallback",
@@ -212,10 +222,12 @@ class GenerationWorkflow:
             if not json_str:
                 raise GenerationError(tr('大模型未返回合法数据'))
 
-            def parse_candidate(candidate):
+            def parse_candidate(candidate, repair_base=None):
+                nonlocal last_candidate
                 emit_parsing_progress(tr('正在解析模型输出：读取 JSON 结构'))
                 parsed = json.loads(candidate)
                 if self.target_mode == "ladder":
+                    check_candidate_containers(parsed)
                     emit_parsing_progress(tr('正在解析模型输出：规范化梯形图结构'))
                     parsed, converted_counters = normalize_legacy_counter_outputs(parsed)
                     if converted_counters:
@@ -229,6 +241,12 @@ class GenerationWorkflow:
                             tr('已将误放入 APP_INSTR 的 OUT 转换为标准输出结构：')
                             + "；".join(converted_outs)
                         )
+                if repair_base is not None and not self.repair_mode:
+                    parsed = assemble_validation_repair(repair_base, parsed, plc_model=self.plc_model)
+                    self._emit("progress", {"stage": "repair_merged", "message":
+                        tr('已将修复合并回本次完整候选，共 {v0} 个梯级；正在重新校验。', v0=len(parsed["rungs"]))})
+                if not isinstance(parsed, dict):
+                    raise PLCJsonValidationError("$: expected JSON object")
                 if self.repair_mode:
                     if parsed.get("mode") != "partial":
                         raise PLCJsonValidationError(
@@ -272,11 +290,14 @@ class GenerationWorkflow:
                                 + ", ".join(sorted(outside_devices))
                             )
                 if self.target_mode == "ladder" and parsed.get("mode") == "partial":
-                    validate_ladder_partial(parsed, plc_model=self.plc_model)
                     if self.previous_json is None:
                         raise PLCJsonValidationError(
                             '$.mode: received "partial" without a previous ladder'
                         )
+                    # Keep the attempted edit, not merely the historical version,
+                    # as the private repair base even if its new rungs are invalid.
+                    last_candidate = materialize_partial(self.previous_json, parsed)
+                    validate_ladder_partial(parsed, plc_model=self.plc_model)
                     base_ir = self.previous_ir or build_plc_ir(
                         self.previous_json,
                         plc_model=self.plc_model,
@@ -291,12 +312,13 @@ class GenerationWorkflow:
                     )
                     parsed = ir_to_ladder(patched_ir)
                     print("Applied partial ladder update through PLC IR")
+                last_candidate = candidate_base(parsed)
                 return parsed
 
-            def parse_and_validate(candidate):
-                nonlocal contract_mismatch
+            def parse_and_validate(candidate, repair_base=None):
+                nonlocal contract_mismatch, last_candidate
                 contract_mismatch = None
-                parsed = parse_candidate(candidate)
+                parsed = parse_candidate(candidate, repair_base)
                 if self.target_mode == "ladder":
                     parsed, converted_counters = normalize_legacy_counter_outputs(parsed)
                     if converted_counters:
@@ -314,6 +336,9 @@ class GenerationWorkflow:
                             tr('已将 M8029 完成触点规范化为应用指令的并联支路：')
                             + ", ".join(map(str, normalized_rungs))
                         )
+                    last_candidate = candidate_base(parsed)
+                    if not parsed.get("rungs"):
+                        raise PLCJsonValidationError("$.rungs: generated program must not be empty")
                     emit_parsing_progress(tr('正在解析模型输出：执行 PLC 硬校验'))
                     try:
                         validate_ladder_full(
@@ -364,122 +389,87 @@ class GenerationWorkflow:
                     validate_st_json(parsed)
                 return parsed
 
+            validation_errors = (PLCJsonValidationError, PLCIRValidationError, json.JSONDecodeError)
             try:
                 parsed_json = parse_and_validate(json_str)
-            except Exception as first_err:
+            except validation_errors as first_err:
                 if self.task_type == "contract_repair":
-                    raise GenerationError(tr('方案约束修复候选未通过验证，不会继续隐藏重试: {v0}', v0=first_err),
-                    )
+                    raise GenerationError(tr('方案约束修复候选未通过验证，不会继续隐藏重试: {v0}', v0=first_err)) from first_err
                 if self.target_mode != "ladder":
-                    raise GenerationError(tr('模型输出 JSON 校验失败: {v0}', v0=first_err)
-                    )
-
-                print(tr('模型首轮输出未通过硬校验，自动纠错一次: {v0}', v0=first_err))
-                validation_messages.append(str(first_err))
-                self._emit("progress", {
-                        "stage": "repairing",
-                        "severity": "warning",
-                        "message": tr('硬校验未通过，正在自动修复：{v0}', v0=first_err),
-                    }
-                )
-                repair_source_json = json_str
+                    raise GenerationError(tr('模型输出 JSON 校验失败: {v0}', v0=first_err)) from first_err
+                repair_errors.append(first_err)
+                current_error = first_err
                 local_repair_succeeded = False
-                try:
-                    local_candidate = parse_candidate(json_str)
-                    if self.repair_mode:
-                        repaired_addresses = []
-                    else:
-                        local_candidate, repaired_addresses = merge_duplicate_coils(
-                            local_candidate
-                        )
+                # This is an unaccepted candidate, never the stored project version.
+                # Only existing deterministic repairs are applied locally.
+                local_candidate = candidate_base(last_candidate)
+                if local_candidate is not None and not self.repair_mode:
+                    local_candidate, repaired_addresses = merge_duplicate_coils(local_candidate)
                     if repaired_addresses:
-                        local_candidate, normalized_rungs = (
-                            normalize_m8029_parallel_branches(local_candidate)
-                        )
-                        if normalized_rungs:
-                            validation_messages.append(
-                                tr('本地修复时同步规范化 M8029 并联梯级：')
-                                + ", ".join(map(str, normalized_rungs))
-                            )
-                        validate_ladder_full(
-                            local_candidate,
-                            plc_model=self.plc_model,
-                            confirmed_spec=self.confirmed_context,
-                        )
-                        parsed_json = local_candidate
-                        repaired_text = ", ".join(repaired_addresses)
-                        validation_messages.append(
-                            tr('本地自动合并重复线圈：{v0}', v0=repaired_text)
-                        )
-                        self._emit("progress", {
-                                "stage": "repaired_local",
-                                "message": (
-                                    tr('本地自动修复完成：已将重复线圈 {v0} 合并为单一 COIL', v0=repaired_text)
-                                ),
-                            },
-                        )
-                        local_repair_succeeded = True
-                except Exception:
-                    if "local_candidate" in locals():
-                        repair_source_json = json.dumps(
-                            local_candidate,
-                            ensure_ascii=False,
-                        )
-
-                if not local_repair_succeeded:
-                    self._emit("progress", {
-                            "stage": "repairing_remote",
-                            "severity": "warning",
-                            "message": tr('正在请求 AI 修复，最长等待 120 秒'),
-                        },
+                        try:
+                            parsed_json = parse_and_validate(json.dumps(local_candidate, ensure_ascii=False))
+                            local_repair_succeeded = True
+                            validation_messages.append(tr('本地自动合并重复线圈：{v0}', v0=", ".join(repaired_addresses)))
+                        except validation_errors as local_error:
+                            current_error = local_error
+                            repair_errors.append(local_error)
+                deadline = time.monotonic() + REPAIR_BUDGET_SECONDS
+                for attempt in range(1, MAX_VALIDATION_REPAIRS + 1):
+                    if local_repair_succeeded:
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise GenerationValidationError(repair_errors, attempts=repair_attempts,
+                            language=self.response_language, stop_reason="time_budget") from current_error
+                    repair_base = candidate_base(last_candidate) if not self.repair_mode else None
+                    repair_source_json = json.dumps(repair_base, ensure_ascii=False) if repair_base is not None else json_str
+                    self._emit("progress", {"stage": "repairing_remote", "severity": "warning", "message":
+                        tr('硬校验未通过，正在结构修复 {v0}/{v1}：{v2}', v0=attempt,
+                           v1=MAX_VALIDATION_REPAIRS, v2=validation_diagnostic(current_error)["path"])})
+                    repair_attempts = attempt
+                    model_specific_rules = (
+                        '3. FX3U 的 D8340 等定位寄存器按32位寄存器对处理，SFTL/SFTLP 源和目标不得重叠，M8029 与定位指令必须位于同一 rung 的并联分支。'
+                        if self.plc_model == "FX3U"
+                        else
+                        '3. 按 FX5U 型号资料使用十进制 X/Y、SM/SD 特殊软元件和对应定位完成规则，不得套用 FX3U 专用寄存器对规则。'
                     )
-
-                model_specific_rules = (
-                    '3. FX3U 的 D8340 等定位寄存器按32位寄存器对处理，SFTL/SFTLP 源和目标不得重叠，M8029 与定位指令必须位于同一 rung 的并联分支。'
-                    if self.plc_model == "FX3U"
-                    else
-                    '3. 按 FX5U 型号资料使用十进制 X/Y、SM/SD 特殊软元件和对应定位完成规则，不得套用 FX3U 专用寄存器对规则。'
-                )
-                output_rule = (
-                    tr('必须返回 mode="partial"，且只能包含允许修复的梯级和地址。')
-                    if self.repair_mode
-                    else tr('增量编辑可返回合法 partial，否则返回完整 JSON。')
-                )
-                correction_request = '\n上一版梯形图 JSON 未通过程序硬校验。只返回修正后的 JSON，不要解释。\n\n目标 PLC：{v0}\n校验错误：\n{v1}\n\n必须遵守：\n1. 同一 Y/M 地址在整个最终程序中只能出现一次 COIL；即使位于同一梯级的不同 branch，也仍是双线圈。\n2. 多个驱动条件必须放入一个 parallel_block，汇合后只连接一个 COIL。\n{v2}\n4. 用户明确标注常开/常闭时，JSON 必须分别使用 NO/NC，不得自行反转。\n5. 保持用户确认的地址、参数和方案不变；型号规则冲突时采用等价合法实现并在 debug_note 标明。\n6. 禁止在 parallel_block 的 branches 内再次嵌套 parallel_block。\n7. TIMER 只能使用 T 地址、COUNTER 只能使用 C 地址；M8000/SM8000 持续使能的 TIMER 不能作为闪烁振荡器。\n8. 禁止用同一边沿下的 NC Mx→SET Mx 与 NO Mx→RST Mx 两分支模拟 ALT；改用两个明确相位及各自的定时器/状态转换。\n9. 校验错误若包含扫描周期语义：RISING_EDGE/FALLING_EDGE 必须使用对应边沿触点，FIRST_SCAN 必须使用目标 PLC 的首扫继电器，CYCLIC/INTERRUPT 必须保留对应执行源；不得用普通电平触点冒充。\n10. 用户选定方案的 generation_contract 是硬约束；必须补齐其中必用指令、软元件和结构，移除禁用项。不得换成另一个“功能等价”方案。\n11. generation_contract 中的 OUT 由 COIL/TIMER/COUNTER 输出结构满足，禁止写成 APP_INSTR OUT。RD3A/WR3A 虽是真实指令，但只能用于其手册支持的 FX0N-3A/FX2N-2AD/2DA，不得套用于 FX3U-4AD-ADP/4DA-ADP。\n\n请修复你紧邻此消息之前返回的 JSON。{v3}\n'.format(v0=self.plc_model, v1=first_err, v2=model_specific_rules, v3=output_rule).strip()
-                retry_json = (
-                    json.dumps(parsed_json, ensure_ascii=False)
-                    if local_repair_succeeded
-                    else model_call(self.dependencies.generate_json or api.generate_model_json,
-                    correction_request,
-                    self.model_name,
-                    "high",
-                    self.target_mode,
-                    is_edit_mode=is_edit_mode,
-                    conversation_history=[
-                        *self.conversation_history,
-                        {"role": "user", "content": self.user_input},
-                        {"role": "assistant", "content": repair_source_json},
-                    ],
-                    confirmed_context=self.confirmed_context,
-                    persist_history=False,
-                    request_timeout=120,
-                    max_retries=0,
-                    raise_errors=True,
-                    task_type="repair" if self.repair_mode else "debug",
-                    current_version_json=self.current_version_json,
-                    plc_model=self.plc_model,
-                )
-                )
-                if not retry_json:
-                    raise GenerationError(tr('模型输出校验失败且自动纠错无返回: {v0}', v0=first_err),
+                    output_rule = (
+                        tr('必须返回 mode="partial"，且只能包含允许修复的梯级和地址。')
+                        if self.repair_mode
+                        else (tr('本次修复以随附的完整失败候选为基线。返回 mode="partial"，rungs 只含需要替换的完整梯级；保持 rung_id，不得删除、新增或重排梯级。也可返回保留全部梯级的完整 JSON。') if repair_base is not None else tr('没有可合并的完整候选，必须返回完整 device_comments+rungs JSON，不得返回 partial。'))
                     )
-                try:
-                    parsed_json = parse_and_validate(retry_json)
-                    print(tr('自动纠错后的 JSON 已通过硬校验'))
+                    correction_request = '\n上一版梯形图 JSON 未通过程序硬校验。只返回修正后的 JSON，不要解释。\n\n目标 PLC：{v0}\n校验错误：\n{v1}\n\n必须遵守：\n1. 同一 Y/M 地址在整个最终程序中只能出现一次 COIL；即使位于同一梯级的不同 branch，也仍是双线圈。\n2. 多个驱动条件必须放入一个 parallel_block，汇合后只连接一个 COIL。\n{v2}\n4. 用户明确标注常开/常闭时，JSON 必须分别使用 NO/NC，不得自行反转。\n5. 保持用户确认的地址、参数和方案不变；型号规则冲突时采用等价合法实现并在 debug_note 标明。\n6. 禁止在 parallel_block 的 branches 内再次嵌套 parallel_block。\n7. TIMER 只能使用 T 地址、COUNTER 只能使用 C 地址；M8000/SM8000 持续使能的 TIMER 不能作为闪烁振荡器。\n8. 禁止用同一边沿下的 NC Mx→SET Mx 与 NO Mx→RST Mx 两分支模拟 ALT；改用两个明确相位及各自的定时器/状态转换。\n9. 校验错误若包含扫描周期语义：RISING_EDGE/FALLING_EDGE 必须使用对应边沿触点，FIRST_SCAN 必须使用目标 PLC 的首扫继电器，CYCLIC/INTERRUPT 必须保留对应执行源；不得用普通电平触点冒充。\n10. 用户选定方案的 generation_contract 是硬约束；必须补齐其中必用指令、软元件和结构，移除禁用项。不得换成另一个“功能等价”方案。\n11. generation_contract 中的 OUT 由 COIL/TIMER/COUNTER 输出结构满足，禁止写成 APP_INSTR OUT。RD3A/WR3A 虽是真实指令，但只能用于其手册支持的 FX0N-3A/FX2N-2AD/2DA，不得套用于 FX3U-4AD-ADP/4DA-ADP。\n\nshared_inputs 只允许简单输入元素（NO/NC/P/F/COMPARE/BLOCK_INPUT），严禁 parallel_block；parallel_block 只能位于 branch.inputs，且不能嵌套。\n\n请修复随附的本次失败候选 JSON；不要改成无关示例，也不要丢弃未修改的梯级。{v3}\n'.format(v0=self.plc_model, v1=current_error, v2=model_specific_rules, v3=output_rule).strip()
+
+                    # The current invalid full candidate is explicitly carried in
+                    # this request, independent of provider history truncation.
+                    if repair_base is None:
+                        correction_request += "\n\n## 当前梯形图JSON（本次未接受候选，仅用于结构修复）\n" + repair_source_json
+                    else:
+                        correction_request += "\n完整失败候选已放在 Current version JSON 上下文。以该候选而非历史工程版本为修复基线。"
+                    retry_json = model_call(self.dependencies.generate_json or api.generate_model_json,
+                        correction_request, self.model_name, "high", self.target_mode,
+                        is_edit_mode=repair_base is not None or self.repair_mode,
+                        conversation_history=self.conversation_history,
+                        confirmed_context=self.confirmed_context, persist_history=False,
+                        request_timeout=min(120, max(1, int(remaining))), max_retries=0, raise_errors=True,
+                        task_type="repair", current_version_json=repair_base or self.current_version_json,
+                        plc_model=self.plc_model, image_attachments=self.image_attachments)
+                    try:
+                        parsed_json = parse_and_validate(retry_json or "", repair_base)
+                    except validation_errors as retry_err:
+                        current_error = retry_err
+                        repair_errors.append(retry_err)
+                        # Only a materialized response can replace the next base.
+                        # Rejected delta shape/no-op never erases the previous base.
+                        if repair_base is None and not self.repair_mode:
+                            json_str = retry_json or json_str
+                        continue
                     validation_messages.append(tr('自动修复后已通过全部硬校验'))
-                except Exception as retry_err:
-                    raise GenerationError(tr('模型输出连续两次未通过硬校验: 首次={v0}; 重试={v1}', v0=first_err, v1=retry_err)
-                    )
+                    local_repair_succeeded = True
+                    break
+                if not local_repair_succeeded:
+                    raise GenerationValidationError(repair_errors, attempts=repair_attempts,
+                        language=self.response_language) from current_error
 
             # 将最终 JSON 写入磁盘
             if self.target_mode == "ladder":
@@ -572,6 +562,7 @@ class GenerationWorkflow:
                     )
                 return ({
                         "target_mode": "ladder",
+                        "repair_attempts": repair_attempts,
                         "program_name": self.program_name,
                         "revision": self.revision,
                         "ir_schema_version": IR_SCHEMA_VERSION,
@@ -671,7 +662,10 @@ class GenerationWorkflow:
                     }
                 )
 
-        except GenerationError:
+        except (GenerationError, JobCancelled):
             raise
+        except (PLCJsonValidationError, PLCIRValidationError) as error:
+            raise GenerationValidationError([error], attempts=repair_attempts,
+                language=self.response_language, stop_reason="final_validation") from error
         except Exception as e:
             raise GenerationError(tr('线程运行期异常: {v0}', v0=str(e)))

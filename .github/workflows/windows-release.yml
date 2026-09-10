@@ -91,6 +91,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Dependency consistency check failed.' }
           python -m compileall -q src scripts/web_entry.py
           if ($LASTEXITCODE -ne 0) { throw 'Python syntax check failed.' }
+      - name: Validate generation repair and diagnostic regressions
+        run: |
+          python -m pip install pytest==9.1.1
+          if ($LASTEXITCODE -ne 0) { throw 'Test dependency installation failed.' }
+          python -m pytest -q tests/test_generation_repair_assembly.py tests/test_generation_repair_workflow.py tests/test_generation_workflow.py tests/test_application_job_errors.py --junitxml=generation-repair-tests.xml
+          if ($LASTEXITCODE -ne 0) { throw 'Generation regression tests failed.' }
       - name: Validate materialized knowledge resources
         shell: python
         run: |

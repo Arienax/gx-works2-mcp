@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .events import append_event, utc_now
-from .job_errors import acceptance_error_details
+from .job_errors import acceptance_error_details, generation_error_details, workflow_error_code
 from .workspace import (ConflictError, atomic_json, bind_workspace_state, canonical_hash, contained,
                         private_state_dir, public_payload, read_json, record_id)
 
@@ -173,6 +173,12 @@ class JobManager:
             error_details = acceptance_error_details(exc)
             if error_details is not None:
                 error_code = "response_rejected"
+            else:
+                error_details = generation_error_details(exc)
+                if error_details is not None:
+                    error_code = "generation_validation_failed"
+                else:
+                    error_code = workflow_error_code(exc) or error_code
         with self._record_lock:
             record = self._load(job_id)
             record.update(status=status, error_code=error_code, error_details=error_details, result=public_payload(result))

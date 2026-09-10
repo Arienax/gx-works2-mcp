@@ -922,15 +922,23 @@ export interface components {
         };
         /** JobErrorDetails */
         JobErrorDetails: {
+            /** Attempt Count */
+            attempt_count?: number | null;
             /** Contract Name */
             contract_name: string;
             /** Diagnostic Id */
             diagnostic_id?: string | null;
+            /** Max Attempts */
+            max_attempts?: number | null;
             /**
              * Response Language
              * @enum {string}
              */
             response_language: "zh-CN" | "en" | "ja" | "unknown";
+            /** Stage */
+            stage?: "generation_validation" | null;
+            /** Stop Reason */
+            stop_reason?: ("attempt_limit" | "time_budget" | "final_validation") | null;
             /** Truncated */
             truncated: boolean;
             /** Violation Count */
@@ -1371,7 +1379,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "unsupported_script" | "non_english_script" | "japanese_script" | "latin_prose" | "ambiguous_han_only" | "invalid_prose_field" | "invalid_json_object" | "invalid_code_field" | "invalid_response";
+            reason: "unsupported_script" | "non_english_script" | "japanese_script" | "latin_prose" | "ambiguous_han_only" | "invalid_prose_field" | "invalid_json_object" | "invalid_code_field" | "invalid_response" | "invalid_shared_input" | "invalid_ladder_structure" | "repair_base_invalid" | "repair_identity_invalid" | "repair_shape_invalid" | "repair_scope_violation" | "repair_no_progress";
         };
         /** SFCInput */
         SFCInput: {

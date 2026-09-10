@@ -5,9 +5,11 @@ import re
 from functools import lru_cache
 from typing import Mapping
 
+from application.generation_repair import REPAIR_REASONS, GenerationValidationError
+
 
 _REASONS = frozenset({"unsupported_script", "non_english_script", "japanese_script", "latin_prose",
-                      "ambiguous_han_only", "invalid_prose_field", "invalid_json_object", "invalid_code_field"})
+                      "ambiguous_han_only", "invalid_prose_field", "invalid_json_object", "invalid_code_field"}) | REPAIR_REASONS
 _CONTRACTS = frozenset({"text", "analysis", "ladder", "st", "debug", "diagnosis", "patch", "inspection",
                        "test_suite", "tool_candidate", "tool_patch"})
 _MAX_VIOLATIONS = 16
@@ -17,7 +19,7 @@ _MAX_VIOLATIONS = 16
 def _schema_segments():
     from response_language import ResponseContract
     import workflow_response_contracts
-    result = {"ladder", "patch", "arguments", "comment"}
+    result = {"ladder", "patch", "arguments", "comment", "shared_inputs", "header_element", "inputs", "outputs", "branches", "type", "rung_id", "branch_id", "y_offset_level", "address", "expression", "opcode", "operands", "value", "mode", "delete_rung_ids", "confirmed_spec", "selected_approach", "networks"}
     for contract in vars(workflow_response_contracts).values():
         if isinstance(contract, ResponseContract):
             for selector in contract.human_paths + contract.st_paths + contract.annotation_paths + contract.structured_paths:
@@ -71,10 +73,19 @@ def public_error_details(value):
     if isinstance(count, bool) or not isinstance(count, int):
         count = len(violations)
     count = max(len(rows), min(count, 1000000))
-    return {"response_language": language if isinstance(language, str) and language in ("zh-CN", "en", "ja") else "unknown",
+    result = {"response_language": language if isinstance(language, str) and language in ("zh-CN", "en", "ja") else "unknown",
             "contract_name": contract if isinstance(contract, str) and contract in _CONTRACTS else "custom",
             "diagnostic_id": digest if isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{16}", digest) else None,
             "violations": rows, "violation_count": count, "truncated": count > len(rows)}
+    if value.get("stage") == "generation_validation":
+        def bounded_number(key):
+            item = value.get(key, 0)
+            return min(3, max(0, item)) if isinstance(item, int) and not isinstance(item, bool) else 0
+        stop = value.get("stop_reason")
+        result.update(stage="generation_validation", attempt_count=bounded_number("attempt_count"),
+                      max_attempts=bounded_number("max_attempts"),
+                      stop_reason=stop if stop in ("attempt_limit", "time_budget", "final_validation") else "attempt_limit")
+    return result
 
 
 def acceptance_error_details(error):
@@ -97,3 +108,30 @@ def acceptance_error_details(error):
                 })
         error = error.__cause__ or error.__context__
     return None
+
+
+def generation_error_details(error):
+    seen = set()
+    while isinstance(error, BaseException) and id(error) not in seen and len(seen) < 8:
+        seen.add(id(error))
+        if isinstance(error, GenerationValidationError):
+            return public_error_details(error.diagnostics)
+        error = error.__cause__ or error.__context__
+    return None
+
+
+def workflow_error_code(error):
+    """Classify only known exceptions; never expose SDK messages/attributes."""
+    from model_provider import ModelProviderError
+    from application.generation_repair import GenerationError
+    seen, generation = set(), False
+    while isinstance(error, BaseException) and id(error) not in seen and len(seen) < 8:
+        seen.add(id(error))
+        generation |= isinstance(error, GenerationError)
+        if isinstance(error, ModelProviderError):
+            code = error.code
+            allowed = {"authentication", "rate_limit", "timeout", "invalid_request", "unavailable",
+                       "protocol", "image_not_supported", "image_payload_too_large", "provider_error"}
+            return "model_" + (code if isinstance(code, str) and code in allowed else "provider_error")
+        error = error.__cause__ or error.__context__
+    return "generation_failed" if generation else None

@@ -1,4 +1,6 @@
 {
+  "已将修复合并回本次完整候选，共 {v0} 个梯级；正在重新校验。": "Merged the repair into the complete current candidate ({v0} rungs); validating again.",
+  "硬校验未通过，正在结构修复 {v0}/{v1}：{v2}": "Hard validation failed; structural repair {v0}/{v1}: {v2}",
   "\n\n(提示: 未检测到伴随的注释数据)": "\n\n(Note: No accompanying comment data was found)",
   "\n\n导入前备份：\n": "\n\nBackup before import:\n",
   "\n\n已保留导入前程序备份：\n{v0}": "\n\nThe pre-import program backup was retained:\n{v0}",
