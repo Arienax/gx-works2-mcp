@@ -104,12 +104,14 @@ class ProjectService:
     def capabilities(version=None) -> dict:
         mode = str((version or {}).get("target_mode") or "ladder").lower()
         ladder = mode == "ladder"
+        fbd = mode == "fbd"
         return {"project_type": "fx", "body_form": mode,
-                "representations": ["ladder_svg", "st", "ir"] if ladder else ["st"],
-                "operations": {"view": True, "generate": mode in ("ladder", "st"),
-                               "diagnose": ladder, "patch": ladder, "gx_import": ladder,
-                               "simulation": ladder, "gx_compile": False, "fbd_edit": False},
-                "sfc": "requirement_input", "structured_semantics": "experimental_read_only"}
+                "representations": ["ladder_svg", "st", "ir"] if ladder else ["fbd", "svg", "gxw"] if fbd else ["st"],
+                "operations": {"view": True, "generate": mode in ("ladder", "st", "fbd"),
+                               "diagnose": ladder, "patch": ladder, "gx_import": ladder or fbd,
+                               "simulation": ladder, "gx_compile": False, "fbd_edit": fbd,
+                               "fbd_convert": ladder},
+                "sfc": "requirement_input", "structured_semantics": "verified_native_templates" if fbd else "experimental_read_only"}
 
     def artifact(self, project_id: str, version_id: str, artifact_id: str) -> Path:
         version = self.raw_version(project_id, version_id)
@@ -123,7 +125,7 @@ class ProjectService:
             raise ProjectError("Invalid artifact manifest") from None
         root = self.store.version_dir(project_id, version_id)
         path = contained(root / relative, root)
-        if path.suffix.lower() not in (".svg", ".st", ".txt", ".json", ".csv", ".html", ".md", ".png", ".pdf"):
+        if path.suffix.lower() not in (".svg", ".st", ".txt", ".json", ".csv", ".html", ".md", ".png", ".pdf", ".gxw"):
             raise ProjectError("Unsupported artifact type")
         if not path.is_file():
             raise KeyError("Artifact file not found")
@@ -143,7 +145,12 @@ class ProjectService:
         path = self.artifact(project_id, version_id, artifact_id)
         if path.suffix.lower() != ".svg":
             raise ProjectError("Artifact is not an SVG")
-        return self.themed_svg(path.read_text(encoding="utf-8"), theme)
+        text = path.read_text(encoding="utf-8")
+        # FBD has its own stylesheet. The legacy ladder recoloring changes its
+        # background without changing class-based text, making labels unreadable.
+        if self.raw_version(project_id, version_id).get("target_mode") == "fbd":
+            return text
+        return self.themed_svg(text, theme)
 
     def artifacts(self, project_id: str, version_id: str) -> list[dict]:
         version = self.raw_version(project_id, version_id)
@@ -160,6 +167,8 @@ class ProjectService:
 
     def program(self, project_id: str, version_id: str) -> dict | None:
         version = self.raw_version(project_id, version_id)
+        if version.get("target_mode") == "fbd":
+            return json.loads(self.artifact(project_id, version_id, "fbd").read_text(encoding="utf-8"))
         for key in ("ir", "json"):
             if (version.get("artifacts") or {}).get(key):
                 self.artifact(project_id, version_id, key)

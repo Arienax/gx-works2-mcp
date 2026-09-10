@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "baseline_sha256": "4fb7e36a560f5c59009a40f55e776aca23a8803bbc9b78500cd60904463139c6",
+  "output_sha256": "5780018d400c1218da12e103185ab734d8195d4d2056118062f16f349c9cfc71",
+  "old_length": 930304,
+  "new_length": 930816,
+  "objects": [
+    {
+      "object": "1.Program.pou",
+      "stream": "16",
+      "old_length": 535,
+      "new_length": 727,
+      "before_sha256": "df36b062161315ac763eceb7dacbe2ee0dd0933cf0e0684098d8f89e40164967",
+      "after_sha256": "b3248a13d77bc2a1844dc4280f9b1d2e10b5e9f8e6cd3ee110bb7cba8097987f",
+      "offset_space": "logical Program.pou bytes",
+      "binary_changes": [
+        {
+          "old_offset": 55,
+          "new_offset": 55,
+          "old_length": 449,
+          "new_length": 641,
+          "before_hex": "c4010000c40100000100000001000000b801000001000000000001000000000005000000070000005000000001000000030000000300000058003000000001000000000005000000020000000700000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000003000000030000005800310000000100000000000a000000020000000c00000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000005000000030000005900300000000100000000000d000000020000000f000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c000000020000000000000001000000000001000000000007000000030000000a00000003000000000000002c00000002000000000000000100000000000100000000000c000000030000000d00000003",
+          "after_hex": "84020000840200000100000001000000780200000100000000000100000000000a0000000800000080000000010000000200000008000000540049004d00450052005f00410000000400000054004f004e00000008000000020000000d00000006000000040000001000000001000000000000000200000010000000010000000000000003000000100000000000000005000000020000001000000000000000050000000300000080000000010000000200000008000000540049004d00450052005f00420000000400000054004f004e00000015000000020000001a00000006000000040000001000000001000000000000000200000010000000010000000000000003000000100000000000000005000000020000001000000000000000050000000300000040000000010000000d0000000300000058003000000001000000000006000000030000000800000005000000010000001000000002000000020000000100000044000000010000000d000000050000005400230031007300000001000000000006000000040000000800000006000000010000001000000002000000020000000100000044000000010000000d000000050000005400230032007300000001000000000013000000040000001500000006000000010000001000000002000000020000000100000040000000010000000e000000030000005900300000000100000000001a000000030000001c0000000500000001000000100000000300000000000000010000002c00000002000000000000000100000000000100000000000100000000000000010000000a000000000000002c00000002000000000000000100000000000100000000000d000000040000001500000004"
+        }
+      ],
+      "records_before": [
+        {
+          "offset": 95,
+          "length": 80,
+          "sha256": "839b44afc803a76bdef75bf2e2f9bff2d53fb353ad7b70be3dcc1ffb505b099d",
+          "kind": "contact",
+          "symbol": "X0",
+          "type_name": null
+        },
+        {
+          "offset": 175,
+          "length": 80,
+          "sha256": "6e516b604361ef4c4f6f2c505a0018be3eec07f82e9e6fc91aaba30e17c30c7e",
+          "kind": "contact",
+          "symbol": "X1",
+          "type_name": null
+        },
+        {
+          "offset": 255,
+          "length": 80,
+          "sha256": "c187902ea7520294ad8663d9f21c366bc6a245910a81a6ba5212bf82626a38f6",
+          "kind": "coil",
+          "symbol": "Y0",
+          "type_name": null
+        },
+        {
+          "offset": 335,
+          "length": 44,
+          "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+          "kind": "wire",
+          "start": [
+            1,
+            0
+          ],
+          "end": [
+            1,
+            5
+          ]
+        },
+        {
+          "offset": 379,
+          "length": 44,
+          "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+          "kind": "wire",
+          "start": [
+            1,
+            3
+          ],
+          "end": [
+            5,
+            3
+          ]
+        },
+        {
+          "offset": 423,
+          "length": 44,
+          "sha256": "6a5a499ed4ae03362fcd46aaff884eac6482fbe31b996f125ac25532659e858c",
+          "kind": "wire",
+          "start": [
+            7,
+            3
+          ],
+          "end": [
+            10,
+            3
+          ]
+        },
+        {
+          "offset": 467,
+          "length": 44,
+          "sha256": "eb88f2261732994f1b8730222fba319caf95bbd3718f4c1c428f8bd0417090e0",
+          "kind": "wire",
+          "start": [
+            12,
+            3
+          ],
+          "end": [
+            13,
+            3
+          ]
+        }
+      ],
+      "records_after": [
+        {
+          "offset": 95,
+          "length": 128,
+          "sha256": "3785e5fe2f23b0ed0e523a82c400e945eed1fc92ed889c07140795eb404d81e5",
+          "kind": "function_block",
+          "symbol": "TIMER_A",
+          "type_name": "TON"
+        },
+        {
+          "offset": 223,
+          "length": 128,
+          "sha256": "a531258d0cff43bf594569fdb9b5cab869f2cd1780b3c7367d6a1ddbef572787",
+          "kind": "function_block",
+          "symbol": "TIMER_B",
+          "type_name": "TON"
+        },
+        {
+          "offset": 351,
+          "length": 64,
+          "sha256": "0d5bc2623ca949e9bc4013f0045b488567d9b3b601ad72d28156d31deb9c1663",
+          "kind": "input",
+          "symbol": "X0",
+          "type_name": null
+        },
+        {
+          "offset": 415,
+          "length": 68,
+          "sha256": "37ee75406209a8d45300735e487a0487ab2ca48018421aee53ecd1c259ae2c66",
+          "kind": "input",
+          "symbol": "T#1s",
+          "type_name": null
+        },
+        {
+          "offset": 483,
+          "length": 68,
+          "sha256": "3438f6d44aa2407a94237ae0970cf6c4fe791caf5ba52870b187d9032f9b656c",
+          "kind": "input",
+          "symbol": "T#2s",
+          "type_name": null
+        },
+        {
+          "offset": 551,
+          "length": 64,
+          "sha256": "34104d9fafee1beb9a28473a9f003b33b5ca2cf2e8f05c626e845169841d4a71",
+          "kind": "output",
+          "symbol": "Y0",
+          "type_name": null
+        },
+        {
+          "offset": 615,
+          "length": 44,
+          "sha256": "8b871a2b42947ac2abec0d7600d132a06f202154a92c2b50ebc24455b8a22a6e",
+          "kind": "wire",
+          "start": [
+            1,
+            0
+          ],
+          "end": [
+            1,
+            10
+          ]
+        },
+        {
+          "offset": 659,
+          "length": 44,
+          "sha256": "3ded0c509b77096e7d44c1c0426ad6caff8a3c24a7daeff217cf804d0a65706c",
+          "kind": "wire",
+          "start": [
+            13,
+            4
+          ],
+          "end": [
+            21,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "object": "1.Labels.lh",
+      "stream": "15",
+      "old_length": 110,
+      "new_length": 298,
+      "before_sha256": "dafd10aeeb022c8b186bc95259affad4bb5b34dc0a82c6bf44eb20d909c43a98",
+      "after_sha256": "4e170a32fc1f85c39487eda362bc494a33c8cfa84a2d658cd79f95f6fae0ba62",
+      "offset_space": "logical declaration stream bytes",
+      "binary_changes": [
+        {
+          "old_offset": 82,
+          "new_offset": 82,
+          "old_length": 1,
+          "new_length": 189,
+          "before_hex": "00",
+          "after_hex": "0200000008000000540049004d00450052005f00410000000400000054004f004e000000010000000100000000000100000000000000000001000000000001000000000001000000010000000000000000000f0000000400000054004f004e00000008000000540049004d00450052005f00420000000400000054004f004e000000010000000100000000000100000000000000000001000000000001000000000002000000010000000000000000000f0000000400000054004f004e"
+        }
+      ],
+      "records_before": [],
+      "records_after": [
+        {
+          "offset": 86,
+          "length": 94,
+          "sha256": "ad50800d938157b0d1d181fb3b3d2bbecfe4dc3be840f3cf2a41502f8afec24b",
+          "kind": "declaration",
+          "symbol": "TIMER_A",
+          "type_name": "TON",
+          "record_id": 1,
+          "class_code": 1
+        },
+        {
+          "offset": 180,
+          "length": 94,
+          "sha256": "1a70762c36a3992db478b7625f5fc2dac3fbf1d983016cb9f9c2eaa061479970",
+          "kind": "declaration",
+          "symbol": "TIMER_B",
+          "type_name": "TON",
+          "record_id": 2,
+          "class_code": 1
+        }
+      ]
+    }
+  ],
+  "metadata_changes": [
+    {
+      "object": "1.Program.pou",
+      "stream": "16",
+      "field": "iFileSize",
+      "before": "535",
+      "after": "727",
+      "old_offset": 9490,
+      "old_length": 3,
+      "new_length": 3,
+      "offset_space": "history.xml bytes",
+      "status": "confirmed",
+      "new_offset": 9490
+    },
+    {
+      "object": "1.Program.pou",
+      "stream": "16",
+      "field": "szMD5val",
+      "before": "kol7w275phVxrD15phVj4w==",
+      "after": "mLVzazsDpjfjjiTAJl5j2Q==",
+      "old_offset": 9523,
+      "old_length": 24,
+      "new_length": 24,
+      "offset_space": "history.xml bytes",
+      "status": "confirmed",
+      "new_offset": 9523
+    },
+    {
+      "object": "1.Labels.lh",
+      "stream": "15",
+      "field": "iFileSize",
+      "before": "110",
+      "after": "298",
+      "old_offset": 8899,
+      "old_length": 3,
+      "new_length": 3,
+      "offset_space": "history.xml bytes",
+      "status": "confirmed",
+      "new_offset": 8899
+    },
+    {
+      "object": "1.Labels.lh",
+      "stream": "15",
+      "field": "szMD5val",
+      "before": "xm6rJaMs07/X1MqWUgj7yA==",
+      "after": "UOb4HtXSmx74bchJ0iOiZw==",
+      "old_offset": 8932,
+      "old_length": 24,
+      "new_length": 24,
+      "offset_space": "history.xml bytes",
+      "status": "confirmed",
+      "new_offset": 8932
+    }
+  ],
+  "preserved_metadata": [],
+  "allocations": [
+    {
+      "layer": "nested",
+      "object": "1.Program.pou",
+      "stream": "16",
+      "mode": "grow_root_and_tables"
+    },
+    {
+      "layer": "nested",
+      "object": "1.Labels.lh",
+      "stream": "15",
+      "mode": "extend_mini_in_root"
+    },
+    {
+      "layer": "outer",
+      "stream": "_hdb",
+      "mode": "append_regular"
+    },
+    {
+      "layer": "outer",
+      "stream": "history.xml",
+      "mode": "existing_allocation"
+    }
+  ],
+  "validation": {
+    "parser": "passed",
+    "all_stream_payloads": "passed",
+    "gxworks_open": "not_run",
+    "gxworks_compile": "not_run",
+    "gxworks_save_reload": "not_run"
+  },
+  "limitations": [
+    "Template-backed supported StructuredProgram layouts only",
+    "Compiler state preserved; GX Works2 compilation is a separate required gate",
+    "Declaration edits use existing local/global tables; adding new POUs or table streams is unsupported"
+  ]
+}

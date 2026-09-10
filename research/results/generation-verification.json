@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-10",
+  "pytest": {
+    "command": ".venv/Scripts/python.exe -m pytest -q",
+    "passed": 1368,
+    "skipped": 3,
+    "warnings": 1,
+    "seconds": 49.53,
+    "warning": "Existing Starlette/AnyIO deprecated BlockingPortal alias"
+  },
+  "mcp_smoke": {
+    "ok": true,
+    "tool_count": 12,
+    "generation": "confirmation_required",
+    "workspace_unchanged": true
+  },
+  "web_build": {
+    "typescript": "passed",
+    "vite": "passed"
+  },
+  "native_results": [
+    "auto-declarations-roundtrip.json",
+    "fresh-fbd-roundtrip.json",
+    "relay-parallel-roundtrip.json",
+    "web-fbd-acceptance.json"
+  ],
+  "artifact_integrity": {
+    "archive_entries": 14,
+    "screenshots": 6,
+    "json_files_parsed": 37,
+    "new_document_links": "passed",
+    "sha256": "passed",
+    "git_diff_check": "passed"
+  },
+  "limitations": [
+    "3 tests skipped; not counted as verification",
+    "Native compile observations are separate from offline tests",
+    "Web generation QA uses a fixed offline provider",
+    "Relay multi-rung example retains C2034 warning",
+    "Release package and online model quality not tested"
+  ]
+}

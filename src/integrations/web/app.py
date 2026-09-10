@@ -18,13 +18,14 @@ from fastapi.staticfiles import StaticFiles
 
 from application.projects import media_type, public
 from application.workbench import WorkbenchService, sfc_requirement
+from application.fbd import FBDValidationError
 from application.workspace import ConflictError, WorkspaceBusyError
 from .security import LocalSecurity
 from . import responses as dto
 from .schemas import (Login, ProjectCreate, ProjectUpdate, ActivateVersion, SpecUpdate,
                       JobCreate, ProposalDecision, ExecutionProposal, AgentCall,
                       SettingsUpdate, ModelProfileCreate, ModelKeyUpdate, ModelConnectionTest,
-                      AttachmentUpload, SFCInput)
+                      AttachmentUpload, SFCInput, FBDProposal)
 
 
 def default_state_dir(workspace):
@@ -67,6 +68,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.exception_handler(ValueError)
     async def invalid(_request, _error):
         return JSONResponse({"error": {"code": "invalid_request", "message": "输入或工程状态无效，请检查所选版本及设置。"}}, status_code=400)
+
+    @app.exception_handler(FBDValidationError)
+    async def invalid_fbd(_request, error):
+        return JSONResponse({"error": {"code": "invalid_fbd", "message": public(str(error))}}, status_code=400)
 
     @app.exception_handler(ConflictError)
     async def conflict(_request, _error):
@@ -114,6 +119,20 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.post("/api/projects", status_code=201, response_model=dto.Project, response_model_exclude_unset=True)
     def create_project(command: ProjectCreate):
         return service.create_project(**command.model_dump())
+
+    @app.get("/api/fbd/catalog", response_model=dto.PublicObject)
+    def fbd_catalog():
+        from application.fbd import catalog_description
+        return {"nodes": catalog_description(), "generation_plc_models": ["FX3U"]}
+
+    @app.post("/api/fbd/inspect", response_model=dto.PublicObject)
+    def fbd_inspect(command: AttachmentUpload):
+        from application.fbd import inspect_upload
+        return inspect_upload(command.data_base64)
+
+    @app.post("/api/fbd/proposals", status_code=201, response_model=dto.Proposal, response_model_exclude_unset=True)
+    def fbd_proposal(command: FBDProposal):
+        return service.fbd.propose(command.model_dump(exclude_none=True))
 
     @app.get("/api/projects/{project_id}", response_model=dto.Project, response_model_exclude_unset=True)
     def project(project_id: str):

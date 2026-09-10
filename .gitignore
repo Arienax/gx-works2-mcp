@@ -82,3 +82,6 @@ web/dist/
 web/*.tsbuildinfo
 .gxworks-state/
 dist-web/
+
+# Editable GXW experiment copies; immutable evidence is archived separately.
+/research/experiments/

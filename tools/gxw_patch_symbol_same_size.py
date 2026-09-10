@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 
-import olefile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
@@ -14,18 +11,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from gxw.models import GXWFormatError
-from gxw.project_resolver import GXWProjectResolver
 from gxw.structured_pou import parse_structured_pou
-
-
-def _logical_stream_name(resolver: GXWProjectResolver, logical_name: str) -> str:
-    # Current resolver intentionally keeps this map private.
-    # For this experimental tool we resolve through logical_files() rather than
-    # hard-coding numeric stream IDs.
-    for item in resolver.logical_files():
-        if item.logical_name == logical_name:
-            return item.stream_name
-    raise KeyError(logical_name)
 
 
 def _encode_symbol(symbol: str) -> bytes:
@@ -124,91 +110,21 @@ def main() -> None:
         default=None,
         help="Exact Program.pou node offset, e.g. 0x103, if the symbol appears more than once.",
     )
+    parser.add_argument("--report", type=Path)
     args = parser.parse_args()
 
-    if args.gxw.resolve() == args.output.resolve():
-        raise SystemExit("refusing to overwrite the source GXW; choose a different -o path")
-
-    resolver = GXWProjectResolver.from_file(args.gxw)
-    logical_name = resolver.choose_program_pou(args.program)
-    stream_name = _logical_stream_name(resolver, logical_name)
-    original_pou = resolver.read_logical_file(logical_name)
-
-    patched_pou = _patch_node_symbol_same_size(
-        original_pou,
-        logical_name=logical_name,
-        old_symbol=args.old_symbol,
-        new_symbol=args.new_symbol,
-        node_offset=args.node_offset,
-    )
-
-    if len(patched_pou) != len(original_pou):
-        raise GXWFormatError("internal error: same-size patch changed Program.pou length")
-
-    # Extract nested _hdb from the source.
-    with olefile.OleFileIO(str(args.gxw)) as outer:
-        hdb_bytes = outer.openstream("_hdb").read()
-
-    with tempfile.TemporaryDirectory(prefix="gxw_patch_") as td:
-        td = Path(td)
-        hdb_path = td / "nested_hdb.cfb"
-        hdb_path.write_bytes(hdb_bytes)
-
-        # Equal-size in-place stream replacement inside nested CFB.
-        with olefile.OleFileIO(str(hdb_path), write_mode=True) as hdb:
-            if not hdb.exists(stream_name):
-                raise GXWFormatError(
-                    f"resolved nested stream {stream_name!r} does not exist"
-                )
-            existing = hdb.openstream(stream_name).read()
-            if len(existing) != len(patched_pou):
-                raise GXWFormatError(
-                    "nested Program.pou stream size mismatch; refusing write"
-                )
-            hdb.write_stream(stream_name, patched_pou)
-
-        new_hdb_bytes = hdb_path.read_bytes()
-        if len(new_hdb_bytes) != len(hdb_bytes):
-            raise GXWFormatError(
-                "_hdb container size changed during equal-size patch; refusing outer write"
-            )
-
-        shutil.copy2(args.gxw, args.output)
-
-        # Equal-size in-place stream replacement in the outer GXW CFB.
-        with olefile.OleFileIO(str(args.output), write_mode=True) as outer_out:
-            existing_hdb = outer_out.openstream("_hdb").read()
-            if len(existing_hdb) != len(new_hdb_bytes):
-                raise GXWFormatError(
-                    "outer _hdb stream size mismatch; refusing write"
-                )
-            outer_out.write_stream("_hdb", new_hdb_bytes)
-
-    # Final end-to-end validation using the project's own parser.
-    check = GXWProjectResolver.from_file(args.output)
-    check_name = check.choose_program_pou(logical_name)
-    check_pou = check.read_logical_file(check_name)
-    check_program = parse_structured_pou(check_pou, logical_name=check_name)
-
-    hits = [n for n in check_program.nodes if n.symbol == args.new_symbol]
-    if not hits:
-        raise GXWFormatError(
-            "output GXW reopened successfully but patched symbol was not found"
-        )
-
-    print("Patch completed.")
-    print(f"Source:        {args.gxw}")
-    print(f"Output:        {args.output}")
-    print(f"Program:       {logical_name}")
-    print(f"Nested stream: {stream_name}")
-    print(f"Change:        {args.old_symbol} -> {args.new_symbol}")
-    print("Parser check:  OK")
-    print()
-    print("Next manual test:")
-    print("  1. Open the OUTPUT file in GX Works2.")
-    print("  2. Confirm the node displays the new symbol.")
-    print("  3. Compile/convert if applicable.")
-    print("  4. Save, close, reopen, and confirm it remains valid.")
+    if len(_encode_symbol(args.old_symbol)) != len(_encode_symbol(args.new_symbol)):
+        parser.error("this compatibility command requires equal UTF-16 symbol lengths")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from gxw_project import main as project_main
+    report = args.report or args.output.with_suffix(".write.json")
+    forwarded = ["symbol", str(args.gxw), args.old_symbol, args.new_symbol,
+                 "-o", str(args.output), "--report", str(report)]
+    if args.program:
+        forwarded += ["--program", args.program]
+    if args.node_offset is not None:
+        forwarded += ["--node-offset", str(args.node_offset)]
+    project_main(forwarded)
 
 
 if __name__ == "__main__":

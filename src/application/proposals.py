@@ -118,10 +118,10 @@ class ProposalService:
     def _freeze_staging(self, proposal_id, payload):
         manifest = payload.get("artifacts")
         if not isinstance(manifest, dict) or not manifest:
-            raise ValueError("ST candidate requires a managed artifact manifest")
+            raise ValueError("Candidate requires a managed artifact manifest")
         source = contained(Path(payload.get("staging_dir") or ""), self.state_dir)
         if not source.is_dir():
-            raise ValueError("ST staging directory is missing")
+            raise ValueError("Candidate staging directory is missing")
         prepared = []
         for name, entry in manifest.items():
             record_id(name, "artifact")
@@ -134,6 +134,9 @@ class ProposalService:
             if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
                 raise ConflictError("Staged artifact hash changed")
             prepared.append((name, relative, data))
+        if payload.get("target_mode") == "fbd":
+            from .fbd import validate_candidate
+            validate_candidate({name: data for name, _relative, data in prepared})
         target = contained(self.directory / proposal_id, self.directory)
         target.mkdir(exist_ok=False)
         for name, relative, data in prepared:
@@ -186,10 +189,10 @@ class ProposalService:
                             raise ConflictError("Candidate base program is stale")
                         payload["base_ir_sha256"] = base["ir_sha256"]
                     payload["confirmed_spec_hash"] = canonical_sha256(spec) if spec is not None else None
-                elif payload.get("target_mode") != "st":
-                    raise ValueError("Local candidate requires IR or staged ST artifacts")
+                elif payload.get("target_mode") not in ("st", "fbd"):
+                    raise ValueError("Local candidate requires IR or staged ST/FBD artifacts")
             proposal_id = "proposal_" + uuid.uuid4().hex
-            if action == "accept_local" and payload.get("target_mode") == "st" and "_candidate_ir" not in payload:
+            if action == "accept_local" and payload.get("target_mode") in ("st", "fbd") and "_candidate_ir" not in payload:
                 payload = self._freeze_staging(proposal_id, payload)
             now = utc_now()
             record = {"id": proposal_id, "action": action, "project_id": project_id,
@@ -217,7 +220,7 @@ class ProposalService:
         if self._base_snapshot(record["project_id"], record["base_version_id"]) != record["base_snapshot"]:
             raise ConflictError("Base version changed; regenerate the proposal")
         payload = record["private_payload"]
-        if payload.get("target_mode") == "st" and payload.get("artifacts"):
+        if payload.get("target_mode") in ("st", "fbd") and payload.get("artifacts"):
             root = contained(Path(payload["staging_dir"]), self.directory)
             for entry in payload["artifacts"].values():
                 path = contained(root / entry["path"], root)
@@ -311,7 +314,7 @@ class ProposalService:
                     artifacts[name] = entry["path"]
                 allowed = {"summary", "validation", "plc_model", "program_name", "generation_metadata"}
                 metadata = {key: copy.deepcopy(value) for key, value in (payload.get("metadata") or {}).items() if key in allowed}
-                metadata.update(target_mode="st", artifacts=artifacts, plc_model=payload.get("plc_model", "FX3U"))
+                metadata.update(target_mode=payload["target_mode"], artifacts=artifacts, plc_model=payload.get("plc_model", "FX3U"))
             metadata.update(summary=metadata.get("summary") or "用户确认的候选程序",
                             parent_version_id=base_id, source_candidate_id=payload.get("candidate_id", record["id"]),
                             lifecycle_status="accepted", confirmed_spec_snapshot=copy.deepcopy(payload.get("_confirmed_spec")))

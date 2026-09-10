@@ -53,6 +53,8 @@ import type { Locale } from "./i18n";
 import { SpecEditor } from "./features/SpecEditor";
 import { JobFailure } from "./features/JobFailure";
 import { Settings } from "./features/Settings";
+import { FBDPanel, FBDImport, emptyFBD } from "./features/FBDPanel";
+import type { FBDModel } from "./features/FBDPanel";
 
 let bootstrapToken =
   new URLSearchParams(location.hash.slice(1)).get("token") || "";
@@ -114,7 +116,7 @@ export default function App() {
     [busy, setBusy] = useState(false);
   const [modal, setModal] = useState(""),
     [newName, setNewName] = useState(""),
-    [newMode, setNewMode] = useState<"ladder" | "st">("ladder");
+    [newMode, setNewMode] = useState<"ladder" | "st" | "fbd">("ladder");
   const [steps, setSteps] = useState([
     { name: "", action: "", transition: "" },
   ]);
@@ -233,6 +235,7 @@ export default function App() {
       .then((value) => {
         if (stopped) return;
         setProject(value);
+        if (!value.versions?.length && value.target_mode === "fbd") setTab("fbd");
         const binding = value.id + ":" + (value.confirmed_spec_hash || "");
         if (specBinding.current !== binding) {
           specBinding.current = binding;
@@ -293,6 +296,9 @@ export default function App() {
       stopped = true;
     };
   }, [pid, vid, version, session, t]);
+  useEffect(() => {
+    if (version?.target_mode === "fbd") setTab("fbd");
+  }, [version?.id, version?.target_mode]);
   useEffect(() => {
     if (!session) return;
     let stopped = false;
@@ -425,7 +431,13 @@ export default function App() {
     setPreview(loaded);
     setSelectedProposal(value);
     setPanel("proposals");
-    setTab(loaded.target_mode === "st" ? "st" : "ladder");
+    setTab(loaded.target_mode === "fbd" ? "fbd" : loaded.target_mode === "st" ? "st" : "ladder");
+  }
+  async function showFBDProposal(value: Proposal) {
+    if (activeProjectRef.current !== value.project_id) return;
+    setProposals(old => [value, ...old.filter(p => p.id !== value.id)]);
+    setModal("");
+    await showProposal(value);
   }
   async function decide(value: Proposal, decision: "accept" | "reject") {
     const epoch = projectEpoch.current;
@@ -773,7 +785,7 @@ export default function App() {
               </Button>
             )}
             <Button
-              disabled={!canWrite || !pid}
+              disabled={!canWrite || !pid || version?.target_mode === "fbd"}
               title={t("从 GX 读取")}
               onClick={() => void guarded(() => submitJob("gx_read"))}
             >
@@ -781,12 +793,19 @@ export default function App() {
               {t("从 GX 读取")}
             </Button>
             <Button
-              disabled={!canWrite || !pid}
+              disabled={!canWrite || !pid || version?.target_mode === "fbd"}
               title={t("检查同步")}
               onClick={() => void guarded(() => submitJob("gx_inspect"))}
             >
               <GitBranch size={15} />
             </Button>
+            <Button disabled={!canWrite || !pid} onClick={() => setModal("fbd-import")}>
+              <FolderOpen size={15} />{t("导入 GXW")}
+            </Button>
+            {operations.fbd_convert && <Button disabled={!canWrite} onClick={() => void guarded(async () => {
+              const proposal = await api<Proposal>("/fbd/proposals", "POST", {operation:"convert",project_id:pid,version_id:vid,request_id:key()});
+              await showFBDProposal(proposal);
+            })}>{t("转换为 FBD")}</Button>}
             <Button
               disabled={!canWrite || !operations.gx_import}
               onClick={() => void guarded(() => proposeExecution("gx_import"))}
@@ -800,6 +819,7 @@ export default function App() {
           {(
             [
               ["ladder", t("梯形图"), <Workflow size={15} />],
+              ["fbd", "FBD", <GitBranch size={15} />],
               ["st", "ST", <Code2 size={15} />],
               ["diagnostics", t("诊断"), <ShieldCheck size={15} />],
               ["reports", t("检查报告"), <FileCheck2 size={15} />],
@@ -857,6 +877,11 @@ export default function App() {
                 {t("新建工程")}
               </Button>
             </div>
+          ) : tab === "fbd" && (preview?.target_mode === "fbd" || (!preview && (version?.target_mode === "fbd" || (!version && project.target_mode === "fbd")))) ? (
+            <FBDPanel key={`${pid}:${vid}:${selectedProposal?.id || "version"}`} value={Array.isArray(visibleProgram?.nodes) ? visibleProgram as unknown as FBDModel : emptyFBD()}
+              svg={svg} pid={pid} vid={vid} readOnly={!canWrite} preview={!!preview} t={t} onProposal={showFBDProposal} />
+          ) : tab === "fbd" ? (
+            <div className="empty-state"><GitBranch size={38}/><h2>{t("结构化梯形图/FBD")}</h2><p>{t("导入 GXW 工程，或将当前梯形图转换为 FBD。也可以新建 FBD 工程直接生成。")}</p></div>
           ) : !version && !preview ? (
             <div className="empty-state">
               <Workflow size={44} />
@@ -1580,6 +1605,7 @@ export default function App() {
             >
               <option value="ladder">{t("梯形图")} · FX3U</option>
               <option value="st">ST · FX3U</option>
+              <option value="fbd">FBD / {t("结构化梯形图")} · FX3U</option>
             </select>
           </label>
           <Button variant="primary" disabled={busy}>
@@ -1587,6 +1613,9 @@ export default function App() {
             {t("创建")}
           </Button>
         </form>
+      </Modal>
+      <Modal open={modal === "fbd-import"} onOpenChange={v => !v && setModal("")} title={t("导入 GXW 工程")}>
+        <FBDImport key={`${pid}:${vid}`} pid={pid} vid={vid} disabled={!canWrite} onProposal={showFBDProposal} t={t}/>
       </Modal>
       <Modal
         open={modal === "settings"}
@@ -1753,6 +1782,11 @@ function DiffView({ value, t }: { value: Json; t: (key: string) => string }) {
   return (
     <div className="candidate-diff">
       <h3>{t("差异数据")}</h3>
+      {diff.kind === "fbd" ? <>
+        <p>{t("对象")} {String(diff.before_object_count)} → {String(diff.after_object_count)} · {t("导线")} {String(diff.before_wire_count)} → {String(diff.after_wire_count)}</p>
+        <p>{t(diff.declarations_changed ? "声明表有变化" : "声明表无变化")}</p>
+        {diff.has_changes === false ? <p>{t("程序内容无变化")}</p> : <details><summary>{t("查看详细对象差异")}</summary><pre>{String(diff.unified_diff || "")}</pre></details>}
+      </> : <>
       {diff.has_changes === false ? (
         <p>{t("程序内容无变化")}</p>
       ) : typeof diff.unified_diff === "string" ? (
@@ -1819,6 +1853,7 @@ function DiffView({ value, t }: { value: Json; t: (key: string) => string }) {
           )}
         </>
       )}
+      </>}
     </div>
   );
 }

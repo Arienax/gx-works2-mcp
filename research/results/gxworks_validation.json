@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-10",
+  "environment": {
+    "application": "GX Works2",
+    "file_version": "1.635.0.1",
+    "cpu": "FX3U/FX3UC",
+    "mode": "offline"
+  },
+  "method": "Observed vendor UI: open copy, Convert + Rebuild All, save; reload only when explicitly recorded. Unit tests do not invoke GX Works2.",
+  "cases": {
+    "series": {
+      "status": "confirmed",
+      "before": "s.gxw",
+      "after": "sc.gxw",
+      "before_sha256": "4fb7e36a560f5c59009a40f55e776aca23a8803bbc9b78500cd60904463139c6",
+      "after_sha256": "bc9915e36785747ddc872fe6dd63c27025f323a7222bf951582d3699bb69303f",
+      "open": "passed",
+      "compile": {
+        "errors": 0,
+        "warnings": 0,
+        "check_warnings": 0,
+        "diagnostic_codes": []
+      },
+      "save": "passed",
+      "close_reopen": "passed",
+      "screenshots": [
+        "../evidence/series-compile.png",
+        "../evidence/series-reopened.png"
+      ]
+    },
+    "undeclared": {
+      "status": "confirmed",
+      "before": "b1.gxw",
+      "after": "bu.gxw",
+      "before_sha256": "768bcacda95bc5e065f7b08a3d2544b067288bb06f4f43da3737db300016d7bf",
+      "after_sha256": "b1315d07d12256157ea0cad1103b1f002f6270afc9e7f796f45f012ac7c28908",
+      "open": "passed",
+      "compile": {
+        "errors": 3,
+        "warnings": 1,
+        "check_warnings": 0,
+        "diagnostic_codes": [
+          "C2015",
+          "C2010",
+          "C2020",
+          "C2034"
+        ]
+      },
+      "save": "passed",
+      "close_reopen": "not_run",
+      "screenshots": [
+        "../evidence/binding-undeclared.png"
+      ]
+    },
+    "declared": {
+      "status": "confirmed",
+      "before": "b2.gxw",
+      "after": "b2c.gxw",
+      "before_sha256": "814f16e7ba73798cc9c6ca1188b42f783f42d58f7064fd417890dbd3add7a075",
+      "after_sha256": "4f8a7e0a2456205dd6e1431c5c0328a32d842a164c98818719dc03a576cccaec",
+      "open": "passed",
+      "compile": {
+        "errors": 0,
+        "warnings": 1,
+        "check_warnings": 0,
+        "diagnostic_codes": [
+          "C2034"
+        ]
+      },
+      "save": "passed",
+      "close_reopen": "not_run",
+      "screenshots": [
+        "../evidence/binding-declared-compile.png"
+      ]
+    },
+    "type_mismatch": {
+      "status": "confirmed",
+      "before": "t1.gxw",
+      "after": "tu.gxw",
+      "before_sha256": "6597699803f189a07ef081499bbc25e1058a2a975c27a65a36383060ee6b481d",
+      "after_sha256": "59aaac2c451f15072fd17b31b98b79c160b51888dd69ab76a68acc740ff9a897",
+      "open": "passed",
+      "compile": {
+        "errors": 1,
+        "warnings": 0,
+        "check_warnings": 0,
+        "diagnostic_codes": [
+          "C2015"
+        ]
+      },
+      "save": "passed",
+      "close_reopen": "not_run",
+      "screenshots": [
+        "../evidence/binding-type-mismatch.png"
+      ]
+    },
+    "type_fixed": {
+      "status": "confirmed",
+      "before": "t2.gxw",
+      "after": "t2c.gxw",
+      "before_sha256": "ff7ed97c1275913beca2764e0429d33cb25013283bf34cd81da34ce9b9cd8e24",
+      "after_sha256": "2b3c0b6bb2565be28aa2cf1826ff251dc1ed0105d227dc84a5606952b106afc9",
+      "open": "passed",
+      "compile": {
+        "errors": 0,
+        "warnings": 1,
+        "check_warnings": 0,
+        "diagnostic_codes": [
+          "C2034"
+        ]
+      },
+      "save": "passed",
+      "close_reopen": "not_run",
+      "screenshots": [
+        "../evidence/binding-type-fixed-compile.png"
+      ]
+    },
+    "mixed_rejected": {
+      "status": "confirmed",
+      "before": "f1.gxw",
+      "after": "f1c.gxw",
+      "before_sha256": "7e3763bea0c931fcb2446c184e1d6398169b6abe072d836d5f99c21c52c5a371",
+      "after_sha256": "d000fc74b52214847f9018012785caa18b769e23b19782a773ba700af344e8e7",
+      "open": "passed",
+      "compile": {
+        "errors": 1,
+        "warnings": 1,
+        "check_warnings": 0,
+        "diagnostic_codes": [
+          "C2028",
+          "C2009"
+        ]
+      },
+      "save": "passed",
+      "close_reopen": "not_run",
+      "screenshots": [
+        "../evidence/fb-mixed-ladder-rejected.png"
+      ]
+    },
+    "fb_explicit": {
+      "status": "confirmed",
+      "before": "f2.gxw",
+      "after": "f2c.gxw",
+      "before_sha256": "df912495c7820f7b0d73477cfc1de3714178e0eb6c49c4ea8030b107b2f9fd6a",
+      "after_sha256": "eced96d5caeca5f031a101d656ee1552b1802073dfa73fe30b03f188b40317f7",
+      "open": "passed",
+      "compile": {
+        "errors": 0,
+        "warnings": 0,
+        "check_warnings": 0,
+        "diagnostic_codes": []
+      },
+      "save": "passed",
+      "close_reopen": "passed",
+      "screenshots": [
+        "../evidence/fb-explicit-compile.png",
+        "../evidence/fb-explicit-reopened.png"
+      ],
+      "connectivity": {
+        "schema_version": 1,
+        "reference_space": "current Program.pou record offsets",
+        "wire_scope": "all wires in the conductive net, not necessarily a unique path",
+        "nets": [
+          {
+            "net_index": 2,
+            "sources": [
+              {
+                "node_offset": 95,
+                "instance": "TON_A",
+                "type": "TON",
+                "port_index": 2,
+                "formal": "Q",
+                "role": "data_out",
+                "port_kind_code": 0,
+                "point": {
+                  "x": 13,
+                  "y": 4
+                }
+              }
+            ],
+            "sinks": [
+              {
+                "node_offset": 429,
+                "instance": "TON_B",
+                "type": "TON",
+                "port_index": 0,
+                "formal": "IN",
+                "role": "data_in",
+                "port_kind_code": 1,
+                "point": {
+                  "x": 21,
+                  "y": 4
+                }
+              }
+            ],
+            "unknown": [],
+            "wire_offsets": [
+              807
+            ],
+            "connection": "wire_network",
+            "multiple_fb_drivers": false,
+            "formal_mapping": "known"
+          }
+        ]
+      }
+    },
+    "function_mov": {
+      "status": "confirmed",
+      "before": "fn.gxw",
+      "after": "fnc.gxw",
+      "before_sha256": "b6834a1c1dc534c1837867d2ecdf4268523aa5ce3d308a8964569319c64d3d8e",
+      "after_sha256": "6f84d9c17780ca9681db1ab712a386a57956635d8a09a85b04f7dc979d8b9f3e",
+      "open": "passed",
+      "compile": {
+        "errors": 0,
+        "warnings": 0,
+        "check_warnings": 0,
+        "diagnostic_codes": []
+      },
+      "save": "passed",
+      "close_reopen": "not_run",
+      "screenshots": [
+        "../evidence/function-mov-compile.png",
+        "../evidence/function-empty-local-labels.png"
+      ]
+    }
+  }
+}

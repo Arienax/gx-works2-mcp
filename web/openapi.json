@@ -510,6 +510,178 @@
         "title": "ExecutionProposal",
         "type": "object"
       },
+      "FBDDiff": {
+        "additionalProperties": false,
+        "properties": {
+          "after_object_count": {
+            "title": "After Object Count",
+            "type": "integer"
+          },
+          "after_wire_count": {
+            "title": "After Wire Count",
+            "type": "integer"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "before_object_count": {
+            "title": "Before Object Count",
+            "type": "integer"
+          },
+          "before_wire_count": {
+            "title": "Before Wire Count",
+            "type": "integer"
+          },
+          "declarations_changed": {
+            "title": "Declarations Changed",
+            "type": "boolean"
+          },
+          "has_changes": {
+            "title": "Has Changes",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "fbd",
+            "title": "Kind",
+            "type": "string"
+          },
+          "unified_diff": {
+            "title": "Unified Diff",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "has_changes",
+          "unified_diff",
+          "before_object_count",
+          "after_object_count",
+          "before_wire_count",
+          "after_wire_count",
+          "declarations_changed"
+        ],
+        "title": "FBDDiff",
+        "type": "object"
+      },
+      "FBDPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/FBDDiff"
+          },
+          "program": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Program",
+            "type": "object"
+          },
+          "svg": {
+            "title": "Svg",
+            "type": "string"
+          },
+          "target_mode": {
+            "const": "fbd",
+            "title": "Target Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_mode",
+          "program",
+          "svg",
+          "diff"
+        ],
+        "title": "FBDPreview",
+        "type": "object"
+      },
+      "FBDProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "data_base64": {
+            "anyOf": [
+              {
+                "maxLength": 44040192,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Base64"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "operation": {
+            "enum": [
+              "generate",
+              "edit",
+              "import",
+              "convert"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "operation",
+          "project_id",
+          "request_id"
+        ],
+        "title": "FBDProposal",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1821,7 +1993,8 @@
             "default": "ladder",
             "enum": [
               "ladder",
-              "st"
+              "st",
+              "fbd"
             ],
             "title": "Target Mode",
             "type": "string"
@@ -1958,7 +2131,8 @@
               {
                 "enum": [
                   "ladder",
-                  "st"
+                  "st",
+                  "fbd"
                 ],
                 "type": "string"
               },
@@ -2925,6 +3099,100 @@
           }
         },
         "summary": "Environment"
+      }
+    },
+    "/api/fbd/catalog": {
+      "get": {
+        "operationId": "fbd_catalog_api_fbd_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Fbd Catalog"
+      }
+    },
+    "/api/fbd/inspect": {
+      "post": {
+        "operationId": "fbd_inspect_api_fbd_inspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fbd Inspect"
+      }
+    },
+    "/api/fbd/proposals": {
+      "post": {
+        "operationId": "fbd_proposal_api_fbd_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FBDProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fbd Proposal"
       }
     },
     "/api/health": {
@@ -4049,6 +4317,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/STPreview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FBDPreview"
                     },
                     {
                       "$ref": "#/components/schemas/ExecutionPreview"

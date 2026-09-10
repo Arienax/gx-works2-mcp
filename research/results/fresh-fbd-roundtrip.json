@@ -1,0 +1,674 @@
+{
+  "case": "fresh-two-ton-native-roundtrip",
+  "confidence": "confirmed",
+  "native_compile": {
+    "errors": 0,
+    "warnings": 0,
+    "check_warnings": 0,
+    "saved": true,
+    "reopened": true,
+    "evidence": "research/evidence/fresh-fbd-compile.jpg"
+  },
+  "source_sha256": "5780018d400c1218da12e103185ab734d8195d4d2056118062f16f349c9cfc71",
+  "saved_sha256": "1dc01bda32c74bd86417412ea675cda3d06a66ab1abc2bddbe2c2c9bc35b0814",
+  "program": {
+    "checks": {
+      "devices": true,
+      "topology": true,
+      "wires": true,
+      "semantic_graph": true,
+      "unknown_records": true
+    },
+    "before": {
+      "devices": [
+        [
+          13,
+          "T#1s",
+          null,
+          1
+        ],
+        [
+          13,
+          "T#2s",
+          null,
+          1
+        ],
+        [
+          13,
+          "X0",
+          null,
+          1
+        ],
+        [
+          14,
+          "Y0",
+          null,
+          1
+        ],
+        [
+          2,
+          "TIMER_A",
+          "TON",
+          1
+        ],
+        [
+          2,
+          "TIMER_B",
+          "TON",
+          1
+        ]
+      ],
+      "topology": [
+        [
+          [
+            "[13, \"T#1s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"T#2s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"X0\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[14, \"Y0\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            2
+          ]
+        ],
+        [
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            2
+          ],
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            3
+          ]
+        ],
+        [
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            3
+          ]
+        ]
+      ],
+      "wires": [
+        [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            10
+          ]
+        ],
+        [
+          [
+            13,
+            4
+          ],
+          [
+            21,
+            4
+          ]
+        ]
+      ],
+      "semantic_graph": [
+        {
+          "key": "[13, \"T#1s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#1s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_A\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"T#2s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#2s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_B\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"X0\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"X0\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_A\", \"TON\", 0]",
+              0
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"Y0\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"Y0\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_B\", \"TON\", 0]",
+              2
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[2, \"TIMER_A\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[13, \"X0\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#1s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[2, \"TIMER_B\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#2s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[14, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  2
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        }
+      ],
+      "unknown_records": []
+    },
+    "after": {
+      "devices": [
+        [
+          13,
+          "T#1s",
+          null,
+          1
+        ],
+        [
+          13,
+          "T#2s",
+          null,
+          1
+        ],
+        [
+          13,
+          "X0",
+          null,
+          1
+        ],
+        [
+          14,
+          "Y0",
+          null,
+          1
+        ],
+        [
+          2,
+          "TIMER_A",
+          "TON",
+          1
+        ],
+        [
+          2,
+          "TIMER_B",
+          "TON",
+          1
+        ]
+      ],
+      "topology": [
+        [
+          [
+            "[13, \"T#1s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"T#2s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"X0\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[14, \"Y0\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            2
+          ]
+        ],
+        [
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            2
+          ],
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[2, \"TIMER_A\", \"TON\", 0]",
+            3
+          ]
+        ],
+        [
+          [
+            "[2, \"TIMER_B\", \"TON\", 0]",
+            3
+          ]
+        ]
+      ],
+      "wires": [
+        [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            10
+          ]
+        ],
+        [
+          [
+            13,
+            4
+          ],
+          [
+            21,
+            4
+          ]
+        ]
+      ],
+      "semantic_graph": [
+        {
+          "key": "[13, \"T#1s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#1s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_A\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"T#2s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#2s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_B\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"X0\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"X0\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_A\", \"TON\", 0]",
+              0
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"Y0\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"Y0\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"TIMER_B\", \"TON\", 0]",
+              2
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[2, \"TIMER_A\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[13, \"X0\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#1s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[2, \"TIMER_B\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[2, \"TIMER_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#2s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[14, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  2
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[2, \"TIMER_B\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        }
+      ],
+      "unknown_records": []
+    }
+  },
+  "declarations_unchanged": true
+}

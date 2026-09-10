@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "archive": "../evidence/gxw-20260910.zip",
+  "files": {
+    "s.gxw": {
+      "length": 930304,
+      "sha256": "4fb7e36a560f5c59009a40f55e776aca23a8803bbc9b78500cd60904463139c6"
+    },
+    "sc.gxw": {
+      "length": 934400,
+      "sha256": "bc9915e36785747ddc872fe6dd63c27025f323a7222bf951582d3699bb69303f"
+    },
+    "b0.gxw": {
+      "length": 939520,
+      "sha256": "e7fd76d81d8ab07ea0cb73f340a361d223ec22c4d8811b40d1264eaf0500ddd5"
+    },
+    "b1.gxw": {
+      "length": 939520,
+      "sha256": "768bcacda95bc5e065f7b08a3d2544b067288bb06f4f43da3737db300016d7bf"
+    },
+    "bu.gxw": {
+      "length": 947712,
+      "sha256": "b1315d07d12256157ea0cad1103b1f002f6270afc9e7f796f45f012ac7c28908"
+    },
+    "b2.gxw": {
+      "length": 947712,
+      "sha256": "814f16e7ba73798cc9c6ca1188b42f783f42d58f7064fd417890dbd3add7a075"
+    },
+    "b2c.gxw": {
+      "length": 949760,
+      "sha256": "4f8a7e0a2456205dd6e1431c5c0328a32d842a164c98818719dc03a576cccaec"
+    },
+    "t1.gxw": {
+      "length": 949760,
+      "sha256": "6597699803f189a07ef081499bbc25e1058a2a975c27a65a36383060ee6b481d"
+    },
+    "tu.gxw": {
+      "length": 947712,
+      "sha256": "59aaac2c451f15072fd17b31b98b79c160b51888dd69ab76a68acc740ff9a897"
+    },
+    "t2.gxw": {
+      "length": 947712,
+      "sha256": "ff7ed97c1275913beca2764e0429d33cb25013283bf34cd81da34ce9b9cd8e24"
+    },
+    "t2c.gxw": {
+      "length": 949760,
+      "sha256": "2b3c0b6bb2565be28aa2cf1826ff251dc1ed0105d227dc84a5606952b106afc9"
+    },
+    "f1.gxw": {
+      "length": 947712,
+      "sha256": "7e3763bea0c931fcb2446c184e1d6398169b6abe072d836d5f99c21c52c5a371"
+    },
+    "f1c.gxw": {
+      "length": 947712,
+      "sha256": "d000fc74b52214847f9018012785caa18b769e23b19782a773ba700af344e8e7"
+    },
+    "f2.gxw": {
+      "length": 949760,
+      "sha256": "df912495c7820f7b0d73477cfc1de3714178e0eb6c49c4ea8030b107b2f9fd6a"
+    },
+    "f2c.gxw": {
+      "length": 949248,
+      "sha256": "eced96d5caeca5f031a101d656ee1552b1802073dfa73fe30b03f188b40317f7"
+    },
+    "fn.gxw": {
+      "length": 936960,
+      "sha256": "b6834a1c1dc534c1837867d2ecdf4268523aa5ce3d308a8964569319c64d3d8e"
+    },
+    "fnc.gxw": {
+      "length": 937472,
+      "sha256": "6f84d9c17780ca9681db1ab712a386a57956635d8a09a85b04f7dc979d8b9f3e"
+    },
+    "regression/A.gxw": {
+      "length": 930304,
+      "sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c"
+    },
+    "regression/B.gxw": {
+      "length": 930304,
+      "sha256": "082b6a5420c93f668168593fc7d632f34a501d62b1157aaf6aa42e9ce63df7a3"
+    },
+    "regression/C.gxw": {
+      "length": 930304,
+      "sha256": "7a1a5f35c8151b7fe755b77bb22e0ad215913c51bb18f856d43dea5bd66b323f"
+    },
+    "regression/D.gxw": {
+      "length": 930304,
+      "sha256": "c01d862578a6c18cdeddbb9dfc77379881c6766027697b61c6448f98a503c188"
+    },
+    "regression/E.gxw": {
+      "length": 930304,
+      "sha256": "0eb6e8d0651aaf16637293f01c6326f6699f35f77ccbd8197dd44f86ad772410"
+    },
+    "regression/F.gxw": {
+      "length": 930816,
+      "sha256": "5ea24b6256a82345f284669fba8b6aef7dcb8e3195df9a43ee2f0105183f1ee3"
+    }
+  },
+  "screenshots": {
+    "binding-declared-compile.png": {
+      "length": 297237,
+      "sha256": "b0d3af2627753b830c2ee56fdc4177201451daa52ec915cdf59ed34ed294bc46"
+    },
+    "binding-type-fixed-compile.png": {
+      "length": 275696,
+      "sha256": "e490c1b25df8613a2b1987f9ab2a80bb51898fe4282a7c8a010a5fac5f8cf0da"
+    },
+    "binding-type-mismatch.png": {
+      "length": 207529,
+      "sha256": "da031dfc2e7d3d08e55195fe0ce5c63df335fb3eeecb82e28cbf6f44111f1a6c"
+    },
+    "binding-undeclared.png": {
+      "length": 227002,
+      "sha256": "bad4c7ea1ce17dc2eb025940ab8f2483a1a3712ead08c3d530c71c57ef1ea849"
+    },
+    "fb-explicit-compile.png": {
+      "length": 224200,
+      "sha256": "7b5d55c0f18e382d4250a4ec39c12b98e8cfd51d4b366143c089512a8fc3e58f"
+    },
+    "fb-explicit-reopened.png": {
+      "length": 195978,
+      "sha256": "c1acb925baa9ccbc773e3366f805a634f7d544f9aa2a0dbaa89102306784ee7b"
+    },
+    "fb-mixed-ladder-rejected.png": {
+      "length": 215983,
+      "sha256": "4544cfe707a0d212a51ad9edd69ebc32ffa8f19f5c64bf1fb3e29b57c578b0bb"
+    },
+    "function-empty-local-labels.png": {
+      "length": 283171,
+      "sha256": "e7a5829c46594720e639b6c503d72fd6fc3f335a0a855c994818691ac9c00ab1"
+    },
+    "function-mov-compile.png": {
+      "length": 206121,
+      "sha256": "c3ee6b90e901a59e88bfd5585b8fe94f84437b2f256df4a379e99ca537cc6621"
+    },
+    "series-compile.png": {
+      "length": 200635,
+      "sha256": "e2134668216da17e8a15a6195ea097aba04f1d6214306e88ea29dd25c2a60c3c"
+    },
+    "series-reopened.png": {
+      "length": 177032,
+      "sha256": "aad94328fae9be60ec92ce802e9ae1e4358dd8723ff9a86518c8583bf8f60c48"
+    }
+  },
+  "archive_sha256": "4c53c1faf75e03cb676a0b317d53f724082734a4875e3f0eead53b0310c9d9cf"
+}

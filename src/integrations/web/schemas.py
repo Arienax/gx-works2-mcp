@@ -14,13 +14,13 @@ class Login(Command):
 class ProjectCreate(Command):
     name: str = Field(min_length=1, max_length=160)
     plc_model: str = Field(default="FX3U", max_length=32)
-    target_mode: Literal["ladder", "st"] = "ladder"
+    target_mode: Literal["ladder", "st", "fbd"] = "ladder"
 
 
 class ProjectUpdate(Command):
     name: str | None = Field(default=None, min_length=1, max_length=160)
     plc_model: str | None = Field(default=None, max_length=32)
-    target_mode: Literal["ladder", "st"] | None = None
+    target_mode: Literal["ladder", "st", "fbd"] | None = None
     effort: Literal["low", "medium", "high"] | None = None
 
 
@@ -106,6 +106,16 @@ class SettingsUpdate(Command):
 class AttachmentUpload(Command):
     filename: str = Field(min_length=1, max_length=255)
     data_base64: str = Field(max_length=42 * 1024 * 1024)
+
+
+class FBDProposal(Command):
+    operation: Literal["generate", "edit", "import", "convert"]
+    project_id: str
+    version_id: str | None = None
+    request_id: str = Field(min_length=1, max_length=128)
+    model: dict[str, Any] | None = None
+    data_base64: str | None = Field(default=None, max_length=42 * 1024 * 1024)
+    program: str | None = Field(default=None, max_length=255)
 
 
 class SFCStep(Command):

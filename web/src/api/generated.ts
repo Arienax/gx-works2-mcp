@@ -72,6 +72,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fbd/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fbd Catalog */
+        get: operations["fbd_catalog_api_fbd_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fbd/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fbd Inspect */
+        post: operations["fbd_inspect_api_fbd_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fbd/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fbd Proposal */
+        post: operations["fbd_proposal_api_fbd_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -734,6 +785,67 @@ export interface components {
             /** Version Id */
             version_id: string;
         };
+        /** FBDDiff */
+        FBDDiff: {
+            /** After Object Count */
+            after_object_count: number;
+            /** After Wire Count */
+            after_wire_count: number;
+            /** Base Version Id */
+            base_version_id?: string | null;
+            /** Before Object Count */
+            before_object_count: number;
+            /** Before Wire Count */
+            before_wire_count: number;
+            /** Declarations Changed */
+            declarations_changed: boolean;
+            /** Has Changes */
+            has_changes: boolean;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "fbd";
+            /** Unified Diff */
+            unified_diff: string;
+        };
+        /** FBDPreview */
+        FBDPreview: {
+            diff: components["schemas"]["FBDDiff"];
+            /** Program */
+            program: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Svg */
+            svg: string;
+            /**
+             * Target Mode
+             * @constant
+             */
+            target_mode: "fbd";
+        };
+        /** FBDProposal */
+        FBDProposal: {
+            /** Data Base64 */
+            data_base64?: string | null;
+            /** Model */
+            model?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "generate" | "edit" | "import" | "convert";
+            /** Program */
+            program?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Request Id */
+            request_id: string;
+            /** Version Id */
+            version_id?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1151,7 +1263,7 @@ export interface components {
              * @default ladder
              * @enum {string}
              */
-            target_mode: "ladder" | "st";
+            target_mode: "ladder" | "st" | "fbd";
         };
         /** ProjectList */
         ProjectList: {
@@ -1180,7 +1292,7 @@ export interface components {
             /** Plc Model */
             plc_model?: string | null;
             /** Target Mode */
-            target_mode?: ("ladder" | "st") | null;
+            target_mode?: ("ladder" | "st" | "fbd") | null;
         };
         /** PropertyChange */
         PropertyChange: {
@@ -1525,6 +1637,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Environment"];
+                };
+            };
+        };
+    };
+    fbd_catalog_api_fbd_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+        };
+    };
+    fbd_inspect_api_fbd_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fbd_proposal_api_fbd_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FBDProposal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2329,7 +2527,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LadderPreview"] | components["schemas"]["STPreview"] | components["schemas"]["ExecutionPreview"];
+                    "application/json": components["schemas"]["LadderPreview"] | components["schemas"]["STPreview"] | components["schemas"]["FBDPreview"] | components["schemas"]["ExecutionPreview"];
                 };
             };
             /** @description Validation Error */

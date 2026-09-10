@@ -1,0 +1,449 @@
+{
+  "operation": "original",
+  "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\A.gxw",
+  "sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+  "write_report": null,
+  "comparison": {
+    "schema_version": 1,
+    "before_sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+    "after_sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+    "programs": {
+      "1.Program.pou": {
+        "binary_changes": [],
+        "counts_before": {
+          "nodes": 2,
+          "wires": 3,
+          "records": 5
+        },
+        "counts_after": {
+          "nodes": 2,
+          "wires": 3,
+          "records": 5
+        },
+        "records_before": [
+          {
+            "offset": 95,
+            "length": 80,
+            "sha256": "94dbf0b141ef8a0e8fb944dd95e0299e2c8762c8cab407f2d3098bbd0e683a90",
+            "kind": "contact",
+            "symbol": "X1",
+            "type_name": null
+          },
+          {
+            "offset": 175,
+            "length": 80,
+            "sha256": "a8ca21608089b835ba426b3571fd69c02bea485966ddd920d6f761054491c7bf",
+            "kind": "coil",
+            "symbol": "Y1",
+            "type_name": null
+          },
+          {
+            "offset": 255,
+            "length": 44,
+            "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+            "kind": "wire",
+            "start": [
+              1,
+              0
+            ],
+            "end": [
+              1,
+              5
+            ]
+          },
+          {
+            "offset": 299,
+            "length": 44,
+            "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+            "kind": "wire",
+            "start": [
+              1,
+              3
+            ],
+            "end": [
+              5,
+              3
+            ]
+          },
+          {
+            "offset": 343,
+            "length": 44,
+            "sha256": "38e52b1c2e95444c19a4ec3bb77661fe4f51f18aca83e8bca1f6021a5c853fb9",
+            "kind": "wire",
+            "start": [
+              7,
+              3
+            ],
+            "end": [
+              8,
+              3
+            ]
+          }
+        ],
+        "records_after": [
+          {
+            "offset": 95,
+            "length": 80,
+            "sha256": "94dbf0b141ef8a0e8fb944dd95e0299e2c8762c8cab407f2d3098bbd0e683a90",
+            "kind": "contact",
+            "symbol": "X1",
+            "type_name": null
+          },
+          {
+            "offset": 175,
+            "length": 80,
+            "sha256": "a8ca21608089b835ba426b3571fd69c02bea485966ddd920d6f761054491c7bf",
+            "kind": "coil",
+            "symbol": "Y1",
+            "type_name": null
+          },
+          {
+            "offset": 255,
+            "length": 44,
+            "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+            "kind": "wire",
+            "start": [
+              1,
+              0
+            ],
+            "end": [
+              1,
+              5
+            ]
+          },
+          {
+            "offset": 299,
+            "length": 44,
+            "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+            "kind": "wire",
+            "start": [
+              1,
+              3
+            ],
+            "end": [
+              5,
+              3
+            ]
+          },
+          {
+            "offset": 343,
+            "length": 44,
+            "sha256": "38e52b1c2e95444c19a4ec3bb77661fe4f51f18aca83e8bca1f6021a5c853fb9",
+            "kind": "wire",
+            "start": [
+              7,
+              3
+            ],
+            "end": [
+              8,
+              3
+            ]
+          }
+        ],
+        "record_changes": [],
+        "roundtrip": {
+          "checks": {
+            "devices": true,
+            "topology": true,
+            "wires": true,
+            "semantic_graph": true,
+            "unknown_records": true
+          },
+          "before": {
+            "devices": [
+              [
+                3,
+                "X1",
+                null,
+                1
+              ],
+              [
+                5,
+                "Y1",
+                null,
+                1
+              ]
+            ],
+            "topology": [
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[5, \"Y1\", null, 0]",
+                  1
+                ]
+              ]
+            ],
+            "wires": [
+              [
+                [
+                  1,
+                  0
+                ],
+                [
+                  1,
+                  5
+                ]
+              ],
+              [
+                [
+                  1,
+                  3
+                ],
+                [
+                  5,
+                  3
+                ]
+              ],
+              [
+                [
+                  7,
+                  3
+                ],
+                [
+                  8,
+                  3
+                ]
+              ]
+            ],
+            "semantic_graph": [
+              {
+                "key": "[3, \"X1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "execution_out",
+                    "port_kind_code": 2,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": "normally_open"
+              },
+              {
+                "key": "[5, \"Y1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "unknown",
+                    "port_kind_code": 0,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        1
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": null
+              }
+            ],
+            "unknown_records": []
+          },
+          "after": {
+            "devices": [
+              [
+                3,
+                "X1",
+                null,
+                1
+              ],
+              [
+                5,
+                "Y1",
+                null,
+                1
+              ]
+            ],
+            "topology": [
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[5, \"Y1\", null, 0]",
+                  1
+                ]
+              ]
+            ],
+            "wires": [
+              [
+                [
+                  1,
+                  0
+                ],
+                [
+                  1,
+                  5
+                ]
+              ],
+              [
+                [
+                  1,
+                  3
+                ],
+                [
+                  5,
+                  3
+                ]
+              ],
+              [
+                [
+                  7,
+                  3
+                ],
+                [
+                  8,
+                  3
+                ]
+              ]
+            ],
+            "semantic_graph": [
+              {
+                "key": "[3, \"X1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "execution_out",
+                    "port_kind_code": 2,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": "normally_open"
+              },
+              {
+                "key": "[5, \"Y1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "unknown",
+                    "port_kind_code": 0,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        1
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": null
+              }
+            ],
+            "unknown_records": []
+          }
+        }
+      }
+    },
+    "logical_stream_changes": {},
+    "outer_stream_changes": {},
+    "cfb_metadata_changes": {
+      "outer": [],
+      "nested": []
+    }
+  },
+  "gxworks_validation": "not_run"
+}

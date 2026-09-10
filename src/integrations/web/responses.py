@@ -301,6 +301,25 @@ class STPreview(PublicResource):
     diff: STTextDiff
 
 
+class FBDDiff(PublicResource):
+    kind: Literal["fbd"]
+    base_version_id: str | None = None
+    has_changes: bool
+    unified_diff: str
+    before_object_count: int
+    after_object_count: int
+    before_wire_count: int
+    after_wire_count: int
+    declarations_changed: bool
+
+
+class FBDPreview(PublicResource):
+    target_mode: Literal["fbd"]
+    program: JsonObject
+    svg: str
+    diff: FBDDiff
+
+
 class ExecutionPreview(PublicResource):
     action: str
     version_id: str
@@ -312,7 +331,7 @@ class ExecutionPreview(PublicResource):
     plan: JsonObject | None = None
 
 
-ProposalPreview = LadderPreview | STPreview | ExecutionPreview
+ProposalPreview = LadderPreview | STPreview | FBDPreview | ExecutionPreview
 
 
 class ModelProfile(PublicResource):

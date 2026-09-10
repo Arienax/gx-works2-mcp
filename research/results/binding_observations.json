@@ -1,0 +1,722 @@
+{
+  "interpretation": "Exact adjacent counted-string evidence only; not a general Labels decoder",
+  "cases": {
+    "s": {
+      "sha256": "4fb7e36a560f5c59009a40f55e776aca23a8803bbc9b78500cd60904463139c6",
+      "calls": [],
+      "streams": {
+        "1.Program.pou": {
+          "length": 535,
+          "sha256": "df36b062161315ac763eceb7dacbe2ee0dd0933cf0e0684098d8f89e40164967"
+        },
+        "1.Labels.lh": {
+          "length": 110,
+          "sha256": "dafd10aeeb022c8b186bc95259affad4bb5b34dc0a82c6bf44eb20d909c43a98",
+          "adjacent_counted_string_pairs": []
+        },
+        "Global1.gh": {
+          "length": 58,
+          "sha256": "e45ec20e766b469b4e1ddf1076d694f459c2894814d8df423ece8afaca004f3a"
+        },
+        "MAIN.res": {
+          "length": 142,
+          "sha256": "ef050979f44247220d499b45f415b7d12233ec64656f63a0d45ef964632982ba"
+        }
+      }
+    },
+    "sc": {
+      "sha256": "bc9915e36785747ddc872fe6dd63c27025f323a7222bf951582d3699bb69303f",
+      "calls": [],
+      "streams": {
+        "1.Program.pou": {
+          "length": 535,
+          "sha256": "df36b062161315ac763eceb7dacbe2ee0dd0933cf0e0684098d8f89e40164967"
+        },
+        "1.Labels.lh": {
+          "length": 110,
+          "sha256": "dafd10aeeb022c8b186bc95259affad4bb5b34dc0a82c6bf44eb20d909c43a98",
+          "adjacent_counted_string_pairs": []
+        },
+        "Global1.gh": {
+          "length": 58,
+          "sha256": "e45ec20e766b469b4e1ddf1076d694f459c2894814d8df423ece8afaca004f3a"
+        },
+        "MAIN.res": {
+          "length": 156,
+          "sha256": "b0256ef502df8613ff063e76ff52282fb5571769d5c6ee6ba0ea26a44856fc56"
+        }
+      }
+    },
+    "b0": {
+      "sha256": "e7fd76d81d8ab07ea0cb73f340a361d223ec22c4d8811b40d1264eaf0500ddd5",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "timer_a",
+          "type": "TON"
+        },
+        {
+          "offset": 497,
+          "kind": "function_block",
+          "symbol": "timer_b",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 967,
+          "sha256": "d771cea694a3eef6dd12b5b91beca4d9fdd9a2807e3116c3afdcf5a0c199c9d3"
+        },
+        "1.Labels.lh": {
+          "length": 708,
+          "sha256": "7acb3c67ed9d33c87527c3b91b88e420215d4b49c9c24381e505df0e825de491",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "timer_a",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "timer_b",
+              "type": "TON",
+              "pair_offset": 288
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "51279512855870d8ca04c45f93a64959e699ee1501c499052338e0bb6604cb2c"
+        },
+        "MAIN.res": {
+          "length": 142,
+          "sha256": "ef050979f44247220d499b45f415b7d12233ec64656f63a0d45ef964632982ba"
+        }
+      }
+    },
+    "b1": {
+      "sha256": "768bcacda95bc5e065f7b08a3d2544b067288bb06f4f43da3737db300016d7bf",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "7036a184fffc051f4a1f764c2f4c88ff52d1f705ef2dad0087f34527d5baa7f2"
+        },
+        "1.Labels.lh": {
+          "length": 708,
+          "sha256": "7acb3c67ed9d33c87527c3b91b88e420215d4b49c9c24381e505df0e825de491",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "timer_a",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "timer_b",
+              "type": "TON",
+              "pair_offset": 288
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "51279512855870d8ca04c45f93a64959e699ee1501c499052338e0bb6604cb2c"
+        },
+        "MAIN.res": {
+          "length": 142,
+          "sha256": "ef050979f44247220d499b45f415b7d12233ec64656f63a0d45ef964632982ba"
+        }
+      }
+    },
+    "bu": {
+      "sha256": "b1315d07d12256157ea0cad1103b1f002f6270afc9e7f796f45f012ac7c28908",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "7036a184fffc051f4a1f764c2f4c88ff52d1f705ef2dad0087f34527d5baa7f2"
+        },
+        "1.Labels.lh": {
+          "length": 708,
+          "sha256": "7acb3c67ed9d33c87527c3b91b88e420215d4b49c9c24381e505df0e825de491",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "timer_a",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "timer_b",
+              "type": "TON",
+              "pair_offset": 288
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 98,
+          "sha256": "d0ec87a17fd3a90d33934c954123e49887752d43c7f34e732f90beef98ff52b9"
+        }
+      }
+    },
+    "b2": {
+      "sha256": "814f16e7ba73798cc9c6ca1188b42f783f42d58f7064fd417890dbd3add7a075",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "7036a184fffc051f4a1f764c2f4c88ff52d1f705ef2dad0087f34527d5baa7f2"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "f4f892286f13ecf8c6fb8731fa3a7b62e064b5a665881f81a7850ffa33bd1de2",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 98,
+          "sha256": "d0ec87a17fd3a90d33934c954123e49887752d43c7f34e732f90beef98ff52b9"
+        }
+      }
+    },
+    "b2c": {
+      "sha256": "4f8a7e0a2456205dd6e1431c5c0328a32d842a164c98818719dc03a576cccaec",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "95a58d57ee33d92861c0df3045de06bc588909d3c8b7ba47edd0448f6259802f"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "af2fd527f988b0dbf0137ae3d457a740f5e01552f113bc5b1642d65577f27cac",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 854,
+          "sha256": "b11d553f1cafce96b639cc9b4f6beaee3597eb3a85af4d736f4b363326697e26"
+        }
+      }
+    },
+    "t1": {
+      "sha256": "6597699803f189a07ef081499bbc25e1058a2a975c27a65a36383060ee6b481d",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TOF"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "c853fea9e823ea759c4f2cb73546e290235eb869536635eae4a0e50391bb318b"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "af2fd527f988b0dbf0137ae3d457a740f5e01552f113bc5b1642d65577f27cac",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 854,
+          "sha256": "b11d553f1cafce96b639cc9b4f6beaee3597eb3a85af4d736f4b363326697e26"
+        }
+      }
+    },
+    "tu": {
+      "sha256": "59aaac2c451f15072fd17b31b98b79c160b51888dd69ab76a68acc740ff9a897",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TOF"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "84f2f633acf93fb402292171e6eeaf19f45658b8ae14f4969efa419952e2d9d0"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "f4f892286f13ecf8c6fb8731fa3a7b62e064b5a665881f81a7850ffa33bd1de2",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 98,
+          "sha256": "d0ec87a17fd3a90d33934c954123e49887752d43c7f34e732f90beef98ff52b9"
+        }
+      }
+    },
+    "t2": {
+      "sha256": "ff7ed97c1275913beca2764e0429d33cb25013283bf34cd81da34ce9b9cd8e24",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TOF"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "84f2f633acf93fb402292171e6eeaf19f45658b8ae14f4969efa419952e2d9d0"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "931c14d0e8a21adbe144c264a97a3eb4f467b4e39cc8b3b9b010cbe82469d6e3",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TOF",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 98,
+          "sha256": "d0ec87a17fd3a90d33934c954123e49887752d43c7f34e732f90beef98ff52b9"
+        }
+      }
+    },
+    "t2c": {
+      "sha256": "2b3c0b6bb2565be28aa2cf1826ff251dc1ed0105d227dc84a5606952b106afc9",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TOF"
+        },
+        {
+          "offset": 493,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 959,
+          "sha256": "c853fea9e823ea759c4f2cb73546e290235eb869536635eae4a0e50391bb318b"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "19d2a5c16deda154df03389b1b8fbf0302134c9f40444a2fad34a274bd1a7c8e",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TOF",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 938,
+          "sha256": "d4a24bd7f89eceab081ae01b26e8323523e06a469e32b002e879dc9ad69157f9"
+        }
+      }
+    },
+    "f1": {
+      "sha256": "7e3763bea0c931fcb2446c184e1d6398169b6abe072d836d5f99c21c52c5a371",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 445,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 1039,
+          "sha256": "ffddd29dae8b2f42930807fb33dcfa4eca0c29691557d506d3d509610211549e"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "f4f892286f13ecf8c6fb8731fa3a7b62e064b5a665881f81a7850ffa33bd1de2",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 98,
+          "sha256": "d0ec87a17fd3a90d33934c954123e49887752d43c7f34e732f90beef98ff52b9"
+        }
+      }
+    },
+    "f1c": {
+      "sha256": "d000fc74b52214847f9018012785caa18b769e23b19782a773ba700af344e8e7",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 445,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 1039,
+          "sha256": "ffddd29dae8b2f42930807fb33dcfa4eca0c29691557d506d3d509610211549e"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "f4f892286f13ecf8c6fb8731fa3a7b62e064b5a665881f81a7850ffa33bd1de2",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 98,
+          "sha256": "d0ec87a17fd3a90d33934c954123e49887752d43c7f34e732f90beef98ff52b9"
+        }
+      }
+    },
+    "f2": {
+      "sha256": "df912495c7820f7b0d73477cfc1de3714178e0eb6c49c4ea8030b107b2f9fd6a",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 429,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 875,
+          "sha256": "2683c7250106b88f8e93a97642523cc797d2281802dd65559c4ce0a756ff7379"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "af2fd527f988b0dbf0137ae3d457a740f5e01552f113bc5b1642d65577f27cac",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 854,
+          "sha256": "b11d553f1cafce96b639cc9b4f6beaee3597eb3a85af4d736f4b363326697e26"
+        }
+      }
+    },
+    "f2c": {
+      "sha256": "eced96d5caeca5f031a101d656ee1552b1802073dfa73fe30b03f188b40317f7",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function_block",
+          "symbol": "TON_A",
+          "type": "TON"
+        },
+        {
+          "offset": 429,
+          "kind": "function_block",
+          "symbol": "TON_B",
+          "type": "TON"
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 875,
+          "sha256": "2683c7250106b88f8e93a97642523cc797d2281802dd65559c4ce0a756ff7379"
+        },
+        "1.Labels.lh": {
+          "length": 700,
+          "sha256": "af2fd527f988b0dbf0137ae3d457a740f5e01552f113bc5b1642d65577f27cac",
+          "adjacent_counted_string_pairs": [
+            {
+              "name": "TON_A",
+              "type": "TON",
+              "pair_offset": 86
+            },
+            {
+              "name": "TON_B",
+              "type": "TON",
+              "pair_offset": 284
+            }
+          ]
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 810,
+          "sha256": "9c3bfe145fc4acc6e32271d60f3b13453dd8b515218013ab341a0c152721e192"
+        }
+      }
+    },
+    "fn": {
+      "sha256": "b6834a1c1dc534c1837867d2ecdf4268523aa5ce3d308a8964569319c64d3d8e",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function",
+          "symbol": "MOV",
+          "type": null
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 573,
+          "sha256": "0108b56d5202083552b3eb908873e8d3f1131dbaaff02adf7251781f3c044eee"
+        },
+        "1.Labels.lh": {
+          "length": 110,
+          "sha256": "0ec66b8d06dc78bfa870fc0797ed81c4567db17b6f81eac2010782b399007b87",
+          "adjacent_counted_string_pairs": []
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "51279512855870d8ca04c45f93a64959e699ee1501c499052338e0bb6604cb2c"
+        },
+        "MAIN.res": {
+          "length": 142,
+          "sha256": "ef050979f44247220d499b45f415b7d12233ec64656f63a0d45ef964632982ba"
+        }
+      }
+    },
+    "fnc": {
+      "sha256": "6f84d9c17780ca9681db1ab712a386a57956635d8a09a85b04f7dc979d8b9f3e",
+      "calls": [
+        {
+          "offset": 95,
+          "kind": "function",
+          "symbol": "MOV",
+          "type": null
+        }
+      ],
+      "streams": {
+        "1.Program.pou": {
+          "length": 573,
+          "sha256": "7fe77f1169ee11a2c6630702bd9c84bba70b3bf4eb811fb5e6dd7e846de0f590"
+        },
+        "1.Labels.lh": {
+          "length": 110,
+          "sha256": "0ec66b8d06dc78bfa870fc0797ed81c4567db17b6f81eac2010782b399007b87",
+          "adjacent_counted_string_pairs": []
+        },
+        "Global1.gh": {
+          "length": 398,
+          "sha256": "26faa4718b311f95cc7a2334131737292c4407652d5460d1eb0c7eb5e2ca1c32"
+        },
+        "MAIN.res": {
+          "length": 154,
+          "sha256": "36105489c214b9c628ef7e536d9a540df768ce2de5990680fb6c1f53a62c98d4"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "baseline_sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+  "variants": {
+    "A": {
+      "operation": "original",
+      "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\A.gxw",
+      "sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+      "report": "A.json",
+      "gxworks_validation": "not_run"
+    },
+    "B": {
+      "operation": "single_symbol",
+      "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\B.gxw",
+      "sha256": "082b6a5420c93f668168593fc7d632f34a501d62b1157aaf6aa42e9ce63df7a3",
+      "report": "B.json",
+      "gxworks_validation": "not_run"
+    },
+    "C": {
+      "operation": "detached_contact",
+      "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\C.gxw",
+      "sha256": "7a1a5f35c8151b7fe755b77bb22e0ad215913c51bb18f856d43dea5bd66b323f",
+      "report": "C.json",
+      "gxworks_validation": "not_run"
+    },
+    "D": {
+      "operation": "detached_coil",
+      "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\D.gxw",
+      "sha256": "c01d862578a6c18cdeddbb9dfc77379881c6766027697b61c6448f98a503c188",
+      "report": "D.json",
+      "gxworks_validation": "not_run"
+    },
+    "E": {
+      "operation": "series_contact",
+      "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\E.gxw",
+      "sha256": "0eb6e8d0651aaf16637293f01c6326f6699f35f77ccbd8197dd44f86ad772410",
+      "report": "E.json",
+      "gxworks_validation": "not_run"
+    },
+    "F": {
+      "operation": "parallel_branch",
+      "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\F.gxw",
+      "sha256": "5ea24b6256a82345f284669fba8b6aef7dcb8e3195df9a43ee2f0105183f1ee3",
+      "report": "F.json",
+      "gxworks_validation": "not_run"
+    }
+  }
+}

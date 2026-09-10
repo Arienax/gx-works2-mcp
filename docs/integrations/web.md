@@ -54,7 +54,7 @@ python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --read-on
 | 提案动作 | 获批准后执行的范围 | 不可推断的结论 |
 | --- | --- | --- |
 | `accept_local` | 接受冻结候选为本地版本 | 没有 GX 导入或 PLC 写入 |
-| `gx_import` | 把指定当前版本的托管 CSV 导入 GX Works2 | 导入完成不等于原生编译或仿真通过 |
+| `gx_import` | 把指定版本的托管 CSV 导入 GX Works2；FBD 版本则打开 GXW 工程副本 | 导入完成不等于原生编译或仿真通过 |
 | `simulation` | 导入指定版本并运行指定已保存测试方案 | 环境不可用、未执行或执行错误不能显示通过 |
 | `debug` | 执行指定版本和失败证据绑定的调试方案，沿用现有回归与回滚策略 | 不能绕过候选哈希、版本和仿真证据校验 |
 
@@ -65,6 +65,16 @@ GX 导入、仿真和调试统一进入 `GXExecutionCoordinator` 固定单线程
 显式的 GX 读取和同步检查也进入同一队列。同步检查返回已有基线与两侧程序的比较报告；读取沿用原生 CSV 解码和无损往返验证，仅形成可审查候选，接受本地版本仍需单独审批。Web 的只读调用关闭旧 GX 服务中默认的工程保存与基线写入，因此不会因为“检查”而保存 GX 工程或覆盖活动版本。空项目可先读取 GX 初始程序再审批接受。
 
 原生程序如果含有本地语义目录尚未覆盖的 vendor 指令，Web 读取返回明确的 `unsupported`，不创建候选、不放宽 Agent/提案校验。原 Qt 的原生保真回读路径继续保留；这种程序不能据此视为已完成 Web 编辑/审批迁移。
+
+## 结构化梯形图 / FBD
+
+新建工程选择 `FBD` 后，可在 Agent 中描述需求并生成候选，也可在 FBD 页签的对象、连接和声明表中编辑。先预览图形与差异，再接受为本地版本。候选包含 `program.gxw`、`fbd.json`、`fbd.svg` 和写入报告；正式版本提供 GXW 下载。
+
+“导入 GXW”上传本机工程（最多 30 MiB），选择其中一个 Program.pou，再检查并接受候选。原工程其他 POU、元数据及未知字段保留。CPU 参数保持原样；目前没有完整的导入 CPU 识别，工作台机型设置不能作为导入工程 CPU 已校验的依据。现有 ladder 版本可“转换为 FBD”，范围为 NO/NC/COIL 串并联；原注释保留为 source_ladder 附件。
+
+“导入 GX”需要单独审批，使用与 CSV 相同的桌面执行队列，打开已确认 GXW 的独立副本，避免 GX 编译或保存修改正式版本。随后在 GX Works2 中执行全部编译、保存；需要回读时再次“导入 GXW”选择保存的副本。打开成功只报告 `imported`，编译状态仍为 `unverified`。遇到已有保存提示或未知对话框时停留待操作员处理，不自动选择保存或丢弃。
+
+默认生成模板目前覆盖 FX3U，支持常开/常闭触点、线圈、输入/输出终端、MOV、TON/TON_E/CTU/CTU_E。声明编辑覆盖已知基本类型、数组、常量和 FB 实例；FB 调用会同步实例声明。未知调用保留源记录，不能任意新增未知 ABI。FBD 仿真、诊断和 CSV 同步目前未接通。实际原生编译证据、已知 C2034 警告及边界见[本轮实验记录](../research/gxw_declarations_allocation_web_fbd_20260910.md)。
 
 ## 任务与事件
 
@@ -88,6 +98,7 @@ GX 导入、仿真和调试统一进入 `GXExecutionCoordinator` 固定单线程
 | 提案预览和决定 | `/api/proposals/{proposal_id}/preview`、`/decision` |
 | 设置与附件 | `/api/settings`、`/api/projects/{project_id}/attachments` |
 | 需求形式的 SFC 输入 | `/api/sfc/requirement`，不代表 GX SFC 编译能力 |
+| FBD 对象、文件及候选 | `/api/fbd/catalog`、`/api/fbd/inspect`、`/api/fbd/proposals`；后者支持 generate/edit/import/convert，沿用既有审批接口 |
 | 环境观察 | `/api/environment`，不自动启动网关 |
 
 ## MCP 的显式服务连接模式

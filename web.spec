@@ -22,6 +22,7 @@ if not (root / "resources/instructions/mitsubishi").is_dir():
     raise SystemExit("Missing Mitsubishi instruction resources")
 
 datas = [
+    (str(root / "src/gxw/templates"), "gxw/templates"),
     (str(root / "web/dist"), "web/dist"),
     (str(root / "resources/config.default.json"), "."),
     (str(root / "resources/pattern_library.json"), "."),

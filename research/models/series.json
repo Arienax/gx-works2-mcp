@@ -1,0 +1,15 @@
+{
+  "device_comments": {},
+  "rungs": [{
+    "rung_id": 1,
+    "debug_note": "",
+    "header_element": null,
+    "shared_inputs": [],
+    "branches": [{
+      "branch_id": 1,
+      "y_offset_level": 0,
+      "inputs": [{"type": "NO", "address": "X0"}, {"type": "NO", "address": "X1"}],
+      "outputs": [{"type": "COIL", "address": "Y0"}]
+    }]
+  }]
+}

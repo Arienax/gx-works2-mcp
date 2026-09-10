@@ -156,7 +156,8 @@ def _write_directory_stream_size(
         cfb=cfb,
         entry_index=entry_index,
         relative_offset=120,
-        payload=struct.pack("<Q", stream_size),
+        # The high DWORD is unused in v3. Preserve its source bytes.
+        payload=struct.pack("<I" if cfb.major_version == 3 else "<Q", stream_size),
     )
 
 
@@ -315,6 +316,93 @@ def replace_stream_within_allocation(
         raise GXWFormatError("within-allocation CFB replacement changed container length")
 
     return result
+
+
+def validate_cfb_streams(data: bytes) -> dict[str, bytes]:
+    """Writer preflight: reject truncated, aliased, or unterminated live chains.
+
+    This adds write-side guards without broadening the read-only parser ABI.
+    Unallocated bytes and unknown directory fields are not interpreted.
+    """
+    cfb = CompoundFile(data)
+    if cfb.major_version not in (3, 4) or len(data) % cfb.sector_size:
+        raise GXWFormatError("unsupported/alignment-invalid CFB writer input")
+    regular_owners, mini_owners = {}, {}
+
+    def claim(chain, owners, label, table):
+        if chain and table[chain[-1]] != ENDOFCHAIN:
+            raise GXWFormatError(f"unterminated CFB chain: {label}")
+        for sid in chain:
+            if sid in owners:
+                raise GXWFormatError(f"overlapping CFB allocations: {label} and {owners[sid]}")
+            owners[sid] = label
+
+    for sid in cfb._fat_sector_ids:
+        if sid in regular_owners:
+            raise GXWFormatError("duplicate CFB FAT sector")
+        cfb._sector(sid)
+        regular_owners[sid] = "FAT"
+    sid = cfb.first_difat_sector
+    for _ in range(cfb.num_difat_sectors):
+        if sid in regular_owners:
+            raise GXWFormatError("overlapping CFB DIFAT sector")
+        sector = cfb._sector(sid)
+        regular_owners[sid] = "DIFAT"
+        sid = struct.unpack_from("<I", sector, len(sector) - 4)[0]
+    for label, start in (("directory", cfb.first_directory_sector),
+                         ("MiniFAT", cfb.first_minifat_sector),
+                         ("root", cfb.root_entry.start_sector)):
+        chain = _regular_chain(cfb, start)
+        claim(chain, regular_owners, label, cfb._fat)
+        for sid in chain:
+            cfb._sector(sid)
+        if label == "root" and cfb.root_entry.stream_size > len(chain) * cfb.sector_size:
+            raise GXWFormatError("truncated root MiniStream")
+        if label == "MiniFAT" and len(chain) != cfb.num_minifat_sectors:
+            raise GXWFormatError("MiniFAT chain/header count mismatch")
+    payloads = {}
+    for entry in cfb.iter_streams():
+        if entry.name in payloads:
+            raise GXWFormatError(f"ambiguous CFB stream name: {entry.name}")
+        mini = entry.stream_size < cfb.mini_stream_cutoff
+        table = cfb._minifat if mini else cfb._fat
+        chain = cfb._walk_chain(entry.start_sector, table)
+        claim(chain, mini_owners if mini else regular_owners, entry.name, table)
+        payload = cfb.read_entry(entry)
+        if len(payload) != entry.stream_size:
+            raise GXWFormatError(f"truncated CFB stream: {entry.name}")
+        payloads[entry.name] = payload
+    return payloads
+
+
+def replace_project_stream(data: bytes, stream_name: str, new_data: bytes) -> tuple[bytes, str]:
+    """Choose from existing allocation writers using actual capacities.
+
+    Common edits retain the established allocation layout. Larger edits grow
+    FAT/MiniFAT/DIFAT tables, including MiniStream cutoff transitions.
+    No GX-specific rendering threshold or preferred physical layout is used.
+    """
+    from .container_growth_experimental import replace_regular_stream_with_appended_growth
+    from .cfb_allocator import resize_cfb_stream
+    allocation = inspect_stream_allocation(data, stream_name)
+    cfb = CompoundFile(data)
+    if bool(allocation.stream_size) != bool(new_data):
+        return resize_cfb_stream(data, stream_name, new_data), "empty_stream_transition"
+    if (allocation.stream_size < cfb.mini_stream_cutoff) != (len(new_data) < cfb.mini_stream_cutoff):
+        return resize_cfb_stream(data, stream_name, new_data), "storage_transition"
+    if len(new_data) <= allocation.allocation_capacity:
+        return replace_stream_within_allocation(data, stream_name, new_data, allow_shrink=True), "existing_allocation"
+    if allocation.storage == "regular":
+        end = len(data) // cfb.sector_size - 1 + math.ceil(len(new_data) / cfb.sector_size) - allocation.chain_length
+        if end <= len(cfb._fat):
+            return replace_regular_stream_with_appended_growth(data, stream_name, new_data), "append_regular"
+        return resize_cfb_stream(data, stream_name, new_data), "grow_allocation_tables"
+    root = inspect_root_ministream_allocation(data)
+    available = sum(value == FREESECT for value in cfb._minifat[:root.max_backed_mini_sectors])
+    needed = (len(new_data) + cfb.mini_sector_size - 1) // cfb.mini_sector_size - allocation.chain_length
+    if available >= needed:
+        return replace_stream_with_ministream_growth(data, stream_name, new_data), "extend_mini_in_root"
+    return resize_cfb_stream(data, stream_name, new_data), "grow_root_and_tables"
 
 
 

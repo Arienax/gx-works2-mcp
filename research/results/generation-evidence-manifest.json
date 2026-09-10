@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-10",
+  "native_version": "GX Works2 1.635 / FX3U",
+  "archive": "research/evidence/gxw-generation-20260910.zip",
+  "files": {
+    "d0.gxw": {
+      "sha256": "b6834a1c1dc534c1837867d2ecdf4268523aa5ce3d308a8964569319c64d3d8e",
+      "length": 936960
+    },
+    "dtypes.gxw": {
+      "sha256": "36b6efc99481e79d11cbf5857feb2fcd37b9841657598b14e6338626d05e6aca",
+      "length": 939520
+    },
+    "dconst.gxw": {
+      "sha256": "b9d52706f7c2184d1b54d5940152d11b7947fe45ed4bb4e2ad0bd4e738364525",
+      "length": 939520
+    },
+    "dglobal.gxw": {
+      "sha256": "7c350c0d470025e24a1649834ea0fd202e04304c4146e2b981a88123cdbbabcd",
+      "length": 944640
+    },
+    "auto_decl.gxw": {
+      "sha256": "707f6898cfd088d4addb171419ce12724b4d01d71399d9e4cf153d6713b515d3",
+      "length": 1106944
+    },
+    "auto_decl_compile.gxw": {
+      "sha256": "2aad1ef9b10563be31e17c12569234fef27c3a25fc69d35b44468ef2e9d030dc",
+      "length": 1235968
+    },
+    "fresh_fbd.gxw": {
+      "sha256": "5780018d400c1218da12e103185ab734d8195d4d2056118062f16f349c9cfc71",
+      "length": 930816
+    },
+    "fresh_fbd_compile.gxw": {
+      "sha256": "1dc01bda32c74bd86417412ea675cda3d06a66ab1abc2bddbe2c2c9bc35b0814",
+      "length": 941568
+    },
+    "relay_parallel.gxw": {
+      "sha256": "f8b1ac4d43daffd9dd0a8c79dc89a1dab9f77ca98b3349c71af375fdc1aceef3",
+      "length": 931328
+    },
+    "relay_parallel_compile.gxw": {
+      "sha256": "0f3d08d17e9f58af9a965e432672d2c1aca365da723da60552fe4485576fa480",
+      "length": 935424
+    },
+    "decl_input.csv": {
+      "sha256": "3089cf1c239da2ebc930036c289dd398b32765884b077c80207b048d95016ed7",
+      "length": 1720
+    },
+    "decl_constant.csv": {
+      "sha256": "99ff1047acad4e5ece92ba66e358e6d3e8e49f8f323e1c85b04e22615afbe7f1",
+      "length": 1746
+    },
+    "decl_global.csv": {
+      "sha256": "6bfb6e6936d4c5dea7f63d73658125078c946dfecc71cc6807e0728aab0be4c7",
+      "length": 2682
+    },
+    "relay_parallel_source.json": {
+      "sha256": "aebed78f25c9ee140b4e78e41eae742d107dde95f89d4dd1f24be27553b6c67a",
+      "length": 1372
+    }
+  },
+  "archive_sha256": "ba16824d02d131835ebb462bfbf8e527e3e58cdf2d50c94b5ef77d85be25c8d0",
+  "screenshots": {
+    "declarations-native-types.png": {
+      "sha256": "548bdcb23c6f0f38fdc5420b2b761483feca671fcaf14c2e33e873e3e30f4067",
+      "length": 280334
+    },
+    "auto-declarations-compile.jpg": {
+      "sha256": "717bebfe9d871179208f4e75e6317a6d45f15bb8dd6530312f33fe78d10ab4e7",
+      "length": 199533
+    },
+    "fresh-fbd-compile.jpg": {
+      "sha256": "63bed4c59cfb674be8fbf59a2524a4bf6194e13f30c03d305ffb4e92851e0635",
+      "length": 166051
+    },
+    "relay-parallel-compile.jpg": {
+      "sha256": "ede6ad8066ee15bab12f1af91b9f75a440c23279a78ac76ba12660efb38390ee",
+      "length": 329669
+    },
+    "gxw-filename-limit.jpg": {
+      "sha256": "1efd9d13cf40d3b88ed3fce037571bc57cd0f3c9f2aaac90b9b3f5c458584323",
+      "length": 337595
+    },
+    "web-fbd-native-import.jpg": {
+      "sha256": "5f0c85c567f83b7bd0e490c96659cbe59c7fe72127614677b6421d5b7dbcd0de",
+      "length": 275046
+    }
+  }
+}

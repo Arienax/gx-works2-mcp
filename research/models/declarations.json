@@ -1,0 +1,12 @@
+{
+  "1.Labels.lh": {
+    "upserts": [
+      {
+        "name": "enable",
+        "data_type": "BOOL",
+        "device": "M100",
+        "comment": "Explicit local variable"
+      }
+    ]
+  }
+}

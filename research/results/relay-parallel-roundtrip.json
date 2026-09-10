@@ -1,0 +1,1229 @@
+{
+  "case": "relay-parallel-native-roundtrip",
+  "confidence": "confirmed",
+  "native_compile": {
+    "errors": 0,
+    "warnings": 1,
+    "warning_codes": [
+      "C2034"
+    ],
+    "check_warnings": 0,
+    "saved": true,
+    "reopened": true,
+    "evidence": "research/evidence/relay-parallel-compile.jpg"
+  },
+  "source_sha256": "f8b1ac4d43daffd9dd0a8c79dc89a1dab9f77ca98b3349c71af375fdc1aceef3",
+  "saved_sha256": "0f3d08d17e9f58af9a965e432672d2c1aca365da723da60552fe4485576fa480",
+  "program": {
+    "checks": {
+      "devices": true,
+      "topology": true,
+      "wires": true,
+      "semantic_graph": true,
+      "unknown_records": true
+    },
+    "before": {
+      "devices": [
+        [
+          3,
+          "X0",
+          null,
+          1
+        ],
+        [
+          3,
+          "X1",
+          null,
+          1
+        ],
+        [
+          3,
+          "X3",
+          null,
+          1
+        ],
+        [
+          4,
+          "X2",
+          null,
+          1
+        ],
+        [
+          5,
+          "Y0",
+          null,
+          1
+        ],
+        [
+          5,
+          "Y1",
+          null,
+          1
+        ],
+        [
+          5,
+          "Y2",
+          null,
+          1
+        ]
+      ],
+      "topology": [
+        [
+          [
+            "[3, \"X0\", null, 0]",
+            0
+          ],
+          [
+            "[3, \"X3\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[3, \"X0\", null, 0]",
+            1
+          ],
+          [
+            "[3, \"X1\", null, 0]",
+            0
+          ],
+          [
+            "[4, \"X2\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[3, \"X1\", null, 0]",
+            1
+          ],
+          [
+            "[4, \"X2\", null, 0]",
+            1
+          ],
+          [
+            "[5, \"Y0\", null, 0]",
+            0
+          ],
+          [
+            "[5, \"Y1\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[3, \"X3\", null, 0]",
+            1
+          ],
+          [
+            "[5, \"Y2\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[5, \"Y0\", null, 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[5, \"Y1\", null, 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[5, \"Y2\", null, 0]",
+            1
+          ]
+        ]
+      ],
+      "wires": [
+        [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            18
+          ]
+        ],
+        [
+          [
+            1,
+            3
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        [
+          [
+            1,
+            12
+          ],
+          [
+            3,
+            12
+          ]
+        ],
+        [
+          [
+            5,
+            3
+          ],
+          [
+            6,
+            3
+          ]
+        ],
+        [
+          [
+            5,
+            12
+          ],
+          [
+            6,
+            12
+          ]
+        ],
+        [
+          [
+            6,
+            3
+          ],
+          [
+            6,
+            6
+          ]
+        ],
+        [
+          [
+            6,
+            3
+          ],
+          [
+            8,
+            3
+          ]
+        ],
+        [
+          [
+            6,
+            6
+          ],
+          [
+            8,
+            6
+          ]
+        ],
+        [
+          [
+            6,
+            12
+          ],
+          [
+            9,
+            12
+          ]
+        ],
+        [
+          [
+            8,
+            3
+          ],
+          [
+            10,
+            3
+          ]
+        ],
+        [
+          [
+            8,
+            6
+          ],
+          [
+            10,
+            6
+          ]
+        ],
+        [
+          [
+            12,
+            3
+          ],
+          [
+            13,
+            3
+          ]
+        ],
+        [
+          [
+            12,
+            6
+          ],
+          [
+            13,
+            6
+          ]
+        ],
+        [
+          [
+            13,
+            3
+          ],
+          [
+            15,
+            3
+          ]
+        ],
+        [
+          [
+            13,
+            6
+          ],
+          [
+            15,
+            6
+          ]
+        ],
+        [
+          [
+            15,
+            3
+          ],
+          [
+            15,
+            6
+          ]
+        ],
+        [
+          [
+            15,
+            3
+          ],
+          [
+            18,
+            3
+          ]
+        ],
+        [
+          [
+            15,
+            6
+          ],
+          [
+            18,
+            6
+          ]
+        ]
+      ],
+      "semantic_graph": [
+        {
+          "key": "[3, \"X0\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  0
+                ],
+                [
+                  "[3, \"X3\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_open"
+        },
+        {
+          "key": "[3, \"X1\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_open"
+        },
+        {
+          "key": "[3, \"X3\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  0
+                ],
+                [
+                  "[3, \"X3\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X3\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y2\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_open"
+        },
+        {
+          "key": "[4, \"X2\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 11,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_closed"
+        },
+        {
+          "key": "[5, \"Y0\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "unknown",
+              "port_kind_code": 0,
+              "formal": null,
+              "net": [
+                [
+                  "[5, \"Y0\", null, 0]",
+                  1
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[5, \"Y1\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "unknown",
+              "port_kind_code": 0,
+              "formal": null,
+              "net": [
+                [
+                  "[5, \"Y1\", null, 0]",
+                  1
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[5, \"Y2\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X3\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y2\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "unknown",
+              "port_kind_code": 0,
+              "formal": null,
+              "net": [
+                [
+                  "[5, \"Y2\", null, 0]",
+                  1
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        }
+      ],
+      "unknown_records": []
+    },
+    "after": {
+      "devices": [
+        [
+          3,
+          "X0",
+          null,
+          1
+        ],
+        [
+          3,
+          "X1",
+          null,
+          1
+        ],
+        [
+          3,
+          "X3",
+          null,
+          1
+        ],
+        [
+          4,
+          "X2",
+          null,
+          1
+        ],
+        [
+          5,
+          "Y0",
+          null,
+          1
+        ],
+        [
+          5,
+          "Y1",
+          null,
+          1
+        ],
+        [
+          5,
+          "Y2",
+          null,
+          1
+        ]
+      ],
+      "topology": [
+        [
+          [
+            "[3, \"X0\", null, 0]",
+            0
+          ],
+          [
+            "[3, \"X3\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[3, \"X0\", null, 0]",
+            1
+          ],
+          [
+            "[3, \"X1\", null, 0]",
+            0
+          ],
+          [
+            "[4, \"X2\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[3, \"X1\", null, 0]",
+            1
+          ],
+          [
+            "[4, \"X2\", null, 0]",
+            1
+          ],
+          [
+            "[5, \"Y0\", null, 0]",
+            0
+          ],
+          [
+            "[5, \"Y1\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[3, \"X3\", null, 0]",
+            1
+          ],
+          [
+            "[5, \"Y2\", null, 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[5, \"Y0\", null, 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[5, \"Y1\", null, 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[5, \"Y2\", null, 0]",
+            1
+          ]
+        ]
+      ],
+      "wires": [
+        [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            18
+          ]
+        ],
+        [
+          [
+            1,
+            3
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        [
+          [
+            1,
+            12
+          ],
+          [
+            3,
+            12
+          ]
+        ],
+        [
+          [
+            5,
+            3
+          ],
+          [
+            6,
+            3
+          ]
+        ],
+        [
+          [
+            5,
+            12
+          ],
+          [
+            6,
+            12
+          ]
+        ],
+        [
+          [
+            6,
+            3
+          ],
+          [
+            6,
+            6
+          ]
+        ],
+        [
+          [
+            6,
+            3
+          ],
+          [
+            8,
+            3
+          ]
+        ],
+        [
+          [
+            6,
+            6
+          ],
+          [
+            8,
+            6
+          ]
+        ],
+        [
+          [
+            6,
+            12
+          ],
+          [
+            9,
+            12
+          ]
+        ],
+        [
+          [
+            8,
+            3
+          ],
+          [
+            10,
+            3
+          ]
+        ],
+        [
+          [
+            8,
+            6
+          ],
+          [
+            10,
+            6
+          ]
+        ],
+        [
+          [
+            12,
+            3
+          ],
+          [
+            13,
+            3
+          ]
+        ],
+        [
+          [
+            12,
+            6
+          ],
+          [
+            13,
+            6
+          ]
+        ],
+        [
+          [
+            13,
+            3
+          ],
+          [
+            15,
+            3
+          ]
+        ],
+        [
+          [
+            13,
+            6
+          ],
+          [
+            15,
+            6
+          ]
+        ],
+        [
+          [
+            15,
+            3
+          ],
+          [
+            15,
+            6
+          ]
+        ],
+        [
+          [
+            15,
+            3
+          ],
+          [
+            18,
+            3
+          ]
+        ],
+        [
+          [
+            15,
+            6
+          ],
+          [
+            18,
+            6
+          ]
+        ]
+      ],
+      "semantic_graph": [
+        {
+          "key": "[3, \"X0\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  0
+                ],
+                [
+                  "[3, \"X3\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_open"
+        },
+        {
+          "key": "[3, \"X1\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_open"
+        },
+        {
+          "key": "[3, \"X3\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  0
+                ],
+                [
+                  "[3, \"X3\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X3\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y2\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_open"
+        },
+        {
+          "key": "[4, \"X2\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 11,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X0\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "execution_out",
+              "port_kind_code": 2,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            }
+          ],
+          "polarity": "normally_closed"
+        },
+        {
+          "key": "[5, \"Y0\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "unknown",
+              "port_kind_code": 0,
+              "formal": null,
+              "net": [
+                [
+                  "[5, \"Y0\", null, 0]",
+                  1
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[5, \"Y1\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[4, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y0\", null, 0]",
+                  0
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "unknown",
+              "port_kind_code": 0,
+              "formal": null,
+              "net": [
+                [
+                  "[5, \"Y1\", null, 0]",
+                  1
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[5, \"Y2\", null, 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "execution_in",
+              "port_kind_code": 3,
+              "formal": null,
+              "net": [
+                [
+                  "[3, \"X3\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y2\", null, 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "unknown",
+              "port_kind_code": 0,
+              "formal": null,
+              "net": [
+                [
+                  "[5, \"Y2\", null, 0]",
+                  1
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        }
+      ],
+      "unknown_records": []
+    }
+  },
+  "declarations_unchanged": true
+}

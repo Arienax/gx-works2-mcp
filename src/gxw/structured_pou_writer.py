@@ -308,6 +308,8 @@ def insert_series_contact_after(
         )
     if len(source.ports) != 2:
         raise GXWFormatError("source contact does not have the verified two-port ABI")
+    if program.unknown_records or [p.port_kind_code for p in source.ports] != [3, 2]:
+        raise GXWFormatError("series insertion requires a known NO contact ABI and modeled records")
     if horizontal_gap < 1:
         raise GXWFormatError("horizontal_gap must be at least one grid unit")
 
@@ -330,6 +332,10 @@ def insert_series_contact_after(
         )
 
     target_wire, far_end = outgoing[0]
+    from .connectivity import build_connectivity_graph
+    net = build_connectivity_graph(program).net_for_port(source.offset, 1)
+    if len(net.ports) != 2 or set(net.wire_offsets) != {target_wire.offset}:
+        raise GXWFormatError("series insertion requires an untapped two-port outgoing net")
     if far_end.y != right_port.y or far_end.x <= right_port.x:
         raise GXWFormatError(
             "series insertion currently requires a horizontal outgoing wire to the right"

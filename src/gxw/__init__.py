@@ -1,4 +1,4 @@
-"""Experimental read-only GX Works2 .gxw parser."""
+"""GX Works2 parsing and template-backed offline project writing."""
 
 from .connectivity import (
     ConnectivityGraph,
@@ -43,6 +43,8 @@ from .semantic import (
     build_semantic_model,
 )
 from .structured_pou import parse_structured_pou
+from .project_writer import ProjectWriteResult, build_gxw_project, write_gxw_project
+from .structured_writer import structured_from_ladder
 
 
 def read_structured_program(*args, **kwargs):
@@ -58,6 +60,10 @@ def describe_program(*args, **kwargs):
 
 
 __all__ = [
+    "ProjectWriteResult",
+    "build_gxw_project",
+    "write_gxw_project",
+    "structured_from_ladder",
     "CoilRole",
     "ConnectivityGraph",
     "ConnectivityNet",

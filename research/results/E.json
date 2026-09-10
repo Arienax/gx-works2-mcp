@@ -1,0 +1,947 @@
+{
+  "operation": "series_contact",
+  "path": "D:\\download\\gx\\gxworks-agent\\research\\experiments\\2026-09-10\\regression\\E.gxw",
+  "sha256": "0eb6e8d0651aaf16637293f01c6326f6699f35f77ccbd8197dd44f86ad772410",
+  "write_report": {
+    "schema_version": 1,
+    "baseline_sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+    "output_sha256": "0eb6e8d0651aaf16637293f01c6326f6699f35f77ccbd8197dd44f86ad772410",
+    "old_length": 930304,
+    "new_length": 930304,
+    "objects": [
+      {
+        "object": "1.Program.pou",
+        "stream": "16",
+        "old_length": 411,
+        "new_length": 535,
+        "before_sha256": "61773b83ae1ec659d2000eb9c65a0a3797f3ffe77e0acee39b224adfbc32defa",
+        "after_sha256": "eab2e64867834a1b818b73f0c5e935d2e461b5b3fb7eecc784e5da842654cec0",
+        "offset_space": "logical Program.pou bytes",
+        "binary_changes": [
+          {
+            "old_offset": 55,
+            "new_offset": 55,
+            "old_length": 321,
+            "new_length": 445,
+            "before_hex": "480100004801000001000000010000003c010000010000000000010000000000050000000500000050000000010000000300000003000000580031000000010000000000050000000200000007000000040000000200000010000000030000000000000001000000100000000200000002000000010000005000000001000000050000000300000059003100000001000000000008000000020000000a000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c0000000200000000000000010000000000010000000000070000000300000008",
+            "after_hex": "c4010000c40100000100000001000000b801000001000000000001000000000005000000070000005000000001000000030000000300000058003100000001000000000005000000020000000700000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000003000000030000005800320000000100000000000a000000020000000c00000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000005000000030000005900310000000100000000000d000000020000000f000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c000000020000000000000001000000000001000000000007000000030000000a00000003000000000000002c00000002000000000000000100000000000100000000000c000000030000000d"
+          }
+        ],
+        "records_before": [
+          {
+            "offset": 95,
+            "length": 80,
+            "sha256": "94dbf0b141ef8a0e8fb944dd95e0299e2c8762c8cab407f2d3098bbd0e683a90",
+            "kind": "contact",
+            "symbol": "X1",
+            "type_name": null
+          },
+          {
+            "offset": 175,
+            "length": 80,
+            "sha256": "a8ca21608089b835ba426b3571fd69c02bea485966ddd920d6f761054491c7bf",
+            "kind": "coil",
+            "symbol": "Y1",
+            "type_name": null
+          },
+          {
+            "offset": 255,
+            "length": 44,
+            "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+            "kind": "wire",
+            "start": [
+              1,
+              0
+            ],
+            "end": [
+              1,
+              5
+            ]
+          },
+          {
+            "offset": 299,
+            "length": 44,
+            "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+            "kind": "wire",
+            "start": [
+              1,
+              3
+            ],
+            "end": [
+              5,
+              3
+            ]
+          },
+          {
+            "offset": 343,
+            "length": 44,
+            "sha256": "38e52b1c2e95444c19a4ec3bb77661fe4f51f18aca83e8bca1f6021a5c853fb9",
+            "kind": "wire",
+            "start": [
+              7,
+              3
+            ],
+            "end": [
+              8,
+              3
+            ]
+          }
+        ],
+        "records_after": [
+          {
+            "offset": 95,
+            "length": 80,
+            "sha256": "94dbf0b141ef8a0e8fb944dd95e0299e2c8762c8cab407f2d3098bbd0e683a90",
+            "kind": "contact",
+            "symbol": "X1",
+            "type_name": null
+          },
+          {
+            "offset": 175,
+            "length": 80,
+            "sha256": "7d35f1e5bbe9d2f88cb0f7600a34933d4ddf46e6c3f05525d496f484a43391ed",
+            "kind": "contact",
+            "symbol": "X2",
+            "type_name": null
+          },
+          {
+            "offset": 255,
+            "length": 80,
+            "sha256": "a58cc5aab2363859a003afed6ac3ff276e08037779a70239b8f7925f3c9d5da5",
+            "kind": "coil",
+            "symbol": "Y1",
+            "type_name": null
+          },
+          {
+            "offset": 335,
+            "length": 44,
+            "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+            "kind": "wire",
+            "start": [
+              1,
+              0
+            ],
+            "end": [
+              1,
+              5
+            ]
+          },
+          {
+            "offset": 379,
+            "length": 44,
+            "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+            "kind": "wire",
+            "start": [
+              1,
+              3
+            ],
+            "end": [
+              5,
+              3
+            ]
+          },
+          {
+            "offset": 423,
+            "length": 44,
+            "sha256": "6a5a499ed4ae03362fcd46aaff884eac6482fbe31b996f125ac25532659e858c",
+            "kind": "wire",
+            "start": [
+              7,
+              3
+            ],
+            "end": [
+              10,
+              3
+            ]
+          },
+          {
+            "offset": 467,
+            "length": 44,
+            "sha256": "eb88f2261732994f1b8730222fba319caf95bbd3718f4c1c428f8bd0417090e0",
+            "kind": "wire",
+            "start": [
+              12,
+              3
+            ],
+            "end": [
+              13,
+              3
+            ]
+          }
+        ]
+      }
+    ],
+    "metadata_changes": [
+      {
+        "object": "1.Program.pou",
+        "stream": "16",
+        "field": "iFileSize",
+        "before": "411",
+        "after": "535",
+        "old_offset": 9490,
+        "old_length": 3,
+        "new_length": 3,
+        "offset_space": "history.xml bytes",
+        "status": "confirmed",
+        "new_offset": 9490
+      },
+      {
+        "object": "1.Program.pou",
+        "stream": "16",
+        "field": "szMD5val",
+        "before": "3cPrO/OC+LnalTGCnA6xTg==",
+        "after": "qMyjIfj5soxSeRqLUuQ+ZA==",
+        "old_offset": 9523,
+        "old_length": 24,
+        "new_length": 24,
+        "offset_space": "history.xml bytes",
+        "status": "confirmed",
+        "new_offset": 9523
+      }
+    ],
+    "preserved_metadata": [],
+    "allocations": [
+      {
+        "layer": "nested",
+        "object": "1.Program.pou",
+        "stream": "16",
+        "mode": "extend_mini_in_root"
+      },
+      {
+        "layer": "outer",
+        "stream": "_hdb",
+        "mode": "existing_allocation"
+      },
+      {
+        "layer": "outer",
+        "stream": "history.xml",
+        "mode": "existing_allocation"
+      }
+    ],
+    "validation": {
+      "parser": "passed",
+      "all_stream_payloads": "passed",
+      "gxworks_open": "not_run",
+      "gxworks_compile": "not_run",
+      "gxworks_save_reload": "not_run"
+    },
+    "limitations": [
+      "Template-backed supported StructuredProgram layouts only",
+      "Compiler/declaration state preserved; GX Works2 compilation is a separate required gate",
+      "Allocation is bounded by existing FAT/MiniFAT tables; cutoff transitions fail closed"
+    ]
+  },
+  "comparison": {
+    "schema_version": 1,
+    "before_sha256": "4d0b35230dd37eba1329988e74738922033d851e1f0d4e707473a5721b05093c",
+    "after_sha256": "0eb6e8d0651aaf16637293f01c6326f6699f35f77ccbd8197dd44f86ad772410",
+    "programs": {
+      "1.Program.pou": {
+        "binary_changes": [
+          {
+            "old_offset": 55,
+            "new_offset": 55,
+            "old_length": 321,
+            "new_length": 445,
+            "before_hex": "480100004801000001000000010000003c010000010000000000010000000000050000000500000050000000010000000300000003000000580031000000010000000000050000000200000007000000040000000200000010000000030000000000000001000000100000000200000002000000010000005000000001000000050000000300000059003100000001000000000008000000020000000a000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c0000000200000000000000010000000000010000000000070000000300000008",
+            "after_hex": "c4010000c40100000100000001000000b801000001000000000001000000000005000000070000005000000001000000030000000300000058003100000001000000000005000000020000000700000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000003000000030000005800320000000100000000000a000000020000000c00000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000005000000030000005900310000000100000000000d000000020000000f000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c000000020000000000000001000000000001000000000007000000030000000a00000003000000000000002c00000002000000000000000100000000000100000000000c000000030000000d"
+          }
+        ],
+        "counts_before": {
+          "nodes": 2,
+          "wires": 3,
+          "records": 5
+        },
+        "counts_after": {
+          "nodes": 3,
+          "wires": 4,
+          "records": 7
+        },
+        "records_before": [
+          {
+            "offset": 95,
+            "length": 80,
+            "sha256": "94dbf0b141ef8a0e8fb944dd95e0299e2c8762c8cab407f2d3098bbd0e683a90",
+            "kind": "contact",
+            "symbol": "X1",
+            "type_name": null
+          },
+          {
+            "offset": 175,
+            "length": 80,
+            "sha256": "a8ca21608089b835ba426b3571fd69c02bea485966ddd920d6f761054491c7bf",
+            "kind": "coil",
+            "symbol": "Y1",
+            "type_name": null
+          },
+          {
+            "offset": 255,
+            "length": 44,
+            "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+            "kind": "wire",
+            "start": [
+              1,
+              0
+            ],
+            "end": [
+              1,
+              5
+            ]
+          },
+          {
+            "offset": 299,
+            "length": 44,
+            "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+            "kind": "wire",
+            "start": [
+              1,
+              3
+            ],
+            "end": [
+              5,
+              3
+            ]
+          },
+          {
+            "offset": 343,
+            "length": 44,
+            "sha256": "38e52b1c2e95444c19a4ec3bb77661fe4f51f18aca83e8bca1f6021a5c853fb9",
+            "kind": "wire",
+            "start": [
+              7,
+              3
+            ],
+            "end": [
+              8,
+              3
+            ]
+          }
+        ],
+        "records_after": [
+          {
+            "offset": 95,
+            "length": 80,
+            "sha256": "94dbf0b141ef8a0e8fb944dd95e0299e2c8762c8cab407f2d3098bbd0e683a90",
+            "kind": "contact",
+            "symbol": "X1",
+            "type_name": null
+          },
+          {
+            "offset": 175,
+            "length": 80,
+            "sha256": "7d35f1e5bbe9d2f88cb0f7600a34933d4ddf46e6c3f05525d496f484a43391ed",
+            "kind": "contact",
+            "symbol": "X2",
+            "type_name": null
+          },
+          {
+            "offset": 255,
+            "length": 80,
+            "sha256": "a58cc5aab2363859a003afed6ac3ff276e08037779a70239b8f7925f3c9d5da5",
+            "kind": "coil",
+            "symbol": "Y1",
+            "type_name": null
+          },
+          {
+            "offset": 335,
+            "length": 44,
+            "sha256": "2e1215fc88ff0131d8de792e288025bdb91d2daf01fe669a759657cdc60b0663",
+            "kind": "wire",
+            "start": [
+              1,
+              0
+            ],
+            "end": [
+              1,
+              5
+            ]
+          },
+          {
+            "offset": 379,
+            "length": 44,
+            "sha256": "965afbfb166f277963d3aceef01004421eef618714f8a2eee499754d2fc8f760",
+            "kind": "wire",
+            "start": [
+              1,
+              3
+            ],
+            "end": [
+              5,
+              3
+            ]
+          },
+          {
+            "offset": 423,
+            "length": 44,
+            "sha256": "6a5a499ed4ae03362fcd46aaff884eac6482fbe31b996f125ac25532659e858c",
+            "kind": "wire",
+            "start": [
+              7,
+              3
+            ],
+            "end": [
+              10,
+              3
+            ]
+          },
+          {
+            "offset": 467,
+            "length": 44,
+            "sha256": "eb88f2261732994f1b8730222fba319caf95bbd3718f4c1c428f8bd0417090e0",
+            "kind": "wire",
+            "start": [
+              12,
+              3
+            ],
+            "end": [
+              13,
+              3
+            ]
+          }
+        ],
+        "record_changes": [
+          {
+            "operation": "replace",
+            "before": [
+              {
+                "offset": 175,
+                "length": 80,
+                "sha256": "a8ca21608089b835ba426b3571fd69c02bea485966ddd920d6f761054491c7bf",
+                "kind": "coil",
+                "symbol": "Y1",
+                "type_name": null
+              }
+            ],
+            "after": [
+              {
+                "offset": 175,
+                "length": 80,
+                "sha256": "7d35f1e5bbe9d2f88cb0f7600a34933d4ddf46e6c3f05525d496f484a43391ed",
+                "kind": "contact",
+                "symbol": "X2",
+                "type_name": null
+              },
+              {
+                "offset": 255,
+                "length": 80,
+                "sha256": "a58cc5aab2363859a003afed6ac3ff276e08037779a70239b8f7925f3c9d5da5",
+                "kind": "coil",
+                "symbol": "Y1",
+                "type_name": null
+              }
+            ]
+          },
+          {
+            "operation": "replace",
+            "before": [
+              {
+                "offset": 343,
+                "length": 44,
+                "sha256": "38e52b1c2e95444c19a4ec3bb77661fe4f51f18aca83e8bca1f6021a5c853fb9",
+                "kind": "wire",
+                "start": [
+                  7,
+                  3
+                ],
+                "end": [
+                  8,
+                  3
+                ]
+              }
+            ],
+            "after": [
+              {
+                "offset": 423,
+                "length": 44,
+                "sha256": "6a5a499ed4ae03362fcd46aaff884eac6482fbe31b996f125ac25532659e858c",
+                "kind": "wire",
+                "start": [
+                  7,
+                  3
+                ],
+                "end": [
+                  10,
+                  3
+                ]
+              },
+              {
+                "offset": 467,
+                "length": 44,
+                "sha256": "eb88f2261732994f1b8730222fba319caf95bbd3718f4c1c428f8bd0417090e0",
+                "kind": "wire",
+                "start": [
+                  12,
+                  3
+                ],
+                "end": [
+                  13,
+                  3
+                ]
+              }
+            ]
+          }
+        ],
+        "roundtrip": {
+          "checks": {
+            "devices": false,
+            "topology": false,
+            "wires": false,
+            "semantic_graph": false,
+            "unknown_records": true
+          },
+          "before": {
+            "devices": [
+              [
+                3,
+                "X1",
+                null,
+                1
+              ],
+              [
+                5,
+                "Y1",
+                null,
+                1
+              ]
+            ],
+            "topology": [
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[5, \"Y1\", null, 0]",
+                  1
+                ]
+              ]
+            ],
+            "wires": [
+              [
+                [
+                  1,
+                  0
+                ],
+                [
+                  1,
+                  5
+                ]
+              ],
+              [
+                [
+                  1,
+                  3
+                ],
+                [
+                  5,
+                  3
+                ]
+              ],
+              [
+                [
+                  7,
+                  3
+                ],
+                [
+                  8,
+                  3
+                ]
+              ]
+            ],
+            "semantic_graph": [
+              {
+                "key": "[3, \"X1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "execution_out",
+                    "port_kind_code": 2,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": "normally_open"
+              },
+              {
+                "key": "[5, \"Y1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "unknown",
+                    "port_kind_code": 0,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        1
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": null
+              }
+            ],
+            "unknown_records": []
+          },
+          "after": {
+            "devices": [
+              [
+                3,
+                "X1",
+                null,
+                1
+              ],
+              [
+                3,
+                "X2",
+                null,
+                1
+              ],
+              [
+                5,
+                "Y1",
+                null,
+                1
+              ]
+            ],
+            "topology": [
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[3, \"X1\", null, 0]",
+                  1
+                ],
+                [
+                  "[3, \"X2\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[3, \"X2\", null, 0]",
+                  1
+                ],
+                [
+                  "[5, \"Y1\", null, 0]",
+                  0
+                ]
+              ],
+              [
+                [
+                  "[5, \"Y1\", null, 0]",
+                  1
+                ]
+              ]
+            ],
+            "wires": [
+              [
+                [
+                  1,
+                  0
+                ],
+                [
+                  1,
+                  5
+                ]
+              ],
+              [
+                [
+                  1,
+                  3
+                ],
+                [
+                  5,
+                  3
+                ]
+              ],
+              [
+                [
+                  7,
+                  3
+                ],
+                [
+                  10,
+                  3
+                ]
+              ],
+              [
+                [
+                  12,
+                  3
+                ],
+                [
+                  13,
+                  3
+                ]
+              ]
+            ],
+            "semantic_graph": [
+              {
+                "key": "[3, \"X1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "execution_out",
+                    "port_kind_code": 2,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[3, \"X2\", null, 0]",
+                        0
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": "normally_open"
+              },
+              {
+                "key": "[3, \"X2\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X1\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[3, \"X2\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "execution_out",
+                    "port_kind_code": 2,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X2\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": "normally_open"
+              },
+              {
+                "key": "[5, \"Y1\", null, 0]",
+                "ports": [
+                  {
+                    "index": 0,
+                    "role": "execution_in",
+                    "port_kind_code": 3,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[3, \"X2\", null, 0]",
+                        1
+                      ],
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "index": 1,
+                    "role": "unknown",
+                    "port_kind_code": 0,
+                    "formal": null,
+                    "net": [
+                      [
+                        "[5, \"Y1\", null, 0]",
+                        1
+                      ]
+                    ]
+                  }
+                ],
+                "polarity": null
+              }
+            ],
+            "unknown_records": []
+          }
+        }
+      }
+    },
+    "logical_stream_changes": {
+      "1.Program.pou": {
+        "old_length": 411,
+        "new_length": 535,
+        "before_sha256": "61773b83ae1ec659d2000eb9c65a0a3797f3ffe77e0acee39b224adfbc32defa",
+        "after_sha256": "eab2e64867834a1b818b73f0c5e935d2e461b5b3fb7eecc784e5da842654cec0",
+        "binary_changes": [
+          {
+            "old_offset": 55,
+            "new_offset": 55,
+            "old_length": 321,
+            "new_length": 445,
+            "before_hex": "480100004801000001000000010000003c010000010000000000010000000000050000000500000050000000010000000300000003000000580031000000010000000000050000000200000007000000040000000200000010000000030000000000000001000000100000000200000002000000010000005000000001000000050000000300000059003100000001000000000008000000020000000a000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c0000000200000000000000010000000000010000000000070000000300000008",
+            "after_hex": "c4010000c40100000100000001000000b801000001000000000001000000000005000000070000005000000001000000030000000300000058003100000001000000000005000000020000000700000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000003000000030000005800320000000100000000000a000000020000000c00000004000000020000001000000003000000000000000100000010000000020000000200000001000000500000000100000005000000030000005900310000000100000000000d000000020000000f000000040000000200000010000000030000000000000001000000100000000000000002000000010000002c000000020000000000000001000000000001000000000001000000000000000100000005000000000000002c000000020000000000000001000000000001000000000001000000030000000500000003000000000000002c000000020000000000000001000000000001000000000007000000030000000a00000003000000000000002c00000002000000000000000100000000000100000000000c000000030000000d"
+          }
+        ]
+      }
+    },
+    "outer_stream_changes": {
+      "history.xml": {
+        "binary_changes": [
+          {
+            "old_offset": 9490,
+            "new_offset": 9490,
+            "old_length": 3,
+            "new_length": 3,
+            "before_hex": "343131",
+            "after_hex": "353335"
+          },
+          {
+            "old_offset": 9523,
+            "new_offset": 9523,
+            "old_length": 22,
+            "new_length": 22,
+            "before_hex": "336350724f2f4f432b4c6e616c5447436e4136785467",
+            "after_hex": "714d796a49666a35736f78536552714c5575512b5a41"
+          }
+        ],
+        "text_diff": [
+          "--- before/history.xml\n",
+          "+++ after/history.xml\n",
+          "@@ -188,8 +188,8 @@\n",
+          "       <dtUpdateDate>2026-09-05T23:47:27.8302333+08:00</dtUpdateDate>",
+          "       <dtFileTimeStamp>2026-09-05T23:47:27.8302333+08:00</dtFileTimeStamp>",
+          "       <dtFileUpdateDate>2026-09-05T23:47:27.8302333+08:00</dtFileUpdateDate>",
+          "-      <iFileSize>411</iFileSize>",
+          "-      <szMD5val>3cPrO/OC+LnalTGCnA6xTg==</szMD5val>",
+          "+      <iFileSize>535</iFileSize>",
+          "+      <szMD5val>qMyjIfj5soxSeRqLUuQ+ZA==</szMD5val>",
+          "       <szProjectdataName>1.Program.pou</szProjectdataName>",
+          "     </D_History>",
+          "     <D_History diffgr:id=\"D_History17\" msdata:rowOrder=\"16\" diffgr:hasChanges=\"inserted\">"
+        ]
+      }
+    },
+    "cfb_metadata_changes": {
+      "outer": [],
+      "nested": [
+        {
+          "field": "/directory_slots_hex/0",
+          "before": "52006f006f007400200045006e00740072007900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000016000500ffffffffffffffff1000000000000000000000000000000000000000000000000000000000000000a065f6da4d3ddd0103000000802b000000000000",
+          "after": "52006f006f007400200045006e00740072007900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000016000500ffffffffffffffff1000000000000000000000000000000000000000000000000000000000000000a065f6da4d3ddd0103000000002c000000000000"
+        },
+        {
+          "field": "/directory_slots_hex/16",
+          "before": "31003600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060002010800000018000000ffffffff0000000000000000000000000000000000000000000000000000000000000000000000001b0000009b01000000000000",
+          "after": "31003600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060002010800000018000000ffffffff0000000000000000000000000000000000000000000000000000000000000000000000001b0000001702000000000000"
+        },
+        {
+          "field": "/minifat/33",
+          "before": 4294967294,
+          "after": 174
+        },
+        {
+          "field": "/minifat/174",
+          "before": 4294967295,
+          "after": 175
+        },
+        {
+          "field": "/minifat/175",
+          "before": 4294967295,
+          "after": 4294967294
+        },
+        {
+          "field": "/streams/16/chain/7",
+          "before": null,
+          "after": 174
+        },
+        {
+          "field": "/streams/16/chain/8",
+          "before": null,
+          "after": 175
+        },
+        {
+          "field": "/streams/16/stream_size",
+          "before": 411,
+          "after": 535
+        }
+      ]
+    }
+  },
+  "gxworks_validation": "not_run"
+}

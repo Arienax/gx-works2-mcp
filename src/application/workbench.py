@@ -28,6 +28,8 @@ class WorkbenchService:
         self.jobs = None
         self.proposals = None
         self.execution = None
+        from application.fbd import FBDService
+        self.fbd = FBDService(self)
 
     def start(self):
         if not self.read_only:
@@ -143,6 +145,10 @@ class WorkbenchService:
         if snapshot.get("program_ir") is not None:
             if canonical_hash(self.projects.program(project["id"], version["id"])) != canonical_hash(snapshot["program_ir"]):
                 raise ConflictError("任务绑定的程序内容已变化。")
+        if snapshot.get("fbd_baseline") is not None:
+            current = self.projects.artifact(project["id"], version["id"], "gxw").read_bytes()
+            if current != base64.b64decode(snapshot["fbd_baseline"]):
+                raise ConflictError("任务绑定的 GXW 工程已变化。")
 
     def output(self, job_id):
         if not self.jobs:
@@ -183,6 +189,10 @@ class WorkbenchService:
             project = dict(context.project)
             snapshot = {**copy.deepcopy(command), "project": project, "version": context.version,
                         "version_id": context.version_id or None, "program_ir": context.program_ir}
+            if context.version and context.version.get("target_mode") == "fbd":
+                raw = self.projects.artifact(project_id, context.version_id, "gxw").read_bytes()
+                snapshot["fbd_baseline"] = base64.b64encode(raw).decode("ascii")
+                snapshot["fbd_program"] = context.version.get("program_name")
             # Resolve files and credentials at submission, never later from mutable UI state.
             images = self._attachments(project_id, command.get("attachment_ids", []))
             requires_model = command["kind"] not in ("gx_read", "gx_inspect") and (command["kind"] != "review" or command.get("deep", True))
@@ -242,13 +252,19 @@ class WorkbenchService:
             from application.generation import GenerationRequest, GenerationWorkflow, GenerationDependencies
             from plc_ir import ir_to_ladder
             out_dir = self.state_dir / "staging" / ctx.job_id
-            program = snapshot.get("program_ir")
-            request = GenerationRequest(user_input=text, effort=project.get("effort"), target_mode=project["target_mode"],
-                previous_json=ir_to_ladder(program) if program else None, previous_ir=program,
-                confirmed_context=project.get("confirmed_spec"), conversation_history=project.get("messages", []),
-                plc_model=project.get("plc_model", "FX3U"), revision=(program or {}).get("revision", 0) + 1,
-                requirement_text=text, image_attachments=images, model_name=snapshot.get("model", {}).get("model"), response_language=language)
-            metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider)).run()
+            if project["target_mode"] == "fbd" or (version or {}).get("target_mode") == "fbd":
+                from application.fbd import generate_candidate
+                fbd_payload = generate_candidate(out_dir, snapshot, images, ctx)
+                metadata = fbd_payload["metadata"]
+                metadata["artifacts"] = {k: v["path"] for k, v in fbd_payload["artifacts"].items()}
+            else:
+                program = snapshot.get("program_ir")
+                request = GenerationRequest(user_input=text, effort=project.get("effort"), target_mode=project["target_mode"],
+                    previous_json=ir_to_ladder(program) if program else None, previous_ir=program,
+                    confirmed_context=project.get("confirmed_spec"), conversation_history=project.get("messages", []),
+                    plc_model=project.get("plc_model", "FX3U"), revision=(program or {}).get("revision", 0) + 1,
+                    requirement_text=text, image_attachments=images, model_name=snapshot.get("model", {}).get("model"), response_language=language)
+                metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider)).run()
             ctx.checkpoint()
             output = {"generation": metadata}
             if metadata.get("contract_mismatch"):
@@ -404,6 +420,13 @@ class WorkbenchService:
             if expected and canonical_hash(before) != expected:
                 raise ConflictError("The proposal's base program changed")
             result = dict(PLCCore().diff_programs(before, payload["_candidate_ir"]))
+        elif payload.get("target_mode") == "fbd":
+            from application.fbd import graph_diff, staged_bytes
+            before = None
+            if base_version_id and self.projects.raw_version(project_id, base_version_id)["target_mode"] == "fbd":
+                before = self.projects.program(project_id, base_version_id)
+            after = json.loads(staged_bytes(payload, self.state_dir)["fbd"])
+            result = graph_diff(before, after)
         elif payload.get("target_mode") == "st":
             from difflib import unified_diff
             before = ""
@@ -428,6 +451,8 @@ class WorkbenchService:
 
     @staticmethod
     def _diff_summary(diff):
+        if diff["kind"] == "fbd":
+            return {key: value for key, value in diff.items() if key != "unified_diff"}
         if diff["kind"] == "st":
             return {"kind": "st", "modified": ["program.st"] if diff["has_changes"] else []}
         summary = {key: diff[key] for key in ("kind", "added", "deleted", "modified", "device_comments_changed",
@@ -447,6 +472,11 @@ class WorkbenchService:
         from plc_ir import ir_to_ladder
         record = self.proposals.get(proposal_id)
         payload = self.proposals.read_private(proposal_id)
+        if payload.get("target_mode") == "fbd":
+            from application.fbd import staged_bytes
+            artifacts = staged_bytes(payload, self.state_dir)
+            return {"target_mode": "fbd", "program": public(json.loads(artifacts["fbd"])),
+                    "svg": artifacts["svg"].decode("utf-8"), "diff": public(payload["_preview_diff"])}
         if "_candidate_ir" in payload:
             from plc_core import PLCCore
             program = payload["_candidate_ir"]
@@ -472,8 +502,8 @@ class WorkbenchService:
             version = self.projects.version(project_id, version_id)
             artifacts = {item["id"] for item in version["artifacts"]}
             mode = version["target_mode"]
-            program = self.projects.program(project_id, version_id) if mode == "ladder" else None
-            if mode == "ladder" and program is None:
+            program = self.projects.program(project_id, version_id) if mode in ("ladder", "fbd") else None
+            if mode in ("ladder", "fbd") and program is None:
                 raise ValueError("The execution proposal's program is unavailable")
             svg = self.projects.svg_preview(project_id, version_id, theme=theme) if "svg" in artifacts else None
             st_id = "st" if mode == "st" else "st_from_ir" if "st_from_ir" in artifacts else "st"

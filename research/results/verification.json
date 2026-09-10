@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-10",
+  "environment": "existing project .venv",
+  "pytest": {
+    "command": ".venv\\Scripts\\python.exe -m pytest -q",
+    "passed": 1310,
+    "skipped": 3,
+    "warnings": 1,
+    "seconds": 50.70,
+    "warning": "Existing Starlette/AnyIO deprecated BlockingPortal alias"
+  },
+  "mcp_smoke": {
+    "command": ".venv\\Scripts\\python.exe scripts/mcp_smoke.py",
+    "ok": true,
+    "tool_count": 12,
+    "generation": "confirmation_required",
+    "workspace_unchanged": true
+  },
+  "artifact_integrity": {
+    "gxw_snapshots": 23,
+    "screenshots": 11,
+    "sha256_verification": "passed",
+    "new_document_links": "passed",
+    "json_parse": "passed",
+    "git_diff_check": "passed"
+  },
+  "vendor_validation": "gxworks_validation.json",
+  "limitation": "Unit tests do not invoke GX Works2; vendor observations are recorded separately."
+}

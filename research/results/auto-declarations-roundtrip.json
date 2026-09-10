@@ -1,0 +1,798 @@
+{
+  "case": "auto-declarations-allocation-roundtrip",
+  "confidence": "confirmed",
+  "native_compile": {
+    "errors": 0,
+    "warnings": 0,
+    "check_warnings": 0,
+    "saved": true,
+    "reopened": true,
+    "evidence": "research/evidence/auto-declarations-compile.jpg"
+  },
+  "source_sha256": "707f6898cfd088d4addb171419ce12724b4d01d71399d9e4cf153d6713b515d3",
+  "saved_sha256": "2aad1ef9b10563be31e17c12569234fef27c3a25fc69d35b44468ef2e9d030dc",
+  "program": {
+    "checks": {
+      "devices": true,
+      "topology": true,
+      "wires": true,
+      "semantic_graph": true,
+      "unknown_records": true
+    },
+    "before": {
+      "devices": [
+        [
+          13,
+          "T#1s",
+          null,
+          1
+        ],
+        [
+          13,
+          "T#2s",
+          null,
+          1
+        ],
+        [
+          13,
+          "X1",
+          null,
+          1
+        ],
+        [
+          14,
+          "Y2",
+          null,
+          1
+        ],
+        [
+          14,
+          "elapsed_a",
+          null,
+          1
+        ],
+        [
+          14,
+          "elapsed_b",
+          null,
+          1
+        ],
+        [
+          2,
+          "AUTO_TON_A",
+          "TON",
+          1
+        ],
+        [
+          2,
+          "AUTO_TON_B",
+          "TON",
+          1
+        ]
+      ],
+      "topology": [
+        [
+          [
+            "[13, \"T#1s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"T#2s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"X1\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[14, \"Y2\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            2
+          ]
+        ],
+        [
+          [
+            "[14, \"elapsed_a\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            3
+          ]
+        ],
+        [
+          [
+            "[14, \"elapsed_b\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            3
+          ]
+        ],
+        [
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            2
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            0
+          ]
+        ]
+      ],
+      "wires": [
+        [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            17
+          ]
+        ],
+        [
+          [
+            13,
+            4
+          ],
+          [
+            21,
+            4
+          ]
+        ]
+      ],
+      "semantic_graph": [
+        {
+          "key": "[13, \"T#1s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#1s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_A\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"T#2s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#2s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_B\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"X1\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"X1\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_A\", \"TON\", 0]",
+              0
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"Y2\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"Y2\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_B\", \"TON\", 0]",
+              2
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"elapsed_a\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"elapsed_a\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_A\", \"TON\", 0]",
+              3
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"elapsed_b\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"elapsed_b\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_B\", \"TON\", 0]",
+              3
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[2, \"AUTO_TON_A\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[13, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#1s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[14, \"elapsed_a\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[2, \"AUTO_TON_B\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#2s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[14, \"Y2\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  2
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[14, \"elapsed_b\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        }
+      ],
+      "unknown_records": []
+    },
+    "after": {
+      "devices": [
+        [
+          13,
+          "T#1s",
+          null,
+          1
+        ],
+        [
+          13,
+          "T#2s",
+          null,
+          1
+        ],
+        [
+          13,
+          "X1",
+          null,
+          1
+        ],
+        [
+          14,
+          "Y2",
+          null,
+          1
+        ],
+        [
+          14,
+          "elapsed_a",
+          null,
+          1
+        ],
+        [
+          14,
+          "elapsed_b",
+          null,
+          1
+        ],
+        [
+          2,
+          "AUTO_TON_A",
+          "TON",
+          1
+        ],
+        [
+          2,
+          "AUTO_TON_B",
+          "TON",
+          1
+        ]
+      ],
+      "topology": [
+        [
+          [
+            "[13, \"T#1s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"T#2s\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            1
+          ]
+        ],
+        [
+          [
+            "[13, \"X1\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            0
+          ]
+        ],
+        [
+          [
+            "[14, \"Y2\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            2
+          ]
+        ],
+        [
+          [
+            "[14, \"elapsed_a\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            3
+          ]
+        ],
+        [
+          [
+            "[14, \"elapsed_b\", null, 0]",
+            0
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            3
+          ]
+        ],
+        [
+          [
+            "[2, \"AUTO_TON_A\", \"TON\", 0]",
+            2
+          ],
+          [
+            "[2, \"AUTO_TON_B\", \"TON\", 0]",
+            0
+          ]
+        ]
+      ],
+      "wires": [
+        [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            17
+          ]
+        ],
+        [
+          [
+            13,
+            4
+          ],
+          [
+            21,
+            4
+          ]
+        ]
+      ],
+      "semantic_graph": [
+        {
+          "key": "[13, \"T#1s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#1s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_A\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"T#2s\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"T#2s\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_B\", \"TON\", 0]",
+              1
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[13, \"X1\", null, 0]",
+          "role": "source",
+          "port_kind_code": 2,
+          "net": [
+            [
+              "[13, \"X1\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_A\", \"TON\", 0]",
+              0
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"Y2\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"Y2\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_B\", \"TON\", 0]",
+              2
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"elapsed_a\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"elapsed_a\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_A\", \"TON\", 0]",
+              3
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[14, \"elapsed_b\", null, 0]",
+          "role": "sink",
+          "port_kind_code": 3,
+          "net": [
+            [
+              "[14, \"elapsed_b\", null, 0]",
+              0
+            ],
+            [
+              "[2, \"AUTO_TON_B\", \"TON\", 0]",
+              3
+            ]
+          ],
+          "unresolved": false
+        },
+        {
+          "key": "[2, \"AUTO_TON_A\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[13, \"X1\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#1s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[14, \"elapsed_a\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        },
+        {
+          "key": "[2, \"AUTO_TON_B\", \"TON\", 0]",
+          "ports": [
+            {
+              "index": 0,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "IN",
+              "net": [
+                [
+                  "[2, \"AUTO_TON_A\", \"TON\", 0]",
+                  2
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  0
+                ]
+              ]
+            },
+            {
+              "index": 1,
+              "role": "data_in",
+              "port_kind_code": 1,
+              "formal": "PT",
+              "net": [
+                [
+                  "[13, \"T#2s\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  1
+                ]
+              ]
+            },
+            {
+              "index": 2,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "Q",
+              "net": [
+                [
+                  "[14, \"Y2\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  2
+                ]
+              ]
+            },
+            {
+              "index": 3,
+              "role": "data_out",
+              "port_kind_code": 0,
+              "formal": "ET",
+              "net": [
+                [
+                  "[14, \"elapsed_b\", null, 0]",
+                  0
+                ],
+                [
+                  "[2, \"AUTO_TON_B\", \"TON\", 0]",
+                  3
+                ]
+              ]
+            }
+          ],
+          "polarity": null
+        }
+      ],
+      "unknown_records": []
+    }
+  },
+  "declarations_unchanged": true,
+  "declaration_counts": {
+    "Global1.gh": 3,
+    "1.Labels.lh": 1008
+  }
+}

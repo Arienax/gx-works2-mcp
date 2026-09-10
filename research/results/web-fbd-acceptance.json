@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-10",
+  "confidence": "confirmed",
+  "environment": "Isolated workspace and offline fixed model response; actual GX Works2 1.635 import",
+  "project_id": "4afa42189ac6",
+  "checks": {
+    "generated_candidate_review_accepted_v0001": true,
+    "renamed_instance_and_local_declaration_v0002": true,
+    "uploaded_native_gxw_review_accepted_v0003": true,
+    "download_bytes_tested_by_http_test": true,
+    "approved_native_import": true,
+    "native_title_verified": true,
+    "native_explicit_wire_visible": true,
+    "source_version_unchanged": true
+  },
+  "source_sha256": "1dc01bda32c74bd86417412ea675cda3d06a66ab1abc2bddbe2c2c9bc35b0814",
+  "execution_copy_name": "gxw_2d6d257623ee4c1abeaa0621.gxw",
+  "result": {
+    "status": "imported",
+    "passed": false,
+    "message": "GX Works2 已打开此版本的工程副本；请在 GX 中编译并检查结果。",
+    "gx_compile_status": "unverified",
+    "simulation_status": "not_run",
+    "approval_id": "proposal_8f46be62097043f39b8d469045f2f6c1",
+    "operation": "gx_import"
+  },
+  "evidence": "research/evidence/web-fbd-native-import.jpg",
+  "limitations": [
+    "Offline provider only; online model generation quality not measured",
+    "Native import does not execute compile or simulation",
+    "First native import failed on the explicit 30-character filename limit; fixed and explicitly resubmitted"
+  ]
+}

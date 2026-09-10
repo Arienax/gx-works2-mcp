@@ -8,6 +8,7 @@ not a substitute for the proposal service's permission and integrity checks.
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib
 import json
 import os
@@ -15,6 +16,7 @@ import queue
 import re
 import tempfile
 import threading
+import uuid
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Mapping
@@ -85,6 +87,9 @@ def _default_dependencies(operation):
     from gxworks2 import import_current_program
 
     bundle = {"importer": import_current_program}
+    if operation == "gx_import":
+        from gxworks2.project_import import import_gxw_project
+        bundle["gxw_importer"] = import_gxw_project
     if operation in {"read_gx", "inspect_gx"}:
         from gxworks2 import read_current_snapshot, inspect_current_sync
 
@@ -330,6 +335,26 @@ class GXExecutionCoordinator:
         # Dependencies are loaded only after the queued snapshot has been rechecked.
         bundle = self._dependencies_factory(operation)
         if operation == "gx_import":
+            if version.get("target_mode") == "fbd":
+                from application.fbd import validate_candidate
+                from application.workspace import artifact_relative_path, contained
+                artifacts = {name: contained(root / artifact_relative_path(filename), root).read_bytes()
+                             for name, filename in version["artifacts"].items()}
+                validate_candidate(artifacts)
+                # Native Save/Compile must never mutate the immutable version.
+                directory = contained(self.store.project_dir(project_id) / "gxw_runs" / uuid.uuid4().hex,
+                                      self.store.project_dir(project_id))
+                directory.mkdir(parents=True, exist_ok=False)
+                # GX Works2 1.635 rejects stems longer than 30 characters.
+                # The exclusive UUID directory remains the full run identity.
+                path = directory / ("gxw_" + directory.name[:24] + ".gxw")
+                path.write_bytes(artifacts["gxw"])
+                imported = _mapping(bundle["gxw_importer"](path, progress=progress,
+                    expected_sha256=hashlib.sha256(artifacts["gxw"]).hexdigest()))
+                success = imported.get("success") is True and not imported.get("error_code")
+                return {"status": "imported" if success else "import_failed", "passed": False,
+                        "message": imported.get("message", ""), "import": imported,
+                        "gx_compile_status": "unverified", "simulation_status": "not_run"}
             paths = self._csv_artifacts(version, root)
             imported = _mapping(bundle["importer"](
                 paths[0], comment_csv_path=paths[1], start_if_needed=False,
