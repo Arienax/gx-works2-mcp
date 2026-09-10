@@ -2,8 +2,8 @@
 
 [English](README.md) | 简体中文
 
-> **面向 Mitsubishi MELSEC PLC 编程、校验、修改、仿真与调试的 AI 工程 Agent。**  
-> 自然语言 → 已确认控制规格 → PLC IR → 确定性校验 → GX Works2 → 仿真反馈。
+> **面向 Mitsubishi MELSEC PLC 编程、校验、工程编辑、仿真、诊断与 GX Works2 集成的 AI 工程 Agent。**  
+> 自然语言 → 已确认控制规格 → PLC IR → 确定性校验 → GX Works2 / GXW → 仿真证据。
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6.svg)
@@ -14,42 +14,40 @@
   <img src="resources/assets/demo.gif" alt="GXWorks Agent 演示" width="1200">
 </p>
 
-**GXWorks Agent** 是一个面向 Mitsubishi MELSEC PLC 开发流程的实验性 AI 工程 Agent。
+**GXWorks Agent** 是一个面向 Mitsubishi MELSEC PLC 开发的实验性 AI 工程工作台。
 
-项目不把 LLM 原始生成的 PLC 代码直接视为最终工程结果，而是在模型与 GX Works 之间加入结构化工程层：程序可以表示为 PLC IR，通过确定性校验器检查，通过受控工程工具进行修改，与 GX Works2 同步，并通过 GX Simulator2 进行仿真测试。
+项目遵循一个基本原则：**LLM 输出本身不等于工程结果。** 自然语言需求先转换为结构化控制规格和 PLC 程序表示，经过确定性校验，形成可审查的版本化候选，之后才允许通过受控操作进入 GX Works2 或 GX Simulator2。
 
-当前实现主要聚焦于 **FX3U + GX Works2**。
+当前实现主要聚焦于 **FX3U + GX Works2**，同时支持较成熟的 Ladder CSV 工作流，以及持续开发中的原生 **GXW / 结构化梯形图 / FBD** 工作流。
 
 ---
 
 ## 快速开始
 
-### 本地 Web 工作台
+### Windows Web 工作台
 
-Windows 10/11 用户解压**完整 Web 发布目录**后，双击 `start-web.cmd`，选择工作区文件夹。核对旧工程可选默认的“只读浏览”；需要创建项目和接受候选时选择“工程编辑”。服务准备好后会自动打开本机操作员登录页。使用期间保留服务窗口，结束后在该窗口按 `Ctrl+C` 停止。发布包无需另装 Python 或 Node.js。
+使用 Windows 发布包时，解压完整的 `GXWorks-Agent-Web` 目录，然后双击：
 
-源码安装、命令行启动、审批边界和 MCP 服务连接见 [Web 使用指南](docs/integrations/web.md)。启动工作台不会启动 GX Works2 或仿真网关。下方 Qt 入口继续保留；真实 GX/Simulator 集成仍需完成 [Windows 验收核对](docs/architecture/web-migration-checklist.md)。
+```text
+start-web.cmd
+```
 
-### 环境要求
+选择工作区文件夹，再选择运行模式：
 
-核心桌面工作台：
+- **只读浏览**：检查已有工作区，不创建或迁移版本。
+- **工程编辑**：创建项目、确认规格、生成候选、接受版本，并审批受控 GX 操作。
 
-- Windows 10 / 11
-- Python
-- DeepSeek、智谱 GLM 或其他支持的 OpenAI-compatible API
+后端准备就绪后，启动器会打开本机浏览器会话。使用期间保留服务窗口，结束后在该窗口按 `Ctrl+C` 停止服务。
 
-如需 GX Works2 集成：
+Web 发布包无需另行安装 Python、Node.js 或 Qt。
 
-- Mitsubishi GX Works2
+启动工作台**不会**自动启动 GX Works2、GX Simulator2、仿真网关，也不会连接真实 PLC。
 
-如需自动化仿真，可选：
+源码安装、审批边界、工作区锁、MCP 服务模式及 Windows 集成细节见 [Web 工作台使用指南](docs/integrations/web.md)。
 
-- GX Simulator2
-- MX Component
+### 源码安装
 
-GX Works2、GX Simulator2 与 MX Component 均为 Mitsubishi Electric 的商业软件，本仓库不包含这些软件。
-
-### 安装
+以下命令启动保留的 Qt 桌面入口：
 
 ```powershell
 git clone https://github.com/Arienax/gxworks-agent.git
@@ -62,66 +60,77 @@ pip install -r requirements.txt
 python src\main.py
 ```
 
-### 运行测试
+构建并启动 Web 源码版本：
+
+```powershell
+python -m pip install -r requirements-web.txt
+Push-Location web
+npm ci
+npm run build
+Pop-Location
+$env:PYTHONPATH = (Resolve-Path .\src).Path
+python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --port 8765 --open-browser
+```
+
+运行测试：
 
 ```powershell
 pytest -q
 ```
 
-仓库还提供一套 Windows 7 兼容依赖：
+仓库还保留 Windows 7 兼容依赖：
 
 ```powershell
 pip install -r requirements-win7.txt
 ```
 
-API Key 保存在 Windows Credential Manager 中，不写入仓库配置文件。
+API Key 保存在 Windows Credential Manager 中，不提交到仓库配置文件。
+
+GX Works2 集成需要安装相应 Mitsubishi 软件；自动化仿真还需要 GX Simulator2 和 MX Component。仓库不包含这些商业软件。
 
 ---
 
-## 功能状态
+## 当前功能状态
 
 | 能力 | 状态 |
 | --- | --- |
 | 自然语言需求分析 | ✅ 可用 |
-| 已确认控制规格 | ✅ 可用 |
-| PLC Intermediate Representation（PLC IR） | ✅ 可用 |
+| 已确认控制规格工作流 | ✅ 可用 |
+| PLC 中间表示（PLC IR） | ✅ 可用 |
 | 确定性 PLC 校验 | ✅ 可用 |
+| 梯形图 SVG 预览 | ✅ 可用 |
 | Ladder CSV 生成 | ✅ 可用 |
 | GX Works2 CSV 导入 / 导出 | ✅ 可用 |
 | 程序与软元件注释同步 | ✅ 可用 |
-| Network 增量 Patch / Diff | ✅ 可用 |
-| FX3U 手册知识检索 | ✅ 可用 |
+| Network 级 Patch / Diff / 版本管理 | ✅ 可用 |
+| 外部修改检测与冲突保护 | ✅ 可用 |
+| FX3U 手册与工程知识检索 | ✅ 可用 |
 | 结构化工程 Tool Runtime | ✅ 可用 |
+| 本地 Web 工程工作台 | ✅ 可用 |
+| 持久化任务、提案、审批与恢复 | ✅ 可用 |
+| GXW 工程检查与往返写入 | 🧪 实验性 |
+| 结构化梯形图 / FBD 生成 | 🧪 实验性 |
+| 结构化梯形图 / FBD 对象、连线与声明编辑 | 🧪 实验性 |
+| GXW 导入、预览、版本接受与下载 | 🧪 实验性 |
+| 在 GX Works2 中打开已批准的 GXW 副本 | 🧪 实验性 |
 | Structured Text 生成 | 🧪 实验性 |
-| GX Simulator2 自动化测试 | 🧪 实验性 |
-| GXW / Structured Ladder 格式研究 | 🔬 研究中 |
+| GX Simulator2 自动化测试规划 / 执行 | 🧪 实验性 |
+| 绑定证据的调试规划与局部补丁生成 | 🧪 实验性 |
 | 独立 MCP Server（stdio） | ✅ 可用 |
-| Structured Ladder / FBD 编辑 | 📋 计划中 |
-| GX Works3 Adapter | 📋 计划中 |
+| 连接运行中 Web 工作台的 MCP 服务桥接 | ✅ 可用 |
+| 原生 GXW 自动编译命令 | 🚧 尚未完成 |
+| FBD 仿真 / 诊断 | 🚧 尚未完成 |
+| 完整的任意 GXW / IEC FBD 支持 | 🚧 尚未完成 |
+| GX Works3 适配器 | 📋 计划中 |
+| 真实 PLC 写入路径 | 📋 当前 Web 工作流不开放 |
 
-> 状态标记保持保守。“研究中”和“计划中”的能力不应被视为已经可用的工程 Backend。
+> 状态标记保持保守。“实验性”表示已有受控实现与测试证据，不代表它已经成为适用于任意 PLC 程序、GX 版本或 CPU 型号的通用生产级后端。
 
 ---
 
-## 示例
+## 为什么需要 GXWorks Agent
 
-直接描述所需控制行为：
-
-```text
-X0 启动电机。
-X1 停止电机。
-Y0 驱动电机接触器。
-
-需要自锁。
-停止必须优先。
-
-X2 检测到工件后，
-延时 3 秒停止电机。
-
-掉电恢复后电机不能自动重新启动。
-```
-
-传统的 LLM 工作流可能停留在：
+传统的 LLM 工作流往往停留在：
 
 ```text
 Prompt
@@ -131,264 +140,355 @@ LLM
 PLC 代码
 ```
 
-GXWorks Agent 则通过结构化工程状态处理任务：
+GXWorks Agent 则维护明确的工程状态：
 
 ```text
 自然语言需求
       ↓
-需求澄清
+需求分析
       ↓
 已确认控制规格
       ↓
-PLC IR
+PLC IR / 结构化程序模型
       ↓
 确定性校验
       ↓
-Ladder / ST
+版本化候选 + Diff
       ↓
-GX Works2
+操作员审批
       ↓
-GX Simulator2
+GX Works2 / GXW
       ↓
-测试 / 诊断 / 修复
+仿真 / 证据 / 诊断
 ```
 
-Agent 可以澄清不完整需求、生成 PLC 逻辑、检查已有程序、生成局部 Patch、验证候选 Revision，并使用仿真反馈辅助诊断。
+这种分离使系统能够利用 LLM 推理，同时由确定性的应用逻辑管理程序状态、校验、版本、审批和外部副作用。
 
 ---
 
-# 工作原理
+## 示例
 
-## PLC 中间表示（PLC IR）
+直接描述所需的设备控制行为：
 
-LLM 输出不会直接作为最终工程产物，而是先转换为内部 **PLC Intermediate Representation（PLC IR）**。
+```text
+X0 启动电机。
+X1 停止电机。
+Y0 驱动电机接触器。
+
+松开启动按钮后，电机需要保持运行。
+停止必须优先于启动。
+
+X2 检测到工件后，
+延时 3 秒停止电机。
+
+掉电恢复后电机不能自动重新启动。
+```
+
+分析阶段可以将这段需求转换为**可审查的控制规格**，包含选定的编程方案、待确认问题、参数和 I/O 分配。
+
+只有明确确认规格后，才进入程序生成流程。
+
+---
+
+# Web 工程工作台
+
+当前 Web 前端采用 React/Vite，后端由 FastAPI 提供服务。PLC 语义仍由现有 Python 工程核心负责；浏览器是操作员界面，不重复实现 PLC 逻辑。
+
+工作台目前提供：
+
+- 项目与版本导航
+- 梯形图、FBD、ST、诊断、评审报告和仿真视图
+- 自然语言分析 / 生成 / Agent 任务
+- 可编辑的控制规格与确认流程
+- 持久化任务进度及支持断线续读的事件历史
+- 候选提案审查与 Diff 查看
+- 本地接受、GX 导入、仿真和调试执行的独立审批
+- 模型配置与连接测试
+- GX 环境状态查看
+- GXW 导入与 FBD 编辑
+- 面向已有工作区的本地只读模式
+
+浏览器刷新或关闭后，任务仍可由正在运行的后端继续处理。任务提交时会冻结项目、基础版本、已确认规格、模型设置和响应语言策略。
+
+提案审批与版本、哈希绑定。旧浏览器标签页不能静默地将基于旧状态的候选应用到较新的活动版本。
+
+---
+
+# 已确认控制规格
+
+GXWorks Agent 不假定第一段自然语言输入就是完整的 PLC 控制需求。
+
+分析工作流可以生成包含以下内容的规格草稿：
+
+- 需求摘要
+- 候选编程方案
+- 待确认问题与可选答案
+- 参数与建议默认值
+- I/O 分配
+- 用户备注
+
+用户在生成前确认规格。之后生成的候选与已确认规格的哈希及基础版本绑定。
+
+这用于减少 AI 生成 PLC 程序时的一类常见问题：面对不完整的控制要求，生成语法看似合理、实际行为却不符合预期的逻辑。
+
+---
+
+# PLC 中间表示
+
+内部 **PLC IR（PLC Intermediate Representation）** 是模型输出与工程操作之间的语义层。
 
 ```text
                     ┌─ Ladder CSV
                     ├─ Structured Text
-AI → PLC IR ────────┼─ SVG Preview
-                    ├─ Validation
+AI → PLC IR ────────┼─ SVG 预览
+                    ├─ 校验
+                    ├─ 静态分析
                     ├─ Diff / Patch
-                    └─ GX Works2 Adapter
+                    ├─ 测试规划
+                    └─ GX Works2 适配器
 ```
 
-PLC IR 为以下工程信息提供结构化语义层：
+PLC IR 表示的工程信息包括：
 
-- Network
+- 网络（Network）
 - PLC 指令
 - 软元件
 - 定时器与计数器
-- 读 / 写依赖
-- Revision
-- 静态分析
+- 读写关系
+- 执行触发条件
+- 修订版本
+- 静态分析发现
+- I/O 映射
+- 语义需求
 - 确定性渲染
-- Diff
-- 增量 Patch
+- Diff 与增量 Patch 操作
 
-这样可以对 PLC 程序状态进行检查和局部修改，而不需要每次依赖模型重新生成整份自由文本程序。
+因此，每次修改都不需要让模型重新生成整份自由文本程序。
 
 ---
 
-## 确定性校验
+# 确定性校验与评审
 
-模型不会负责判断“自己生成的程序是否正确”。
+系统不依赖模型自行宣称它生成的 PLC 程序正确。
 
-候选 PLC 程序会由本地确定性代码检查，例如：
+候选可以由本地确定性代码检查，包括：
 
-- 指令结构
-- 软元件合法性
-- I/O 引用
-- 定时器和计数器
+- 结构有效性
+- 软元件与地址合法性
+- PLC 特定的指令约束
+- 定时器 / 计数器结构
 - Network 结构
-- 读 / 写依赖
-- PLC 特定约束
-- 控制规格一致性
-- 常见梯形图逻辑问题
+- I/O 引用
+- 读写依赖
+- 已确认规格一致性
+- 多处写入同一软元件
+- 自锁 / 复位归属
+- 不可达状态或无法退出的状态
+- 定时器完成路径
+- 常见梯形图逻辑风险
+
+评审流程首先运行本地确定性检查，再按需加入 AI 专项深度分析。即使模型不可用或调用失败，本地检查结果仍会保留。
 
 ```text
-LLM
- ↓
-PLC IR
- ↓
-Validator
- ├──────── PASS ────────→ Render / Import
- │
- └──────── FAIL
-             ↓
-           诊断
-             ↓
-           修复
+候选程序
+   ↓
+本地确定性检查
+   ↓
+可选的 AI 专项评审
+   ↓
+合并包含证据的报告
 ```
 
-> **LLM 负责推理，确定性代码负责验证。**
+评审结果与版本绑定，可以包含严重程度、证据、受影响地址、梯级 / 网络位置以及建议的后续操作。
 
 ---
 
-## 增量程序修改
+# 增量修改与版本管理
 
-已有 PLC 程序不需要每次从头重新生成。
-
-GXWorks Agent 支持以 Network 为单位构造候选修改：
+已有程序不必每次从头重新生成。
 
 ```text
-Current PLC IR
+当前 PLC IR
       ↓
 修改要求
       ↓
 Network Patch
       ↓
-Candidate Revision
+候选修订版本
       ↓
-Validation
+校验
       ↓
 Diff
       ↓
-用户确认
+操作员审批
       ↓
-Commit
+已接受版本
 ```
 
 例如：
 
 ```text
 把停止逻辑改成停止优先。
-
 不要修改其他 Network。
 ```
 
-修改可以先表示为局部 Patch，在真正替换当前程序状态之前进行确定性校验。
+当前 Web 工作台维护明确的工程版本。接受候选会创建新的本地版本，**不代表**程序已经导入 GX Works2、通过原生编译或完成仿真。
 
 ---
 
-## GX Works2 集成
+# GX Works2 梯形图集成
 
-当前 Ladder 工作流以 **GX Works2 CSV 导入 / 导出**作为最成熟的集成 Backend。
+目前最成熟的 GX Works2 后端仍是 **Ladder CSV 导入 / 导出工作流**。
 
-当前支持：
+当前能力包括：
 
-- Ladder 程序 CSV 生成
+- Ladder CSV 生成
 - 软元件注释 CSV 生成
 - GX Works2 导入 / 导出
 - 程序同步
 - 注释同步
 - 覆盖前自动备份
-- 同步 Baseline
+- 同步基线
 - 外部人工修改检测
 - 冲突保护
-- 可选 Round-trip Verification
+- 可选的往返验证
 
-如果 GXWorks Agent 检测到 GX Works2 中的程序在上一次同步之后被人工修改，会停止自动覆盖，而不是静默抹掉工程人员的修改。
+如果 GXWorks Agent 检测到 GX Works2 中的程序在上一次同步基线之后被人工修改，会停止操作，而不是静默覆盖工程人员的改动。
 
-GX Works2 GUI 集成目前部分依赖 GUI 自动化，因此可能受到软件版本、界面语言和窗口状态影响。
-
----
-
-# Engineering Agent
-
-GXWorks Agent 内置 Tool-calling PLC Agent。
-
-Agent 通过结构化工程 Tool Runtime 工作，而不是直接获得无限制的底层计算机控制能力。
-
-工程工具示例：
-
-```text
-get_current_project
-get_current_program_info
-read_network
-search_plc_manual
-get_diagnostics
-validate_project
-compile_project
-patch_program
-validate_current_program
-import_current_program_to_gxworks2
-```
-
-整体边界为：
-
-```text
-AI Agent
-   ↓
-Engineering Tools
-   ↓
-Tool Runtime
-   ↓
-PLC Core
-   ├─ PLC IR
-   ├─ Validator
-   ├─ Knowledge Retrieval
-   └─ GX Works2 Adapter
-```
-
-任意鼠标输入、文件删除、真实 PLC 写入或无限制的强制软元件操作等底层原语不会直接暴露给模型。
-
-工程状态修改始终位于受控应用边界之后。
+部分 GX Works2 操作仍依赖 GUI 自动化，因此会受到 GX 版本、界面语言、桌面状态和 Windows 会话条件的影响。
 
 ---
 
-# GX Simulator2 自动化测试
+# 原生 GXW / 结构化梯形图 / FBD 工作流
 
-GXWorks Agent 可以根据当前 PLC 程序生成仿真测试方案，并通过 GX Simulator2 执行受控测试操作。
+GXWorks Agent 现已包含面向 GX Works2 结构化梯形图 / FBD 的实验性**原生 GXW 工程处理流程**。
+
+该能力建立在逆向研究和受控的 GX Works2 编译 / 保存 / 重开实验之上。实现范围限定于已有证据支持的结构，不假定已经理解未公开字段。
+
+当前流程可以：
+
+- 检查 GXW 工程中选定的 `Program.pou` 记录
+- 保留其他 POU 数据、元数据及未知记录
+- 根据支持的结构化梯形图 / FBD 对象生成 FX3U GXW 工程
+- 编辑支持的对象与正交连线
+- 编辑已知的局部与全局声明
+- 为支持的 FB 调用同步实例声明
+- 保留导入工程中尚不支持的记录，而不是盲目重写
+- 在修改后的数据流增大时扩容 CFB MiniFAT / FAT / DIFAT 分配表
+- 更新必要的 GXW history 大小与 MD5 元数据
+- 生成 `fbd.json`、`fbd.svg`、GXW 及写入报告
+- 将 GXW 文件导入 Web 工作台
+- 以提案形式预览结果
+- 将候选接受为版本化的本地产物
+- 下载已接受的 GXW
+- 经受控执行队列，在 GX Works2 中打开已批准的工程副本
+
+当前可生成的模板包括：
+
+- 常开触点
+- 常闭触点
+- 线圈
+- 输入 / 输出终端
+- `MOV`
+- `TON`
+- `TON_E`
+- `CTU`
+- `CTU_E`
+- 已保存的部分 Function / Function Block ABI 模板
+
+已有受控原生样例能够通过编译，并在 GX Works2 保存 / 重开后保持往返一致性。继电器串并联转换样例仍保留已知的 `C2034` 警告；该限制不会被隐藏。
+
+当前重要限制包括：
+
+- 不通用合成任意自定义库、结构体和未知 FB ABI
+- 导入 GXW 的 CPU 识别尚不完整
+- 未实现任意 IEC FBD 语义
+- 多个独立梯形图块的编码规则尚未完全通用化
+- 原生自动编译调用尚未完成
+- FBD 仿真、诊断及 CSV 同步尚未接通
+
+最新工程证据与适用边界见：
+
+- [`docs/research/gxw_declarations_allocation_web_fbd_20260910.md`](docs/research/gxw_declarations_allocation_web_fbd_20260910.md)
+- [`docs/research/gxw_project_write_pipeline_20260910.md`](docs/research/gxw_project_write_pipeline_20260910.md)
+
+---
+
+# GX Simulator2 测试
+
+GXWorks Agent 可以根据当前 PLC 程序生成与版本绑定的仿真测试方案。
 
 ```text
-PLC Program
+PLC 程序
      ↓
-AI Test Planning
+AI 测试规划
      ↓
-用户确认
+确定性的 Test DSL 规范化
      ↓
-GX Simulator2
+保存与版本绑定的方案
      ↓
-输入序列
+操作员审批
      ↓
-断言
+GX Simulator2 执行
      ↓
-测试报告
+轨迹 + 断言
+     ↓
+保存证据
 ```
 
-Simulator 自动化目前属于**实验性能力**。
+测试规划可以使用：
 
-本地 Simulator Gateway 被刻意设计为与真实 PLC 访问隔离。
+- I/O 映射
+- 程序软元件
+- Network 指令
+- 读写依赖
+- 执行触发条件
+- 状态机
+- 语义需求
+- 部分静态分析发现
 
-当前设计包括：
+Test DSL 可以表示定时输入激励、预期结果、等待条件、不变量、轨迹采集软元件，以及支持的故障注入。
+
+仿真仍属于**实验性能力**。真实 GX Simulator2 执行需要受支持的 Windows 环境及已安装的 Mitsubishi 软件。
+
+仿真网关与真实 PLC 访问刻意隔离。
+
+当前安全设计包括：
 
 - 仅允许 localhost 通信
 - 每进程独立认证
 - 固定 GX Simulator2 目标
 - 受控软元件写入
-- 不提供物理 PLC 连接路径
+- 仿真网关不开放真实 PLC 连接路径
 
 详见 [`simulator_gateway/README.md`](simulator_gateway/README.md)。
 
-长期希望形成的工程闭环为：
+---
 
-```text
-生成 / 修改
-     ↓
-确定性校验
-     ↓
-GX Works2
-     ↓
-仿真
-     ↓
-观察结果
-     ↓
-诊断
-     ↓
-修复
-     ↓
-再次校验
-```
+# 绑定证据的调试
 
-完整的自动 `compile / diagnose / repair` 闭环目前尚未完成。
+失败的仿真记录可以转换为与版本绑定的调试方案。
+
+当前调试工作流可以：
+
+1. 加载对应的 PLC IR 和已保存的失败仿真记录。
+2. 构建失败证据与反向依赖上下文。
+3. 由诊断专项 Agent 分析证据。
+4. 由补丁专项 Agent 提出局部 Network Patch。
+5. 在任何执行之前校验并保存方案。
+6. 执行调试操作前要求独立审批。
+
+这样，诊断和修改始终关联到具体程序版本与失败证据，而不是仅依赖自由文本聊天描述。
+
+全自动的 `compile → diagnose → repair → regression` 闭环尚未完成。
 
 ---
 
-# FX3U 知识检索
+# FX3U 工程知识检索
 
-GXWorks Agent 包含本地 FX3U 手册与工程知识检索。
+GXWorks Agent 包含面向 FX3U 手册与工程知识的本地检索能力。
 
-检索层可以辅助查询：
+它可以辅助查询：
 
 - PLC 指令
 - 软元件约束
@@ -407,11 +507,83 @@ GXWorks Agent 包含本地 FX3U 手册与工程知识检索。
 | Negative accuracy | 100% |
 | Mean latency | 58.2 ms |
 
-当前报告见：
+当前报告：
 
 [`benchmarks/fx3u_rag_benchmark_report.json`](benchmarks/fx3u_rag_benchmark_report.json)
 
-> 这些是项目内部的知识检索 Benchmark，用于衡量 Retrieval 性能，不代表端到端 PLC 程序正确率，也不代表真实设备上的安全性。
+> 这些是项目内部的检索指标，不代表端到端 PLC 程序正确率，也不代表真实设备上的安全性。
+
+---
+
+# Engineering Agent 与工具边界
+
+GXWorks Agent 内置支持工具调用的 PLC 工程 Agent。
+
+Agent 获得的是结构化工程工具，而不是不受限制的底层计算机控制能力。
+
+典型工具包括：
+
+```text
+get_current_project
+get_current_program_info
+read_network
+search_plc_manual
+get_diagnostics
+validate_project
+compile_project
+patch_program
+validate_current_program
+import_current_program_to_gxworks2
+```
+
+架构采用明确的分层：
+
+```text
+AI Agent
+   ↓
+Engineering Tools
+   ↓
+Tool Runtime
+   ↓
+PLC Core
+   ├─ PLC IR
+   ├─ Validator
+   ├─ Knowledge Retrieval
+   ├─ Session / Version Store
+   └─ GX Works2 adapters
+```
+
+任意鼠标输入、不受限制的文件删除、真实 PLC 写入及不受限制的软元件强制操作，不会作为通用底层原语暴露给模型。
+
+---
+
+# MCP 集成
+
+**MCP 是 GXWorks Agent 的一种外部接口，而不是整个项目的定位。**
+
+独立 stdio MCP Server 提供高层工程工具，后端复用与内置 Agent 相同的 `ToolRuntime`。
+
+```text
+Built-in Agent ↔ ModelProvider
+      │
+      └──────────────────────────┐
+                                 ↓
+External MCP Client → MCP Server → ToolRuntime → PLC Core
+```
+
+目前支持两种 MCP 模式：
+
+### 独立工作区模式
+
+MCP Server 读取显式选定的工作区并提供工程工具，无需启动桌面 UI 或模型 Provider。
+
+### Web 服务桥接模式
+
+外部 MCP 客户端可以使用独立的 Agent token 连接正在运行的本地 Web 服务。
+
+在此模式下，外部 Agent 可以向 Web 工作台提交候选提案，但**不能审批自己的提案，也不能绕过仅操作员可用的接口**。
+
+详见 [`docs/integrations/mcp.md`](docs/integrations/mcp.md) 和 [`docs/integrations/web.md`](docs/integrations/web.md)。
 
 ---
 
@@ -419,311 +591,108 @@ GXWorks Agent 包含本地 FX3U 手册与工程知识检索。
 
 内置 Agent 使用与模型厂商无关的 `ModelProvider` 抽象。
 
+当前内置配置支持：
+
 | Provider | 状态 |
 | --- | --- |
-| DeepSeek | ✅ |
-| 智谱 GLM | ✅ |
+| 通过 OpenAI-compatible Transport 接入 DeepSeek | ✅ |
+| 通过 OpenAI-compatible Transport 接入智谱 GLM | ✅ |
 | 自定义 OpenAI-compatible API | ✅ |
 | Anthropic 原生 API | 🚧 计划中 |
 | Gemini 原生 API | 🚧 计划中 |
-| Codex Harness / App Server | 🚧 计划中 |
 
-DeepSeek 与智谱目前共享同一个 OpenAI-compatible Transport，而不是分别维护两套原生 Provider 实现。
+Codex 等支持 MCP 的外部 AI 客户端可以通过 MCP 接口使用 GXWorks Agent，无需将特定客户端绑定到 PLC 核心。
 
-工程核心与模型 Provider 相互分离，因此 PLC 状态、校验和工程操作不会绑定到某一个特定 LLM 厂商。
-
----
-
-# MCP 集成
-
-**MCP 是 GXWorks Agent 的一种外部接口，而不是整个项目本身。**
-
-独立 stdio 服务已实现，向外部客户端提供与内置 Agent 相同的十个高层工程工具。两条路径共用 ToolCall / ToolResult、工具 Schema 和 ToolRuntime：
-
-```text
-Built-in Agent ↔ ModelProvider
-      │
-      └─────────────────────────────┐
-                                    ↓
-External MCP Client → MCP Server → ToolRuntime → PLC Core
-```
-
-服务使用官方 Python MCP SDK，依赖独立、可选的 Python 3.10+ 环境。通过显式指定的 SessionStore 工作区、项目和版本读取已保存状态，无需启动桌面、加载模型凭据或调用模型。
-
-在仓库根目录的 PowerShell 中运行：
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-mcp.txt
-$env:PYTHONPATH = (Resolve-Path .\src).Path
-.\.venv\Scripts\python.exe -m integrations.mcp --stdio --workspace '<existing-workspace>' --project '<project-id>'
-```
-
-启动后，进程会在 stdin 等待 MCP 客户端连接。可在同一环境运行 `python scripts/mcp_smoke.py`，自动验证连接和工具调用。
-
-`patch_program` 和 GX 导入请求仍返回 `confirmation_required`，只准备待确认提案。独立服务尚无批准/提交工具或桌面确认桥接，不暴露真实 PLC 写入、任意鼠标键盘操作或文件删除。
-
-详见 [MCP 启动、上下文选择、工具和烟测](docs/integrations/mcp.md) 与 [Codex MCP 配置](docs/integrations/codex.md)。Streamable HTTP 和嵌入 Codex Harness / App Server 仍属于计划功能。
+模型 Provider 与工程状态相互分离。程序版本、校验、审批和 GX 操作因此不依赖某一家 LLM 厂商。
 
 ---
 
-# GXW / Structured Ladder 逆向研究
+# 安全与审批模型
 
-GXWorks Agent 仓库包含一条针对 GX Works2 工程文件和结构化程序表示的持续逆向研究路线。
+GXWorks Agent 将本地程序接受与外部执行分开处理。
 
-研究文档位于：
+| 审批动作 | 授权范围 | **不能**据此得出的结论 |
+| --- | --- | --- |
+| `accept_local` | 将冻结候选接受为本地版本 | 不包含 GX 导入、编译、仿真或 PLC 写入 |
+| `gx_import` | 将 Ladder CSV 导入 GX Works2，或打开已批准的 GXW 副本 | 导入 / 打开成功不等于原生编译成功 |
+| `simulation` | 执行已保存且与版本绑定的测试方案 | 只有已保存的实际执行证据才能作为运行结果 |
+| `debug` | 执行与版本和证据绑定的调试方案 | 不能绕过候选哈希、版本绑定或回归检查 |
 
-[`docs/research/`](docs/research/)
+Web 后端通过专用执行协调器与跨进程桌面锁，串行处理真实 GX 桌面操作。
 
-目前研究内容包括：
-
-- GXW 容器结构
-- 工程对象解析
-- `Program.pou` 结构
-- Mitsubishi 指令 Tokenization
-- PLC 语义模型
-- Structured Ladder 表示
-- Function 相关结构
-- Function Block 相关结构
-
-当前 GXW 研究仍属于**实验性研究**。
-
-受控 FX3U 样本显示，`.gxw` 工程使用 Microsoft Compound File Binary 容器，并包含嵌套的工程数据，其中包括 `Program.pou` 等对象。
-
-目前研究路线大致为：
-
-```text
-GXW
- ↓
-Container Reader
- ↓
-Project Object Resolver
- ↓
-Program.pou Tokenizer
- ↓
-Mitsubishi Instruction Decoder
- ↓
-PLC IR
-```
-
-当前首先需要解决的是确定性的工程解析能力。
-
-直接写入或重新构造 `.gxw` 是独立且风险更高的问题，因为 GX Works2 工程可能同时包含重复或派生状态、Metadata、Hash、Compiler State 以及其他一致性要求。
-
-因此：
-
-> **GXW 逆向目前属于研究内容，尚不是 GXWorks Agent 已支持的工程编辑 Backend。**
-
-相关文档：
-
-- [`docs/research/gxw_reverse_engineering.md`](docs/research/gxw_reverse_engineering.md)
-- [`docs/research/gxw_structured_ladder_reverse_engineering.md`](docs/research/gxw_structured_ladder_reverse_engineering.md)
-- [`docs/research/gxw_semantic_model_v1.md`](docs/research/gxw_semantic_model_v1.md)
+中断的外部操作会标记为中断，并要求操作员核对；服务重启后不会自动重放这些操作。
 
 ---
 
-# 系统架构
+# 当前验证边界
 
-```mermaid
-flowchart TD
+仓库包含较广的自动化回归覆盖和受控 GXW 逆向实验，但部分集成能力仍需要在真实 Windows / Mitsubishi 软件环境中完成验证。
 
-    USER[用户需求]
-    USER --> SPEC[需求分析 / ConfirmedSpec]
+重要的待验收范围包括：
 
-    SPEC --> MODEL[ModelProvider]
-    MODEL --> IR[PLC IR]
+- 在受支持的实际使用环境中完成 GX Works2 导入 / 读取 / 同步的端到端验证
+- 真实 GX Simulator2 执行及证据保存
+- 调试回滚与回归行为
+- 锁屏和 RDP 中断情形
+- 普通用户的发布包启动交互
+- 更广的 GXW / CPU / 指令覆盖
+- FBD 仿真与诊断
 
-    IR --> VALIDATOR[确定性校验器]
-    VALIDATOR --> RENDER[Renderer]
+离线测试通过不能替代这些真实环境验收。
 
-    RENDER --> LADDER[Ladder CSV]
-    RENDER --> ST[Structured Text]
-    RENDER --> SVG[SVG Preview]
+当前验收矩阵见 [`docs/architecture/web-migration-checklist.md`](docs/architecture/web-migration-checklist.md)。
 
-    LADDER --> GX[GX Works2 Adapter]
-    GX --> PROJECT[GX Works2]
-
-    PROJECT --> SIM[GX Simulator2]
-    SIM --> REPORT[测试 / 诊断报告]
-
-    AGENT[PLC Agent] --> TOOLS[ToolRuntime]
-    TOOLS --> CORE[PLC Core]
-
-    CORE --> IR
-    CORE --> GX
-
-    AGENT --> KB[PLC 知识检索]
-```
-
-架构上将 AI 推理与确定性的 PLC 工程操作分离：
-
-```text
-                GXWorks Agent
-                      │
-        ┌─────────────┼─────────────┐
-        ↓             ↓             ↓
-     PLC Agent     PLC Core      Knowledge
-        │             │           Retrieval
-        ↓             ↓
-   Tool Runtime     PLC IR
-                      │
-                 Validator
-                      │
-                   Renderer
-                      │
-                GX Works2 Adapter
-                      │
-                  GX Works2
-                      │
-                GX Simulator2
-```
-
----
-
-## 技术概览
-
-- **Core / UI：** Python、PyQt6
-- **Packaging：** PyInstaller
-- **PLC 表示：** 自定义 PLC IR
-- **PLC 集成：** GX Works2 CSV、pywinauto
-- **仿真：** GX Simulator2、MX Component、本地 C# Gateway
-- **知识检索：** SQLite FTS5、BM25、Dense Retrieval、Hybrid Reranking
-- **LLM 集成：** Vendor-neutral `ModelProvider` + OpenAI-compatible Transport
-- **Agent Tool Interface：** Structured Tool Runtime
-- **External Agent Interface：** 独立 stdio MCP Server
+AI 生成或修改的程序在部署到真实设备前，仍应由具备相应经验的工程人员审查与验证。仿真不能替代真实设备调试、设备验收或功能安全设计。
 
 ---
 
 # 项目结构
 
 ```text
-gxworks-agent/
-│
-├─ src/
-│  ├─ main.py                  桌面工程工作台
-│  ├─ model_provider.py        与模型厂商无关的抽象层
-│  ├─ plc_agent.py             Tool-calling PLC Agent
-│  ├─ plc_agent_tools.py       工程工具定义
-│  ├─ tool_runtime.py          结构化 Agent Tool Boundary
-│  ├─ integrations/mcp/        独立 stdio MCP 适配层
-│  ├─ plc_core.py              与模型无关的 PLC 操作层
-│  ├─ plc_ir.py                PLC IR / Patch / Validation / Hash
-│  ├─ plc_json_validator.py    确定性 PLC 校验
-│  ├─ knowledge_retriever.py   PLC 手册 / 工程知识检索
-│  └─ gxworks2/                GX Works2 集成
-│
-├─ simulator_gateway/          本地 GX Simulator2 Gateway
-├─ resources/                  PLC 型号、Pattern、知识与资源文件
-├─ examples/                   GX Works2 CSV 示例
-├─ benchmarks/                 FX3U 检索 Benchmark 与报告
-├─ docs/
-│  ├─ localization.md
-│  ├─ integrations/            MCP 启动与 Codex 配置
-│  └─ research/                GXW / Structured Program 研究
-│
-└─ tests/
+src/                         PLC 核心、工作流、适配器与应用服务
+web/                         React/Vite Web 工作台
+simulator_gateway/           隔离的 GX Simulator2 网关
+benchmarks/                  检索与 Agent 路由基准测试
+docs/integrations/           Web、MCP、Codex 及集成文档
+docs/architecture/           架构与迁移记录
+docs/research/               GXW 逆向证据与研究结论
+research/                    受控 GXW 模型、结果与证据辅助工具
+tests/                       确定性回归测试
+tools/                       GXW 与工程实用工具
 ```
 
 ---
 
-# Roadmap
+# 开发原则
 
-## Agent 与工程核心
+项目当前遵循以下工程规则：
 
-- [x] PLC Intermediate Representation
-- [x] 确定性校验
-- [x] Network 增量 Patch / Diff
-- [x] Tool-calling PLC Agent
-- [x] FX3U 知识检索
-- [ ] 更完整的 compile / diagnose / repair 闭环
-- [ ] Function / Function Block 支持
-- [ ] 可复用 FB Library
-
-## GX Works 集成
-
-- [x] Ladder CSV 生成
-- [x] GX Works2 CSV 导入 / 导出
-- [x] 程序与注释同步
-- [ ] Structured Ladder / FBD 编辑
-- [ ] GXW Parser / Serializer
-- [ ] 更多 MELSEC PLC 系列
-- [ ] GX Works3 Adapter
-- [ ] Vendor-neutral PLC Backend
-
-## 仿真
-
-- [x] GX Simulator2 Gateway 架构
-- [x] AI 仿真测试方案生成
-- [ ] 扩展自动化仿真覆盖
-- [ ] 更完整的 diagnose / repair / retest 工作流
-
-## Agent 接口
-
-- [x] 内部 Structured Tool Runtime
-- [x] 独立 MCP Server
-- [x] stdio Transport
-- [ ] Streamable HTTP Transport
-- [ ] Codex Harness / App Server 集成
-- [ ] DeepSeek Harness 集成
-
-## 后续工程范围
-
-- [ ] HMI / 更完整的自动化工程模型
+1. **LLM 推理不是工程事实的唯一依据。** 校验与应用状态由确定性代码管理。
+2. **程序修改以版本化候选形式处理。** 外部副作用需要明确审批。
+3. **保留未知 GXW 结构，而不是猜测其含义。** 原生生成仅覆盖有证据支持的布局与 ABI。
+4. **仿真证据与真实 PLC 访问保持隔离。** 仿真网关不提供物理 PLC 路径。
+5. **导入 / 打开成功不等于编译成功。** 状态报告区分这些阶段。
+6. **不支持的程序明确失败。** 不会为了让 AI 工作流继续而静默放宽校验。
 
 ---
 
-# 当前限制
+# 路线图
 
-GXWorks Agent 仍处于持续开发阶段。
+近期重点是完善已有工程闭环，而不是单纯增加更多 LLM 输出格式：
 
-目前主要限制包括：
-
-- 主要围绕 FX3U 开发和测试
-- Ladder CSV 集成目前是最成熟的 Backend
-- Structured Text 仍属于实验性能力
-- GX Simulator2 自动化仍属于实验性能力
-- Structured Ladder / FBD 编辑尚未实现
-- GXW Parser / Serializer 仍处于研究阶段
-- MCP 已支持 stdio；HTTP Transport 与桌面确认桥接尚未实现
-- GX Works2 GUI 自动化可能受软件版本、界面语言与窗口状态影响
-- Simulator 验证不能替代真实设备调试与验收
+- 更丰富的交互式程序查看与依赖导航
+- 更明确的问题—网络 / 问题—测试关联
+- 可编辑的仿真方案与更清晰的轨迹可视化
+- 原生 GXW 编译反馈与往返证据采集
+- 扩展有证据支持的结构化梯形图 / FBD 范围
+- FBD 仿真与诊断
+- 更安全的真实设备观测及后续受控 PLC 集成
+- GX Works3 适配器
 
 ---
 
-# 安全说明
-
-PLC 软件会控制真实物理设备。
-
-AI 生成或 AI 修改的 PLC 程序在部署到真实机械设备之前，应由具备相应经验的工程人员进行审查与验证。
-
-尤其需要关注：
-
-- 急停回路
-- 安全回路
-- 机械互锁
-- 极限位
-- 回零逻辑
-- 故障安全行为
-- 上电初始状态
-- 非预期自动重启
-- 运动范围
-- 机械碰撞风险
-- 驱动器与伺服参数
-- 通信故障行为
-
-仿真可以降低工程风险，但不能替代真实设备 Commissioning、设备验收或功能安全设计。
-
----
-
-# License
+# 许可证
 
 本项目采用 [Apache License 2.0](LICENSE)。
 
----
-
-# Disclaimer
-
-GXWorks Agent 是一个独立的开源项目。
-
-本项目**与 Mitsubishi Electric 不存在隶属、赞助或官方认可关系**。
-
-Mitsubishi Electric、MELSEC、GX Works2、GX Works3、GX Simulator2 和 MX Component 等名称与商标归其各自权利人所有。
+Mitsubishi Electric、MELSEC、GX Works2、GX Works3、GX Simulator2 和 MX Component 是 Mitsubishi Electric Corporation 的商标或产品。本仓库与 Mitsubishi Electric 不存在隶属或官方认可关系，也不分发 Mitsubishi 专有软件。
