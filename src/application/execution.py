@@ -103,6 +103,29 @@ def _default_dependencies(operation):
     return bundle
 
 
+def read_gx_environment():
+    """Observe GX Works2 without starting it or touching an engineering project."""
+    from gxworks2.finder import GXWorks2Finder
+
+    try:
+        session = GXWorks2Finder().find_running()
+    except Exception:
+        session = None
+    running = session is not None
+    return {
+        "status": "ready" if running else "unavailable",
+        "passed": running,
+        "desktop_execution_required": True,
+        "gx_works2_running": running,
+        "project_open": bool(session and session.project_open),
+        "message": (
+            "GX Works2 已运行。"
+            if running
+            else "GX Works2 未运行，请先启动 GX Works2 后再发送。"
+        ),
+    }
+
+
 def read_environment():
     """Observe installed software/processes without creating or starting a gateway."""
     from simulator.gateway import detect_simulator_environment

@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDownToLine, ArrowLeft, ArrowRight, ChevronDown, MoreHorizontal, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, ArrowRight, ChevronDown, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import type { Artifact } from "../api/client";
-import { artifactUrl } from "../api/client";
+import { api, artifactUrl } from "../api/client";
 import { Button } from "../components/ui";
 
 export function artifactLabel(id: string) {
@@ -36,6 +36,20 @@ export function ProjectToolbar({ pid, vid, artifacts, exportable, canRead, canSe
   onSend: () => void; onRefresh: () => void; more: ReactNode; t: (s:string) => string;
 }) {
   const files = artifacts.filter((a) => a.available);
+  const [deleting, setDeleting] = useState(false);
+  async function deleteProject() {
+    if (!pid || deleting) return;
+    if (!window.confirm(t("确认删除当前项目？项目文件和全部版本将被永久删除。"))) return;
+    setDeleting(true);
+    try {
+      await api<{ deleted: boolean }>(`/projects/${encodeURIComponent(pid)}`, "DELETE");
+      window.location.assign(window.location.pathname);
+    } catch (error) {
+      window.alert(String((error as Error).message || error));
+    } finally {
+      setDeleting(false);
+    }
+  }
   return <div className="project-toolbar" role="toolbar" aria-label={t("工程操作")}>
     <div className="toolbar-group">
       <Menu label={t("导出文件")} icon={<ArrowDownToLine size={15}/>} disabled={!exportable || !files.length}
@@ -54,7 +68,12 @@ export function ProjectToolbar({ pid, vid, artifacts, exportable, canRead, canSe
         aria-label={t("刷新结果 / 重绘梯形图")} title={t("刷新结果 / 重绘梯形图")}>
         <RefreshCw size={16} className={refreshing ? "spin" : ""}/>
       </Button>
-      <Menu label={t("更多")} icon={<MoreHorizontal size={16}/>} className="more-menu">{more}</Menu>
+      <Menu label={t("更多")} icon={<MoreHorizontal size={16}/>} className="more-menu">
+        {more}
+        <Button variant="danger" disabled={!pid || deleting} onClick={() => void deleteProject()}>
+          <Trash2 size={15}/>{t(deleting ? "正在删除…" : "删除项目")}
+        </Button>
+      </Menu>
     </div>
   </div>;
 }

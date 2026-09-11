@@ -174,12 +174,15 @@ export default function App() {
   const currentJob = jobs.find((j) => j.id === jobId && j.project_id === pid);
   const generationResult = useGenerationResult(currentJob, outputRetry);
   const resultKey = generationResult.id ? `${pid}:${generationResult.id}` : "";
-  const displayedJobStatus = currentJob?.kind === "generation" && currentJob.status === "completed"
-    ? generationResult.blocked ? "contract_mismatch"
-      : generationResult.versionId ? "saved"
-      : generationResult.proposalId ? "candidate_ready"
-      : generationResult.loading ? "loading_result" : "result_unavailable"
-    : currentJob?.status;
+  const displayedJobStatus = currentJob?.kind === "execution" && currentJob.status === "completed" &&
+    ["failed", "interrupted", "conflict"].includes(String(currentJob.result?.status || ""))
+    ? "failed"
+    : currentJob?.kind === "generation" && currentJob.status === "completed"
+      ? generationResult.blocked ? "contract_mismatch"
+        : generationResult.versionId ? "saved"
+        : generationResult.proposalId ? "candidate_ready"
+        : generationResult.loading ? "loading_result" : "result_unavailable"
+      : currentJob?.status;
   const pendingCount = proposals.filter((p) => p.status === "pending").length;
   const canWrite = !!session && !session.read_only && !busy && !loading;
   const canGenerate = !!project && project.id === pid &&

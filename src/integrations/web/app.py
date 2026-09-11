@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from application.projects import media_type, public
 from application.workbench import WorkbenchService, sfc_requirement
 from application.fbd import FBDValidationError
+from application.execution import ExecutionUnavailableError
 from application.workspace import ConflictError, WorkspaceBusyError
 from .security import LocalSecurity
 from . import responses as dto
@@ -60,6 +61,13 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     async def invalid_schema(_request, _error):
         # Pydantic's default response includes submitted inputs, possibly secrets.
         return JSONResponse({"error": {"code": "invalid_command", "message": "请求字段不符合接口要求。"}}, status_code=422)
+
+    @app.exception_handler(ExecutionUnavailableError)
+    async def execution_unavailable(_request, error):
+        return JSONResponse(
+            {"error": {"code": "execution_unavailable", "message": public(str(error))}},
+            status_code=409,
+        )
 
     @app.exception_handler(KeyError)
     async def missing(_request, _error):
@@ -145,6 +153,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.patch("/api/projects/{project_id}", response_model=dto.Project, response_model_exclude_unset=True)
     def update_project(project_id: str, command: ProjectUpdate):
         return service.update_project(project_id, **command.model_dump(exclude_none=True))
+
+    @app.delete("/api/projects/{project_id}", response_model=dto.PublicObject)
+    def delete_project(project_id: str):
+        return service.delete_project(project_id)
 
     @app.post("/api/projects/{project_id}/active-version", response_model=dto.Project, response_model_exclude_unset=True)
     def activate(project_id: str, command: ActivateVersion):

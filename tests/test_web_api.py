@@ -177,7 +177,12 @@ def test_svg_artifact_theme_changes_real_colors_without_writing_legacy_files(tmp
     assert not (tmp_path / "state").exists()
 
 
-def test_candidate_and_execution_preview_theme_preserves_ir_diff_and_proposal_hash(tmp_path):
+def test_candidate_and_execution_preview_theme_preserves_ir_diff_and_proposal_hash(tmp_path, monkeypatch):
+    import application.execution
+    monkeypatch.setattr(application.execution, "read_gx_environment", lambda: {
+        "status": "ready", "passed": True, "desktop_execution_required": True,
+        "gx_works2_running": True, "project_open": True, "message": "GX Works2 已运行。",
+    })
     workspace = tmp_path / "workspace"
     _, project_id, version_id, _ = _legacy_workspace(workspace)
     service = WorkbenchService(workspace, tmp_path / "state",
@@ -542,6 +547,11 @@ def test_cancel_approved_job_waiting_for_engineering_lock_never_calls_executor(t
     workspace = tmp_path / "workspace"
     _, project, version, _ = _legacy_workspace(workspace)
     service = WorkbenchService(workspace, tmp_path / "state")
+    import application.execution
+    monkeypatch.setattr(application.execution, "read_gx_environment", lambda: {
+        "status": "ready", "passed": True, "desktop_execution_required": True,
+        "gx_works2_running": True, "project_open": True, "message": "GX Works2 已运行。",
+    })
     attempts, release, held = threading.Event(), threading.Event(), threading.Event()
     executor_calls, holders = [], []
     with TestClient(_app(workspace, tmp_path / "state", service=service), base_url=ORIGIN) as client:

@@ -106,6 +106,26 @@ class WorkbenchService:
             self.store.update_project_settings(project_id, **values)
             return self.projects.project(project_id)
 
+    def delete_project(self, project_id):
+        """Delete one managed project after proving no live work still references it."""
+        self.writable()
+        with self.lock.thread_lock:
+            self.projects.raw_project(project_id)
+            active_jobs = [
+                job for job in (self.jobs.list(project_id) if self.jobs else [])
+                if job.get("status") in {"queued", "running", "cancelling"}
+            ]
+            if active_jobs:
+                raise ConflictError("Project still has active jobs")
+            active_proposals = [
+                proposal for proposal in (self.proposals.list(project_id) if self.proposals else [])
+                if proposal.get("status") in {"pending", "executing"}
+            ]
+            if active_proposals:
+                raise ConflictError("Project still has pending or executing proposals")
+            self.store.delete_project(project_id)
+            return {"deleted": True, "project_id": project_id}
+
     def activate_version(self, project_id, version_id, expected_active_version_id):
         self.writable()
         with self.lock.thread_lock:
@@ -526,7 +546,20 @@ class WorkbenchService:
         self.writable()
         project_id, version_id = command["project_id"], command["version_id"]
         with self.lock.thread_lock:
-            self.projects.raw_version(project_id, version_id)
+            version = self.projects.raw_version(project_id, version_id)
+            if command["action"] == "gx_import":
+                from application.execution import ExecutionUnavailableError, read_gx_environment
+
+                environment = read_gx_environment()
+                if not environment.get("gx_works2_running"):
+                    raise ExecutionUnavailableError(
+                        environment.get("message")
+                        or "GX Works2 未运行，请先启动 GX Works2 后再发送。"
+                    )
+                if version.get("target_mode") != "fbd" and environment.get("project_open") is False:
+                    raise ExecutionUnavailableError(
+                        "GX Works2 已运行，但尚未新建或打开目标工程。"
+                    )
             payload = {"project_id": project_id, "version_id": version_id}
             plan_id = command.get("plan_id")
             if command["action"] in ("simulation", "debug"):

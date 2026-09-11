@@ -7,6 +7,7 @@ export function JobProgress({ job, events, t }: {
   job: Job; events: JobEvent[]; t: (key: string) => string;
 }) {
   const running = activeJob(job);
+  const modelDriven = !["execution", "gx_read", "gx_inspect"].includes(job.kind);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!running) return;
@@ -26,7 +27,18 @@ export function JobProgress({ job, events, t }: {
     }
     preview.truncated ||= !!payload?.truncated;
   }
-  if (!running && !preview.reasoning && !preview.content && !preview.discarded) return null;
+  const envelope = job.kind === "execution" && job.result ? job.result : null;
+  const outcome = typeof envelope?.status === "string" ? envelope.status : "";
+  const nested = envelope?.result;
+  const executionDetails = nested && typeof nested === "object" && !Array.isArray(nested)
+    ? (nested as Record<string, unknown>) : null;
+  const executionFailed = !running && ["failed", "interrupted", "conflict"].includes(outcome);
+  const executionMessage = typeof executionDetails?.message === "string" && executionDetails.message
+    ? executionDetails.message
+    : "GX 执行未完成，请检查 GX Works2 状态。";
+  const hasModelPreview = !!(preview.reasoning || preview.content || preview.discarded);
+  const showModelPreview = modelDriven || hasModelPreview;
+  if (!running && !showModelPreview && !executionFailed) return null;
   const latest = [...events].reverse().find((event) => ["model_progress", "progress"].includes(event.event_type));
   const phaseNames: Record<string, string> = {
     waiting: "正在等待模型响应", thinking: "模型正在处理需求",
@@ -41,7 +53,8 @@ export function JobProgress({ job, events, t }: {
       <div className="live-progress-label"><span role="status">{label}</span><small>{elapsed}{t("秒")}</small></div>
       <div role="progressbar" aria-label={label} aria-valuetext={label} className="live-progress-track"><span /></div>
     </>}
-    <details className="stream-preview">
+    {executionFailed && <p className="error-text" role="alert">{t(executionMessage)}</p>}
+    {showModelPreview && <details className="stream-preview">
       <summary>{t("查看实时输出")}</summary>
       <p className="muted">{t("生成过程预览，工程结果以最终校验为准。")}</p>
       {preview.discarded ? <p>{t("本次回复未通过检查，预览已清空。")}</p> : <>
@@ -50,6 +63,6 @@ export function JobProgress({ job, events, t }: {
         {!preview.content && !preview.reasoning && <p>{t("正在等待模型响应")}</p>}
       </>}
       {preview.truncated && <p className="muted">{t("预览较长，完整内容请查看最终结果。")}</p>}
-    </details>
+    </details>}
   </section>;
 }
