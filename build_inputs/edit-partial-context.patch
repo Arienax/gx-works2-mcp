@@ -1,0 +1,98 @@
+diff --git a/src/application/generation.py b/src/application/generation.py
+--- a/src/application/generation.py
++++ b/src/application/generation.py
+@@ -75,6 +75,11 @@ class GenerationWorkflow:
+         self.dependencies = dependencies or GenerationDependencies()
+         self.conversation_history = self.conversation_history or []
+         self.task_type = self.task_type or ("edit" if self.previous_json is not None else "generate")
++        # ``previous_json`` used to be available only to the local merge step.
++        # An edit model therefore knew it was editing but could not see the
++        # current program and often regenerated the whole ladder from the spec.
++        if self.current_version_json is None and self.previous_json is not None:
++            self.current_version_json = copy.deepcopy(self.previous_json)
+         self.previous_ir = self.previous_ir if is_plc_ir(self.previous_ir) else None
+         self.plc_model = str(self.plc_model or "FX3U").upper()
+         self.program_name = str(self.program_name or "MAIN").strip() or "MAIN"
+@@ -154,6 +159,17 @@ class GenerationWorkflow:
+             full_content = ""
+             streaming_succeeded = False
+             is_edit_mode = self.target_mode == "ladder" and self.previous_json is not None
++            model_user_input = self.user_input
++            if is_edit_mode and not self.repair_mode:
++                model_user_input = (
++                    '这是对系统提供的 Current version JSON 的增量编辑。必须返回 mode="partial"；'
++                    'device_comments 只列新增或修改项，rungs 只列修改或新增的完整梯级，'
++                    'delete_rung_ids 只列需要删除的梯级。不得重复输出未修改梯级，也不要重新生成完整程序。'
++                    '只有用户明确要求整体重写/全部重新生成时，才允许返回完整 JSON。\n\n'
++                    '用户修改要求：\n'
++                    + self.user_input
++                )
+             try:
+                 stream_model_response = self.dependencies.stream_response or api.stream_model_response
+ 
+@@ -169,7 +185,7 @@ class GenerationWorkflow:
+                 self._emit("progress", {"stage": "connecting", "message": tr('正在连接模型')})
+                 _reasoning, full_content = model_call(
+                     stream_model_response,
+-                    self.user_input,
++                    model_user_input,
+                     self.model_name,
+                     self.effort,
+                     self.target_mode,
+@@ -211,7 +227,7 @@ class GenerationWorkflow:
+             else:
+                 json_str = model_call(
+                     self.dependencies.generate_json or api.generate_model_json,
+-                    self.user_input,
++                    model_user_input,
+                     self.model_name,
+                     self.effort,
+                     self.target_mode,
+diff --git a/tests/test_generation_workflow.py b/tests/test_generation_workflow.py
+--- a/tests/test_generation_workflow.py
++++ b/tests/test_generation_workflow.py
+@@ -1,4 +1,5 @@
++import copy
+ import json
+ import os
+ from pathlib import Path
+@@ -68,6 +69,39 @@ def test_generation_trusts_confirmed_spec_without_posthoc_approach_rejection(tmp
+     assert (tmp_path / result["artifacts"]["program_csv"]).is_file()
+ 
+ 
++def test_edit_generation_sends_current_program_and_requests_partial_output(tmp_path):
++    base = _ladder()
++    changed_rung = copy.deepcopy(base["rungs"][0])
++    changed_rung["branches"][0]["inputs"][0]["type"] = "NC"
++    partial = {
++        "mode": "partial",
++        "device_comments": {},
++        "rungs": [changed_rung],
++        "delete_rung_ids": [],
++    }
++    observed = {}
++
++    def stream(user_input, *args, **kwargs):
++        observed["user_input"] = user_input
++        observed["current_version_json"] = copy.deepcopy(kwargs.get("current_version_json"))
++        observed["is_edit_mode"] = kwargs.get("is_edit_mode")
++        return "", json.dumps(partial, ensure_ascii=False)
++
++    result = GenerationWorkflow(
++        GenerationRequest("把 X0 改成常闭", previous_json=base, model_name="offline"),
++        tmp_path,
++        dependencies=GenerationDependencies(stream_response=stream),
++    ).run()
++
++    assert observed["is_edit_mode"] is True
++    assert observed["current_version_json"] == base
++    assert 'mode="partial"' in observed["user_input"]
++    assert "不得重复输出未修改梯级" in observed["user_input"]
++    persisted = json.loads((tmp_path / "ladder.json").read_text(encoding="utf-8"))
++    assert len(persisted["rungs"]) == 1
++    assert persisted["rungs"][0]["branches"][0]["inputs"][0]["type"] == "NC"
++    assert result["repair_attempts"] == 0
++
++
+ @pytest.mark.parametrize("mutation", ["delete", "rung", "device", "comment", "full"])
+ def test_contract_repair_rejects_scope_escape_without_hidden_retry(tmp_path, mutation):
