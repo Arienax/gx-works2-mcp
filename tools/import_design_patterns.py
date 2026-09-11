@@ -117,9 +117,8 @@ def update_manifest(manifest_path: Path, database: Path, source_path: Path, sour
     retrieval = manifest.setdefault("retrieval", {})
     retrieval["dense_embeddings"] = False
     retrieval["vector_status"] = "stale_after_curated_design_import"
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    manifest_path.write_bytes(
+        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     )
 
 

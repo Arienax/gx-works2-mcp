@@ -9,8 +9,8 @@
     "target_chars": 4800
   },
   "database": "fx3u_knowledge.sqlite",
-  "database_bytes": 140750848,
-  "database_sha256": "0e0a7badbd737d92dd2454d2e3ef67f9c9189f993c49611309d5b433a405265d",
+  "database_bytes": 140795904,
+  "database_sha256": "65fdafae7a622d2e1eb648e32273bca4520e956f79ce17c6b583b1800b70bbf6",
   "external_sources": [
     {
       "chunks": 1448,
@@ -276,8 +276,8 @@
     },
     "bm25_fts5": true,
     "dense_artifact": "fx3u_dense_lsa.npz",
-    "dense_artifact_bytes": 8468394,
-    "dense_artifact_sha256": "3808e170e3524f521d76743a7c1e2bc0ae1a12d2e510d5560e1528b1488c3dca",
+    "dense_artifact_bytes": 8475420,
+    "dense_artifact_sha256": "f1265dcf55444c2383cea0b8231732e5a01fc4c4a038b84f21a654bb7e418331",
     "dense_embeddings": true,
     "dense_model": {
       "schema_version": 1,
@@ -285,9 +285,9 @@
       "algorithm": "tfidf_truncated_svd_lsa",
       "dimensions": 192,
       "features": 8192,
-      "chunks": 4708,
-      "corpus_sha256": "08f95c8d1bb9d72b22ee00ade1611c29b6d0b96ef4e28c44fba6a2aed10360e2",
-      "built_at_utc": "2026-09-08T09:46:47.419587+00:00",
+      "chunks": 4714,
+      "corpus_sha256": "d7f6833c08cfe1dedf751ce37eb3a740fa152e1b1da11989b69e4d82d0727487",
+      "built_at_utc": "2026-09-11T15:33:53.890362+00:00",
       "normalization": "l2",
       "runtime": "numpy_lazy_local"
     },
@@ -304,7 +304,8 @@
     "entities": 68985,
     "manual_chunks": 4682,
     "pages": 3064,
-    "tables": 7324
+    "tables": 7324,
+    "design_chunks": 6
   },
   "structured": {
     "debug_cases": 26,
@@ -325,7 +326,7 @@
       "manuals": 9,
       "page_artifacts": 3064,
       "tables": 7324,
-      "vector_embeddings": 4708
+      "vector_embeddings": 4714
     },
     "foreign_key_violations": 0,
     "integrity_check": "ok",
@@ -359,5 +360,25 @@
     ],
     "positioning_operand_wrong_device_rows": 0,
     "vector_status": "ready"
-  }
+  },
+  "curated_sources": [
+    {
+      "id": "curated_control_design",
+      "title": "Curated PLC Control Architecture Design Knowledge",
+      "type": "curated_design",
+      "role": "analysis_support",
+      "priority": 90,
+      "plc_models": [
+        "FX3G",
+        "FX3U",
+        "FX3UC"
+      ],
+      "task_types": [
+        "analysis"
+      ],
+      "chunks": 6,
+      "source_file": "design_patterns.json",
+      "source_sha256": "dc4a723346b541029d29226113c16a98079e04a2029f0c2196ab3f7ad1031fe0"
+    }
+  ]
 }
