@@ -2,7 +2,9 @@ name: Generation Fast Path Validation
 
 on:
   push:
-    branches: [refactor/generation-fast-path]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -48,6 +50,7 @@ jobs:
             tests/test_generation_fast_path.py `
             tests/test_generation_workflow.py `
             tests/test_generation_repair_workflow.py `
+            tests/test_user_confirmed_generation_repair.py `
             tests/test_generation_delivery.py `
             tests/test_approval_modes.py `
             tests/test_plc_core_boundary.py `
