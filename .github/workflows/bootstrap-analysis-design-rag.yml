@@ -117,8 +117,11 @@ jobs:
             scripts/_bootstrap_analysis_design_rag_v3.py `
             scripts/_bootstrap_analysis_design_rag_v4.py `
             scripts/_bootstrap_analysis_design_rag_v5.py `
-            scripts/_bootstrap_analysis_design_rag_v6.py `
-            .github/workflows/bootstrap-analysis-design-rag.yml
+            scripts/_bootstrap_analysis_design_rag_v6.py
+          # The bootstrap changed the long-lived workflow to register the new test,
+          # but Actions' GitHub App token cannot push workflow-file changes. Keep
+          # workflow cleanup/update for the authenticated connector after this push.
+          git restore .github/workflows/generation-fast-path.yml
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
           git add `
@@ -134,8 +137,7 @@ jobs:
             tools/import_design_patterns.py `
             tools/build_dense_embeddings.py `
             tests/test_analysis_design_rag.py `
-            tests/test_motion_control_regressions.py `
-            .github/workflows/generation-fast-path.yml
+            tests/test_motion_control_regressions.py
           git diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
           git commit -m 'refactor(prompt): retrieve architecture design knowledge from SQLite'
