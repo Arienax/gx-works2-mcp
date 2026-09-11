@@ -554,7 +554,7 @@ export default function App() {
     setTab("ladder");
   }
 
-  async function reloadProjectSilently(targetPid = pid) {
+  async function reloadProjectSilently(targetPid: string | null | undefined = pid) {
     const epoch = projectEpoch.current;
     if (!targetPid || activeProjectRef.current !== targetPid) return;
     const fresh = await api<Project>(`/projects/${targetPid}`);
