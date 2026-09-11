@@ -53,40 +53,38 @@ jobs:
         run: python tools/import_design_patterns.py
       - name: Rebuild local dense index
         run: python tools/build_dense_embeddings.py
-      - name: Compile and validate design RAG
+      - name: Diagnose retrieval lanes
         run: |
-          python -m compileall -q src tests tools/import_design_patterns.py
-          python -m pytest -q `
-            tests/test_analysis_design_rag.py `
-            tests/test_analysis_format_repair.py `
-            tests/test_prompt_context_policy.py `
-            tests/test_motion_control_regressions.py `
-            tests/test_approach_contracts.py `
-            tests/test_generation_fast_path.py `
-            tests/test_generation_workflow.py `
-            tests/test_fx3u_rag.py
-      - name: Run canonical RAG benchmark
-        run: |
-          python tools/evaluate_rag_benchmark.py --fail-under-recall-10 0.98
-      - name: Commit runtime, knowledge index and tests
-        run: |
-          git rm scripts/_bootstrap_analysis_design_rag.py scripts/_bootstrap_analysis_design_rag_v2.py scripts/_bootstrap_analysis_design_rag_v3.py scripts/_bootstrap_analysis_design_rag_v4.py .github/workflows/bootstrap-analysis-design-rag.yml
-          git config user.name 'Arienax'
-          git config user.email '1307420856@qq.com'
-          git add `
-            src/api.py `
-            src/pattern_library.py `
-            src/knowledge_retriever.py `
-            src/knowledge_retriever_core.py `
-            tests/test_analysis_design_rag.py `
-            tests/test_motion_control_regressions.py `
-            resources/knowledge/README.md `
-            resources/knowledge/fx3u_knowledge.sqlite `
-            resources/knowledge/fx3u_dense_lsa.npz `
-            resources/knowledge/manifest.json `
-            benchmarks/fx3u_rag_benchmark_report.json `
-            .github/workflows/generation-fast-path.yml
-          git diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
-          git commit -m 'refactor(rag): retrieve architecture knowledge during analysis'
-          git push origin HEAD:fix/user-confirmed-structural-repair
+          @'
+          import inspect
+          import traceback
+          import api
+          import knowledge_retriever
+          from prompt_context_policy import context_policy_scope
+
+          q = "FX3U 三个工位依次执行，包含多阶段顺序和延时"
+          print("=== API SOURCE ===")
+          print(inspect.getsource(api._build_knowledge_context))
+          print("=== DESIGN LANE ===")
+          try:
+              print(knowledge_retriever.retrieve_design_knowledge(q, plc_model="FX3U", task_type="analysis", top_k=2, char_budget=2400))
+          except Exception:
+              traceback.print_exc()
+          print("=== MERGED CONTEXT ===")
+          try:
+              print(knowledge_retriever.build_knowledge_context(q, plc_model="FX3U", task_type="analysis", top_k=4, char_budget=7000))
+          except Exception:
+              traceback.print_exc()
+          print("=== API MONKEYPATCH ===")
+          def fake(query, **kwargs):
+              print("FAKE CALLED", query, kwargs)
+              return "# retrieved"
+          knowledge_retriever.build_knowledge_context = fake
+          try:
+              with context_policy_scope("adaptive"):
+                  print(api._build_knowledge_context("普通三工位顺序控制", plc_model="FX3U", task_type="analysis"))
+          except Exception:
+              traceback.print_exc()
+          '@ | python
+      - name: Stop after diagnostics
+        run: exit 1
