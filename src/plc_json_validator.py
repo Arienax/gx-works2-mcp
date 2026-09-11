@@ -1440,6 +1440,90 @@ def find_unverified_app_instructions(data):
     return findings
 
 
+def validate_ladder_candidate_structure(
+    data,
+    plc_model="FX3U",
+    *,
+    require_catalogued_instructions=True,
+):
+    """Validate only the model-facing ladder contract and processability.
+
+    This intentionally does not judge whether the generated control strategy
+    matches a confirmed requirement.  Generation owns that semantic decision
+    after the user confirms the specification.  Review/simulation/GX execution
+    may still run stronger checks later.
+
+    The checks retained here are limited to JSON shape, supported element
+    encodings, device/address syntax and ranges, instruction catalogue/arity,
+    writable targets, and unique rung identifiers.
+    """
+    plc_model = normalize_plc_model(plc_model)
+    _require_dict(data, "$" )
+    allowed = {"device_comments", "rungs"}
+    extra = set(data) - allowed
+    missing = allowed - set(data)
+    if extra:
+        _fail("$", f"unexpected top-level fields: {sorted(extra)}")
+    if missing:
+        _fail("$", f"missing top-level fields: {sorted(missing)}")
+
+    _validate_comments(data["device_comments"], "$.device_comments", plc_model)
+    _require_list(data["rungs"], "$.rungs")
+    seen_ids = set()
+    for idx, rung in enumerate(data["rungs"]):
+        _validate_rung(
+            rung,
+            f"$.rungs[{idx}]",
+            plc_model,
+            require_catalogued_instructions=require_catalogued_instructions,
+        )
+        rung_id = rung["rung_id"]
+        if rung_id in seen_ids:
+            _fail(f"$.rungs[{idx}].rung_id", f"duplicate rung_id {rung_id}")
+        seen_ids.add(rung_id)
+    return data
+
+
+def validate_ladder_partial_structure(
+    data,
+    plc_model="FX3U",
+    *,
+    require_catalogued_instructions=True,
+):
+    """Validate a partial edit without semantic/style policy checks."""
+    plc_model = normalize_plc_model(plc_model)
+    _require_dict(data, "$" )
+    allowed = {"mode", "device_comments", "rungs", "delete_rung_ids"}
+    extra = set(data) - allowed
+    if extra:
+        _fail("$", f"unexpected top-level fields: {sorted(extra)}")
+    if data.get("mode") != "partial":
+        _fail("$.mode", 'expected "partial"')
+    _validate_comments(
+        data.get("device_comments", {}), "$.device_comments", plc_model
+    )
+    rungs = data.get("rungs", [])
+    _require_list(rungs, "$.rungs")
+    seen_ids = set()
+    for idx, rung in enumerate(rungs):
+        _validate_rung(
+            rung,
+            f"$.rungs[{idx}]",
+            plc_model,
+            require_catalogued_instructions=require_catalogued_instructions,
+        )
+        rung_id = rung["rung_id"]
+        if rung_id in seen_ids:
+            _fail(f"$.rungs[{idx}].rung_id", f"duplicate rung_id {rung_id}")
+        seen_ids.add(rung_id)
+    delete_ids = data.get("delete_rung_ids", [])
+    _require_list(delete_ids, "$.delete_rung_ids")
+    for idx, rung_id in enumerate(delete_ids):
+        if not isinstance(rung_id, int):
+            _fail(f"$.delete_rung_ids[{idx}]", "expected integer")
+    return data
+
+
 def validate_ladder_full(
     data,
     plc_model="FX3U",

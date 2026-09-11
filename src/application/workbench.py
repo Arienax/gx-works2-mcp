@@ -14,6 +14,7 @@ from application.settings import SettingsService
 from application.workspace import WorkspaceWriterLock, ConflictError, atomic_json, canonical_hash, read_json
 from tool_messages import ToolCall
 from tool_runtime import public_tool_result_data
+from prompt_context_policy import ContextAudit, context_policy_scope, resolve_context_policy
 
 
 class WorkbenchService:
@@ -197,13 +198,18 @@ class WorkbenchService:
                 output["spec_draft"] = restore_review_choices(output["spec_draft"], output["analysis"])
         return public(output)
 
-    def _render_ladder_preview(self, program, *, theme=None, confirmed_spec=None):
+    def _render_ladder_preview(
+        self, program, *, theme=None, confirmed_spec=None, validation_profile="strict"
+    ):
         """Deterministic, in-memory view. Never trust an old rendered-file cache."""
         from plc_ir import ir_to_ladder, validate_plc_ir
         from plc_st_renderer import render_plc_ir_to_st
         from draw import AdvancedSVGLadder
 
-        validate_plc_ir(program, confirmed_spec=confirmed_spec)
+        validate_plc_ir(
+            program, confirmed_spec=confirmed_spec,
+            validate_ladder=(validation_profile != "generation_structural"),
+        )
         ladder = ir_to_ladder(program)
         svg = AdvancedSVGLadder().generate_ladder(json.dumps(ladder, ensure_ascii=False))
         return {"target_mode": "ladder", "ladder": ladder, "program": public(program),
@@ -225,8 +231,10 @@ class WorkbenchService:
             raise KeyError("Canonical program is unavailable")
         if version.get("ir_sha256") and canonical_sha256(program) != version["ir_sha256"]:
             raise ConflictError("Version IR changed after validation")
-        return {**self._render_ladder_preview(program, theme=theme,
-                    confirmed_spec=version.get("confirmed_spec_snapshot")),
+        return {**self._render_ladder_preview(
+                    program, theme=theme,
+                    confirmed_spec=version.get("confirmed_spec_snapshot"),
+                    validation_profile=version.get("validation_profile", "strict")),
                 "version_id": version_id, "read_only": True}
 
     def generation_preview(self, job_id, *, theme=None):
@@ -303,6 +311,9 @@ class WorkbenchService:
             provider, model = self.model_factory() if requires_model else (None, {})
             snapshot["model"] = model
             snapshot["approval_consent"] = self.approval.read()
+            snapshot["context_policy"] = resolve_context_policy(
+                None if requires_model else "legacy"
+            ).snapshot()
             if command["kind"] == "debug_plan":
                 snapshot["saved_run"] = self.projects.simulator_run(project_id, context.version_id, command.get("run_id"))
 
@@ -316,7 +327,10 @@ class WorkbenchService:
             ctx.checkpoint()
             model_context = ModelJobContext(ctx)
             model_progress = ModelProgressReporter(model_context)
-            with language_context(snapshot["response_language"]), provider_scope(provider, model_name=model.get("model")), response_policy_scope(
+            context_audit = ContextAudit(lambda report: ctx.emit("context_audit", report))
+            with language_context(snapshot["response_language"]), context_policy_scope(
+                    snapshot.get("context_policy", "legacy"), audit=context_audit), provider_scope(
+                    provider, model_name=model.get("model")), response_policy_scope(
                     enforce_language=False, on_progress=model_progress, on_preview=model_progress.preview):
                 try:
                     result = self._run_job(model_context, snapshot, context, images, provider)
@@ -383,14 +397,9 @@ class WorkbenchService:
                 metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider, check_cancelled=ctx.checkpoint)).run()
             ctx.checkpoint()
             output = {"generation": metadata}
-            if metadata.get("contract_mismatch"):
-                output["status"] = "contract_mismatch"
-                atomic_json(self.state_dir / "outputs" / (ctx.job_id + ".json"), output)
-                ctx.emit("progress", {"stage": "contract_mismatch", "severity": "warning",
-                    "message": "候选与确认方案冲突，仅可查看诊断预览，未创建可接受的提案。"})
-                return {"status": "contract_mismatch", "summary": "候选与确认规格存在冲突，请检查诊断。"}
             payload = {"project_id": project_id, "target_mode": metadata["target_mode"],
-                       "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec")}
+                       "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec"),
+                       "_validation_profile": metadata.get("validation_profile", "strict")}
             if metadata["target_mode"] == "ladder":
                 payload["_candidate_ir"] = json.loads((out_dir / metadata["artifacts"]["ir"]).read_text(encoding="utf-8"))
             else:
@@ -407,7 +416,7 @@ class WorkbenchService:
                 proposal = self._save_local_proposal(proposal)
             output.update(proposal_id=proposal["id"], version_id=proposal["result"]["version_id"], status="saved")
             ctx.emit("progress", {"stage": "version_saved", "version_id": output["version_id"],
-                "message": "程序已校验并自动保存，可查看梯形图和导出文件。"})
+                "message": "程序已根据确认规格生成并自动保存；可选 Review、仿真或 GX 验证。"})
         elif kind == "agent":
             from plc_agent import run_tool_agent
             result = run_tool_agent(text, context=context, runtime=self.projects.runtime, provider=provider,
@@ -629,8 +638,10 @@ class WorkbenchService:
         if "_candidate_ir" in payload:
             # read_private verified the frozen payload hash. Re-render each read
             # instead of returning a stale/corrupt cache. No project writes occur.
-            return {**self._render_ladder_preview(payload["_candidate_ir"], theme=theme,
-                        confirmed_spec=payload.get("_confirmed_spec")),
+            return {**self._render_ladder_preview(
+                        payload["_candidate_ir"], theme=theme,
+                        confirmed_spec=payload.get("_confirmed_spec"),
+                        validation_profile=payload.get("_validation_profile", "strict")),
                     "diff": public(payload.get("_preview_diff") or self._candidate_diff(record["project_id"], record["base_version_id"], payload))}
         if payload.get("target_mode") == "st":
             entry = payload["artifacts"]["st"]

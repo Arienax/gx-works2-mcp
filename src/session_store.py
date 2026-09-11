@@ -741,6 +741,7 @@ class SessionStore:
                     validate_plc_ir(
                         program,
                         confirmed_spec=version.get("confirmed_spec_snapshot"),
+                        validate_ladder=(version.get("validation_profile") != "generation_structural"),
                     )
                     return program
                 except (TypeError, ValueError):
@@ -769,6 +770,7 @@ class SessionStore:
         validate_plc_ir(
             program,
             confirmed_spec=version.get("confirmed_spec_snapshot"),
+            validate_ladder=(version.get("validation_profile") != "generation_structural"),
         )
         # If metadata already names an IR that this runtime cannot validate,
         # keep that artifact byte-for-byte for a newer reader.  The rebuilt IR

@@ -9,6 +9,7 @@ structured evidence remains authoritative in the core scorer.
 from __future__ import annotations
 
 import sys
+from prompt_context_policy import audit_retrieval_fragment
 
 from gxw2_skill_concepts import CONTEXT_RE as _GXW2_CONTEXT_RE, query_skill_concepts
 
@@ -177,7 +178,9 @@ def build_knowledge_context(
         block = _core._format_result_block(result)
         addition = "\n\n" + block
         if used + len(addition) > budget:
+            audit_retrieval_fragment(result, block, included=False)
             continue
+        audit_retrieval_fragment(result, block)
         parts.append(block)
         used += len(addition)
     return "\n\n".join(parts) if len(parts) > 1 else ""

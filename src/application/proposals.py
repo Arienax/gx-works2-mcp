@@ -185,8 +185,19 @@ class ProposalService:
             if action == "accept_local":
                 payload.setdefault("_confirmed_spec", copy.deepcopy(spec))
                 if "_candidate_ir" in payload:
-                    from plc_ir import canonical_sha256, validate_plc_ir
-                    validate_plc_ir(payload["_candidate_ir"], confirmed_spec=spec)
+                    from plc_ir import canonical_sha256, ir_to_ladder, validate_plc_ir
+                    validation_profile = str(payload.get("_validation_profile") or "strict")
+                    structural = validation_profile == "generation_structural"
+                    validate_plc_ir(
+                        payload["_candidate_ir"], confirmed_spec=spec,
+                        validate_ladder=not structural,
+                    )
+                    if structural:
+                        from plc_json_validator import validate_ladder_candidate_structure
+                        validate_ladder_candidate_structure(
+                            ir_to_ladder(payload["_candidate_ir"]),
+                            plc_model=str((payload["_candidate_ir"].get("plc") or {}).get("cpu") or "FX3U"),
+                        )
                     candidate_hash = canonical_sha256(payload["_candidate_ir"])
                     if payload.get("candidate_ir_sha256") not in (None, candidate_hash):
                         raise ConflictError("Candidate content hash does not match")
@@ -304,10 +315,14 @@ class ProposalService:
             version_id, output = self.store.prepare_version(project_id)
             if "_candidate_ir" in payload:
                 candidate = payload["_candidate_ir"]
-                compiled = PLCCore().compile_project(candidate, output)
+                validation_profile = str(payload.get("_validation_profile") or "strict")
+                compiled = PLCCore().compile_project(
+                    candidate, output, validation_profile=validation_profile
+                )
                 metadata = self.store._ir_metadata(candidate)
                 metadata.update(target_mode="ladder", artifacts=compiled["artifacts"],
-                                plc_model=(candidate.get("plc") or {}).get("cpu", "FX3U"))
+                                plc_model=(candidate.get("plc") or {}).get("cpu", "FX3U"),
+                                validation_profile=validation_profile)
                 if compiled["artifacts"].get("st_from_ir"):
                     from plc_st_renderer import ST_RENDERER_SCHEMA_VERSION
                     metadata["st_from_ir_sha256"] = hashlib.sha256((output / compiled["artifacts"]["st_from_ir"]).read_bytes()).hexdigest()

@@ -222,6 +222,21 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
         service.writable()
         return service.jobs.cancel(job_id)
 
+    @app.get("/api/jobs/{job_id}/diagnostics")
+    def job_diagnostics(job_id: str, request: Request):
+        # Diagnostic exports are operator-only, not an Agent data-reading tool.
+        if not security.session(request):
+            raise PermissionError("Operator session required")
+        if not service.jobs:
+            raise KeyError(job_id)
+        job = service.jobs.get(job_id)
+        from runtime_diagnostics import export_diagnostics
+        data = export_diagnostics(service.state_dir, job)
+        return Response(data, media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="gxworks-diagnostics-{job["id"]}.zip"',
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        })
+
     @app.get("/api/jobs/{job_id}/events")
     async def events(job_id: str, request: Request, after: int = Query(0, ge=0)):
         if not service.jobs:

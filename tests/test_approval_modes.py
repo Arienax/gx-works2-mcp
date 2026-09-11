@@ -84,14 +84,15 @@ def test_generation_saves_once_and_exports_without_a_second_approval(offline, tm
 
 
 @pytest.mark.parametrize('mode', ['ask', 'auto', 'full'])
-def test_blocked_program_never_saves_in_any_consent_mode(offline, tmp_path, mode):
+def test_confirmed_approach_mismatch_does_not_block_local_generation_save(offline, tmp_path, mode):
     from test_generation_delivery import prepared, generate
     service, client = prepared(tmp_path)
     with client:
         service.update_approval_settings(mode=mode, expected_revision=0, confirm_full_access=True)
         pid, jid, output, _ = generate(client, service, blocked=True)
-        assert output['status'] == 'contract_mismatch' and not output.get('version_id')
-        assert service.projects.project(pid)['version_count'] == 0 and not service.proposals.list(pid)
+        assert output['status'] == 'saved' and output.get('version_id')
+        assert service.projects.project(pid)['version_count'] == 1
+        assert service.proposals.get(output['proposal_id'])['status'] == 'accepted'
         assert client.get(f'/api/jobs/{jid}/preview').json()['read_only'] is True
 
 

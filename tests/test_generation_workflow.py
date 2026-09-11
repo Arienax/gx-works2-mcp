@@ -49,20 +49,22 @@ assert "main" not in sys.modules and "qt_compat" not in sys.modules
     assert (tmp_path / "program.st").read_text(encoding="utf-8") == "Y0 := X0;"
 
 
-def test_generation_snapshot_and_contract_candidate_are_preserved(tmp_path):
+def test_generation_trusts_confirmed_spec_without_posthoc_approach_rejection(tmp_path):
     ladder = _ladder()
     spec = {"selected_approach": {"name": "MOV approach", "generation_contract": {
         "required_opcodes": ["MOV"], "enforce": True}}}
     request = GenerationRequest("X0 controls Y0", confirmed_context=spec, model_name="offline")
     workflow = GenerationWorkflow(request, tmp_path, dependencies=GenerationDependencies(
         stream_response=lambda *a, **k: ("", json.dumps(ladder)),
-        generate_json=lambda *a, **k: pytest.fail("Contract mismatch must not auto-repair"),
+        generate_json=lambda *a, **k: pytest.fail("Generation must not enter a semantic repair loop"),
     ))
     spec.clear()
     request.confirmed_context.clear()
     result = workflow.run()
-    assert result["validation"]["status"] == "contract_mismatch"
-    assert result["contract_mismatch"]["repairable"] is True
+    assert result["validation"]["status"] == "candidate_ready"
+    assert result["validation_profile"] == "generation_structural"
+    assert result["repair_attempts"] == 0
+    assert result["contract_mismatch"] is None
     assert json.loads((tmp_path / "ladder.json").read_text(encoding="utf-8")) == ladder
     assert (tmp_path / result["artifacts"]["program_csv"]).is_file()
 
@@ -141,7 +143,7 @@ def test_provider_and_language_remain_bound_across_transport_fallback(monkeypatc
     set_language("zh-CN")
     events = []
     result = GenerationWorkflow(request, tmp_path, lambda *event: events.append(event)).run()
-    assert result["validation"]["status"] == "passed"
+    assert result["validation"]["status"] == "candidate_ready"
     assert [(call.stream, call.response_language) for call in calls] == [(True, "en"), (False, "en")]
     assert not any("Unaccepted partial" in str(payload) for _, payload in events)
 

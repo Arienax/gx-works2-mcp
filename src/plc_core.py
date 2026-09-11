@@ -47,7 +47,8 @@ class PLCCorePort(Protocol):
     ) -> Mapping[str, Any]: ...
 
     def compile_project(
-        self, program: Mapping[str, Any], output_dir: Optional[Path] = None
+        self, program: Mapping[str, Any], output_dir: Optional[Path] = None,
+        *, validation_profile: str = "strict",
     ) -> Mapping[str, Any]: ...
 
 
@@ -268,11 +269,16 @@ class PLCCore:
         self,
         program: Mapping[str, Any],
         output_dir: Optional[Path] = None,
+        *,
+        validation_profile: str = "strict",
     ) -> Mapping[str, Any]:
         from plc_debug_loop import render_candidate_artifacts
 
+        structural = validation_profile == "generation_structural"
         def render(target: Path) -> Mapping[str, Any]:
-            artifacts = render_candidate_artifacts(program, target)
+            artifacts = render_candidate_artifacts(
+                program, target, validate_ladder=not structural
+            )
             hashes = {
                 name: hashlib.sha256((target / filename).read_bytes()).hexdigest()
                 for name, filename in artifacts.items()
@@ -306,7 +312,18 @@ def accept_candidate_patch(store: Any, action: Mapping[str, Any]) -> Mapping[str
     )
     if expected_spec_hash != actual_spec_hash:
         raise ValueError("候选补丁绑定的确认规格已变化，请重新生成。")
-    validate_plc_ir(candidate, confirmed_spec=confirmed_spec)
+    validation_profile = str(action.get("_validation_profile") or "strict")
+    structural = validation_profile == "generation_structural"
+    validate_plc_ir(
+        candidate, confirmed_spec=confirmed_spec, validate_ladder=not structural
+    )
+    if structural:
+        from plc_json_validator import validate_ladder_candidate_structure
+        from plc_ir import ir_to_ladder
+        validate_ladder_candidate_structure(
+            ir_to_ladder(candidate),
+            plc_model=str((candidate.get("plc") or {}).get("cpu") or "FX3U"),
+        )
     if canonical_sha256(candidate) != str(action.get("candidate_ir_sha256") or ""):
         raise ValueError("候选补丁内容已变化，请重新生成。")
 
@@ -314,7 +331,9 @@ def accept_candidate_patch(store: Any, action: Mapping[str, Any]) -> Mapping[str
     version_id = None
     try:
         version_id, output_dir = store.prepare_version(project_id)
-        compiled = core.compile_project(candidate, output_dir)
+        compiled = core.compile_project(
+            candidate, output_dir, validation_profile=validation_profile
+        )
         metadata = store._ir_metadata(candidate)
         st_path = output_dir / compiled["artifacts"]["st_from_ir"]
         from plc_st_renderer import ST_RENDERER_SCHEMA_VERSION
@@ -327,9 +346,11 @@ def accept_candidate_patch(store: Any, action: Mapping[str, Any]) -> Mapping[str
                 "st_from_ir_sha256": hashlib.sha256(st_path.read_bytes()).hexdigest(),
                 "st_renderer_schema_version": ST_RENDERER_SCHEMA_VERSION,
                 "artifacts": dict(compiled["artifacts"]),
+                "validation_profile": validation_profile,
                 "validation": {
-                    "status": "passed",
-                    "messages": ["候选补丁和确定性校验已通过"],
+                    "status": "candidate_ready" if structural else "passed",
+                    "messages": (["候选结构可解析；需求一致性未在生成后重复判定"]
+                                 if structural else ["候选补丁和确定性校验已通过"]),
                 },
                 "confirmed_spec_snapshot": copy.deepcopy(
                     confirmed_spec

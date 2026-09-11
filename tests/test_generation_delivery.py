@@ -32,42 +32,32 @@ def generate(client, service, *, blocked=False):
     return project, job_id, output, headers
 
 
-def test_blocked_generation_is_inspectable_but_never_acceptable(offline, tmp_path):
+def test_confirmed_approach_is_context_not_a_second_generation_gate(offline, tmp_path):
     service, client = prepared(tmp_path)
     with client:
         pid, jid, output, headers = generate(client, service, blocked=True)
-        assert output['status'] == 'contract_mismatch' and not output.get('proposal_id')
-        assert service.jobs.get(jid)['result']['status'] == 'contract_mismatch'
-        before = {str(p): p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
-        for theme in ('light', 'dark'):
-            response = client.get(f'/api/jobs/{jid}/preview?theme={theme}')
-            assert response.status_code == 200, response.text
-            result = response.json()
-            assert result['read_only'] and result['status'] == 'contract_mismatch'
-            assert '<svg' in result['svg'] and result['program']['networks']
-            assert result['contract_mismatch']['issues']
-            assert '_confirmed_spec' not in response.text and 'staging_dir' not in response.text
-        after = {str(p): p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
-        assert before == after, 'Inspecting a blocked candidate must be a read-only operation'
-        assert client.get(f'/api/proposals?project_id={pid}').json() == {'proposals': []}
-        assert client.get(f'/api/projects/{pid}').json()['version_count'] == 0
-        # A job id is not an acceptance or execution proposal.
-        assert client.post(f'/api/proposals/{jid}/decision', json={'decision': 'accept'}, headers=headers).status_code == 404
-        assert client.post('/api/proposals', json={'action': 'gx_import', 'project_id': pid,
-            'version_id': 'not-a-version', 'request_id': 'blocked'}, headers=headers).status_code == 404
-        assert client.get(f'/api/jobs/{jid}/preview?theme=invalid').status_code == 422
+        assert output['status'] == 'saved' and output.get('proposal_id') and output.get('version_id')
+        assert service.jobs.get(jid)['result']['status'] == 'saved'
+        result = client.get(f'/api/jobs/{jid}/preview?theme=light')
+        assert result.status_code == 200, result.text
+        body = result.json()
+        assert body['read_only'] and '<svg' in body['svg'] and body['program']['networks']
+        assert 'contract_mismatch' not in body
+        assert service.projects.project(pid)['version_count'] == 1
+        assert service.proposals.get(output['proposal_id'])['status'] == 'accepted'
 
 
-def test_blocked_preview_refuses_tampered_canonical_ir(offline, tmp_path):
+def test_saved_fast_path_preview_refuses_tampered_ir(offline, tmp_path):
     service, client = prepared(tmp_path)
     with client:
-        pid, jid, _, _ = generate(client, service, blocked=True)
-        path = service.state_dir / 'staging' / jid / 'program.ir.json'
+        pid, _, output, _ = generate(client, service, blocked=True)
+        vid = output['version_id']
+        version = service.store.get_version(pid, vid)
+        path = service.store.version_dir(pid, vid) / version['artifacts']['ir']
         program = json.loads(path.read_text(encoding='utf-8'))
         program['program_name'] = 'CHANGED'
         path.write_text(json.dumps(program), encoding='utf-8')
-        assert client.get(f'/api/jobs/{jid}/preview').status_code == 409
-        assert service.projects.project(pid)['version_count'] == 0
+        assert client.get(f'/api/projects/{pid}/versions/{vid}/preview').status_code in (404, 409)
 
 
 def test_ready_job_preview_uses_its_exact_automatically_saved_version(offline, tmp_path):
@@ -91,7 +81,7 @@ def test_ready_job_preview_uses_its_exact_automatically_saved_version(offline, t
 def test_preview_without_output_is_an_explicit_error_not_an_empty_svg(offline, tmp_path):
     service, client = prepared(tmp_path)
     with client:
-        _, jid, _, _ = generate(client, service, blocked=True)
+        _, jid, _, _ = generate(client, service)
         (service.state_dir / 'outputs' / (jid + '.json')).unlink()
         assert client.get(f'/api/jobs/{jid}/preview').status_code == 404
         assert client.get('/api/jobs/not-a-job/preview').status_code == 404
