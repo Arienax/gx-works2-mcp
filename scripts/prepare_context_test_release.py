@@ -53,6 +53,9 @@ def main():
     policy = (ROOT / 'src/prompt_context_policy.py').read_text(encoding='utf-8')
     if digest(policy.encode()) != 'b3fac6bb30790a037a311e7b195c82ce5ea363e376df4a54ee33424f7e025b05':
         raise RuntimeError('Policy module differs from the reviewed module: ' + digest(policy.encode()))
+    event_source = (ROOT / 'src/application/events.py').read_bytes()
+    if digest(event_source) != '4dcfd9c5fd20225717c10ac483fc9d6edf3fda086e69d31440a98ef371c6e98f':
+        raise RuntimeError('Context audit event projection changed')
     for name, text in sources.items():
         with (ROOT / name).open('w', encoding='utf-8', newline='\n') as stream:
             stream.write(text)
@@ -60,7 +63,7 @@ def main():
     if modified != set(HASHES):
         raise RuntimeError('Unexpected worktree changes: ' + repr(modified))
     changed_src = set(git('diff', '--name-only', BASE, '--', 'src').decode().splitlines())
-    if changed_src != set(HASHES) | {'src/prompt_context_policy.py'}:
+    if changed_src != set(HASHES) | {'src/prompt_context_policy.py', 'src/application/events.py'}:
         raise RuntimeError('Upstream core changed outside the context hooks: ' + repr(changed_src))
     subprocess.run(['git', 'diff', '--check'], check=True)
     output = ROOT / 'build/context-test'
@@ -77,6 +80,7 @@ def main():
                 'runtime_hooks': {name: {'before_sha256': hashes[0], 'after_sha256': hashes[1]}
                                   for name, hashes in HASHES.items()},
                 'context_policy_sha256': digest(policy.encode()),
+                'typed_context_event_projection_sha256': digest(event_source),
                 'production_core_changes_outside_context': [],
                 'source_prepared': True}
     (output / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
