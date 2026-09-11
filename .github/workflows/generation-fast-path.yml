@@ -1,0 +1,65 @@
+name: Generation Fast Path Validation
+
+on:
+  push:
+    branches: [refactor/generation-fast-path]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-validation:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-web.txt
+      - name: Install project and Web test dependencies
+        run: |
+          python -m pip install -r requirements.txt -r requirements-web.txt
+          python -m pip check
+      - name: Compile Python sources
+        run: python -m compileall -q src tests
+      - name: Validate generation fast path and persistence boundaries
+        run: |
+          python -m pytest -q `
+            tests/test_generation_fast_path.py `
+            tests/test_generation_workflow.py `
+            tests/test_generation_repair_workflow.py `
+            tests/test_generation_delivery.py `
+            tests/test_approval_modes.py `
+            tests/test_plc_core_boundary.py `
+            tests/test_plc_ir.py `
+            tests/test_application_job_errors.py `
+            tests/test_web_api.py `
+            tests/test_web_contract.py `
+            tests/test_prompt_context_policy.py `
+            tests/test_context_refresh_runtime.py `
+            tests/test_runtime_diagnostics.py `
+            tests/test_runtime_diagnostics_web.py
+      - name: Keep strict validators available outside direct generation
+        run: |
+          python -m pytest -q `
+            tests/test_approach_contracts.py `
+            tests/test_timer_semantics_regressions.py `
+            tests/test_motion_control_regressions.py `
+            tests/test_analog_instruction_regressions.py `
+            tests/test_contract_repair_policy.py `
+            tests/test_instruction_registry.py
