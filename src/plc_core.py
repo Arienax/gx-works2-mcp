@@ -276,9 +276,15 @@ class PLCCore:
 
         structural = validation_profile == "generation_structural"
         def render(target: Path) -> Mapping[str, Any]:
-            artifacts = render_candidate_artifacts(
-                program, target, validate_ladder=not structural
-            )
+            # Preserve the historical renderer call shape for strict callers
+            # (including Agent/tool integrations and test doubles). Only the
+            # direct-generation profile opts out of semantic ladder validation.
+            if structural:
+                artifacts = render_candidate_artifacts(
+                    program, target, validate_ladder=False
+                )
+            else:
+                artifacts = render_candidate_artifacts(program, target)
             hashes = {
                 name: hashlib.sha256((target / filename).read_bytes()).hexdigest()
                 for name, filename in artifacts.items()

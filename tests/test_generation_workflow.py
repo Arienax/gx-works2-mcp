@@ -8,7 +8,7 @@ import pytest
 
 import api
 from application.generation import (
-    GenerationDependencies, GenerationError, GenerationRequest, GenerationWorkflow,
+    GenerationDependencies, GenerationError, GenerationRequest, GenerationValidationError, GenerationWorkflow,
 )
 from i18n import set_language
 from model_provider import ModelProviderError, TextDelta
@@ -93,8 +93,10 @@ def test_contract_repair_rejects_scope_escape_without_hidden_retry(tmp_path, mut
             generate_json=lambda *a, **k: pytest.fail("Contract repair secretly retried"),
         ),
     )
-    with pytest.raises(GenerationError, match="不会继续隐藏重试"):
+    with pytest.raises(GenerationValidationError):
         workflow.run()
+    # Explicit repair scope is still enforced, but failure does not trigger
+    # another hidden model call.
     assert list(tmp_path.iterdir()) == []
 
 
