@@ -425,9 +425,11 @@ export default function App() {
               }
             })
             .catch(() => {});
+        const eventResult = value.payload?.result;
         const savedVersionId = value.event_type === "completed" &&
-          typeof value.payload?.result?.version_id === "string"
-            ? String(value.payload.result.version_id)
+          !!eventResult && typeof eventResult === "object" && !Array.isArray(eventResult) &&
+          typeof (eventResult as Record<string, Json>).version_id === "string"
+            ? String((eventResult as Record<string, Json>).version_id)
             : "";
         if (savedVersionId) {
           void openSavedVersion(savedVersionId).catch((error: Error) => {
