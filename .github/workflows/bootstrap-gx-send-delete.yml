@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/bootstrap-gx-send-delete.yml'
       - 'scripts/_bootstrap_gx_send_delete.py'
+      - 'scripts/_bootstrap_gx_send_delete_v2.py'
 
 permissions:
   contents: write
@@ -48,7 +49,7 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-web.txt
           python -m pip check
       - name: Apply exact source changes
-        run: python scripts/_bootstrap_gx_send_delete.py . --no-tests
+        run: python scripts/_bootstrap_gx_send_delete_v2.py
       - name: Targeted Python regression
         run: |
           python -m pytest -q `
@@ -64,7 +65,7 @@ jobs:
           Pop-Location
       - name: Commit real source changes
         run: |
-          git rm scripts/_bootstrap_gx_send_delete.py
+          git rm scripts/_bootstrap_gx_send_delete.py scripts/_bootstrap_gx_send_delete_v2.py
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
           git add src web tests
