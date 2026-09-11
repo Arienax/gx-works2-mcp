@@ -1,0 +1,78 @@
+name: Bootstrap Architecture Search Prompt
+
+on:
+  push:
+    branches: [fix/user-confirmed-structural-repair]
+    paths:
+      - '.github/workflows/bootstrap-architecture-search-prompt.yml'
+      - 'scripts/_bootstrap_architecture_search_prompt.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-architecture-search-prompt
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, 'bootstrap:')
+    runs-on: windows-2022
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt -r requirements-web.txt
+          python -m pip check
+      - name: Apply architecture-search prompt refactor
+        run: python scripts/_bootstrap_architecture_search_prompt.py
+      - name: Compile Python sources
+        run: python -m compileall -q src tests
+      - name: Validate analysis and prompt routing
+        run: |
+          python -m pytest -q `
+            tests/test_analysis_architecture_search.py `
+            tests/test_analysis_format_repair.py `
+            tests/test_prompt_context_policy.py `
+            tests/test_motion_control_regressions.py `
+            tests/test_approach_contracts.py `
+            tests/test_generation_fast_path.py `
+            tests/test_generation_workflow.py `
+            tests/test_web_api.py `
+            tests/test_web_contract.py
+      - name: Keep strict generation boundary intact
+        run: |
+          python -m pytest -q `
+            tests/test_timer_semantics_regressions.py `
+            tests/test_analog_instruction_regressions.py `
+            tests/test_contract_repair_policy.py `
+            tests/test_instruction_registry.py
+      - name: Commit real source changes
+        run: |
+          git rm scripts/_bootstrap_architecture_search_prompt.py .github/workflows/bootstrap-architecture-search-prompt.yml
+          git config user.name 'Arienax'
+          git config user.email '1307420856@qq.com'
+          git add `
+            src/pattern_library.py `
+            src/api.py `
+            tests/test_analysis_architecture_search.py `
+            .github/workflows/generation-fast-path.yml
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+          git commit -m 'refactor(prompt): add architecture-space search to analysis'
+          git push origin HEAD:fix/user-confirmed-structural-repair
