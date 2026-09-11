@@ -98,6 +98,11 @@ def test_confirmed_approach_mismatch_does_not_block_local_generation_save(offlin
 
 def setup_external(service, mode, monkeypatch):
     from test_application_persistence import _base
+    import application.execution
+    monkeypatch.setattr(application.execution, 'read_gx_environment', lambda: {
+        'status': 'ready', 'passed': True, 'desktop_execution_required': True,
+        'gx_works2_running': True, 'project_open': True, 'message': 'GX Works2 已运行。',
+    })
     pid = service.create_project(name='execution-spy')['id']
     base, _ = _base(service.store, pid)
     service.store.activate_version(pid, base['id'])
