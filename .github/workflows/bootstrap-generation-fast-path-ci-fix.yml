@@ -1,0 +1,57 @@
+name: Bootstrap Generation Fast Path CI Fix
+
+on:
+  push:
+    branches: [refactor/generation-fast-path]
+    paths:
+      - '.github/workflows/bootstrap-generation-fast-path-ci-fix.yml'
+      - 'build_inputs/generation-fast-path-ci-fix.patch'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-generation-fast-path-ci-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Apply exact CI fixes
+        run: |
+          git apply --check build_inputs/generation-fast-path-ci-fix.patch
+          if ($LASTEXITCODE -ne 0) { throw 'CI fix patch does not apply cleanly.' }
+          git apply --index build_inputs/generation-fast-path-ci-fix.patch
+          if ($LASTEXITCODE -ne 0) { throw 'CI fix patch failed.' }
+      - name: Run affected Windows tests
+        run: |
+          python -m pip install -r requirements.txt -r requirements-web.txt
+          python -m pytest -q tests/test_generation_workflow.py tests/test_plc_core_boundary.py tests/test_plc_ir.py
+          if ($LASTEXITCODE -ne 0) { throw 'Affected regression tests failed.' }
+      - name: Commit source fixes without workflow mutation
+        run: |
+          git rm build_inputs/generation-fast-path-ci-fix.patch
+          git config user.name 'Arienax'
+          git config user.email '1307420856@qq.com'
+          git add -A
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+          git commit -m 'test(generation): align regressions with confirmed-spec fast path'
+          git push origin HEAD:refactor/generation-fast-path
