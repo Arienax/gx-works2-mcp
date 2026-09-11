@@ -425,7 +425,18 @@ export default function App() {
               }
             })
             .catch(() => {});
-        void reloadProjectSilently(value.project_id);
+        const savedVersionId = value.event_type === "completed" &&
+          typeof value.payload?.result?.version_id === "string"
+            ? String(value.payload.result.version_id)
+            : "";
+        if (savedVersionId) {
+          void openSavedVersion(savedVersionId).catch((error: Error) => {
+            if (!stopped && activeProjectRef.current === value.project_id)
+              setError(error.message);
+          });
+        } else {
+          void reloadProjectSilently(value.project_id);
+        }
       }
     };
     return () => {
@@ -465,7 +476,9 @@ export default function App() {
   }, [notice]);
 
   useEffect(() => {
-    if (!session || busy || loading || specDirty.current || !resultKey ||
+    if (!session || busy || loading || specDirty.current ||
+        (currentJob?.kind === "generation" && typeof currentJob.result?.version_id === "string") ||
+        !resultKey ||
         (!generationResult.versionId && !generationResult.proposalId && !generationResult.blocked) ||
         jobId !== jobs[0]?.id || shownCandidates.current.has(resultKey) ||
         failedPreviews.current.has(resultKey)) return;
@@ -474,7 +487,7 @@ export default function App() {
 
   useEffect(() => {
     const saved = currentJob?.result?.version_id;
-    if (currentJob?.kind === "generation" || currentJob?.status !== "completed" || typeof saved !== "string" ||
+    if (currentJob?.status !== "completed" || typeof saved !== "string" ||
         !session || busy || loading || specDirty.current || jobId !== jobs[0]?.id) return;
     const key = `${pid}:${jobId}:saved`;
     if (shownCandidates.current.has(key) || failedPreviews.current.has(key)) return;

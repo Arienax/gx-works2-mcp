@@ -28,3 +28,16 @@ def test_confirmed_analysis_continues_to_generation_without_global_refresh():
 def test_silent_reload_does_not_block_editor():
     silent = _between("async function reloadProjectSilently(", "async function refreshDrawing(")
     assert "setLoading(" not in silent
+
+
+def test_completed_generation_switches_to_its_new_version_id():
+    sse = _between("stream.onmessage = (event) => {", "return () => {\n      stopped = true;\n      stream.close();")
+    assert 'savedVersionId' in sse
+    assert 'openSavedVersion(savedVersionId)' in sse
+    saved_effect = _between('const saved = currentJob?.result?.version_id;', 'async function openGenerationResult(')
+    assert 'currentJob?.kind === "generation"' not in saved_effect
+    assert 'openSavedVersion(saved)' in saved_effect
+
+def test_generation_result_fallback_yields_to_persisted_version_switch():
+    auto = _between('useEffect(() => {\n    if (!session || busy || loading || specDirty.current ||', 'useEffect(() => {\n    const saved = currentJob?.result?.version_id;')
+    assert 'typeof currentJob.result?.version_id === "string"' in auto
