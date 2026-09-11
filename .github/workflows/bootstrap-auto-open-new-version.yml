@@ -1,0 +1,97 @@
+name: Bootstrap Auto Open Generated Version
+
+on:
+  push:
+    branches: [refactor/generation-fast-path]
+    paths:
+      - '.github/workflows/bootstrap-auto-open-new-version.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply exact version-selection fix
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          app_path = Path('web/src/App.tsx')
+          text = app_path.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one preimage, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+          '''        void reloadProjectSilently(value.project_id);
+                }
+              };
+          ''',
+          '''        const savedVersionId = value.event_type === "completed" &&
+                  typeof value.payload?.result?.version_id === "string"
+                    ? String(value.payload.result.version_id)
+                    : "";
+                if (savedVersionId) {
+                  void openSavedVersion(savedVersionId).catch((error: Error) => {
+                    if (!stopped && activeProjectRef.current === value.project_id)
+                      setError(error.message);
+                  });
+                } else {
+                  void reloadProjectSilently(value.project_id);
+                }
+              }
+            };
+          ''', 'SSE saved-version switch')
+
+          replace_once(
+          '''    if (!session || busy || loading || specDirty.current || !resultKey ||
+                (!generationResult.versionId && !generationResult.proposalId && !generationResult.blocked) ||
+          ''',
+          '''    if (!session || busy || loading || specDirty.current ||
+                (currentJob?.kind === "generation" && typeof currentJob.result?.version_id === "string") ||
+                !resultKey ||
+                (!generationResult.versionId && !generationResult.proposalId && !generationResult.blocked) ||
+          ''', 'generation-result fallback guard')
+
+          replace_once(
+          '''    if (currentJob?.kind === "generation" || currentJob?.status !== "completed" || typeof saved !== "string" ||
+                !session || busy || loading || specDirty.current || jobId !== jobs[0]?.id) return;
+          ''',
+          '''    if (currentJob?.status !== "completed" || typeof saved !== "string" ||
+                !session || busy || loading || specDirty.current || jobId !== jobs[0]?.id) return;
+          ''', 'saved-version effect generation exclusion')
+
+          app_path.write_text(text, encoding='utf-8', newline='')
+
+          test_path = Path('tests/test_web_frontend_state_flow.py')
+          tests = test_path.read_text(encoding='utf-8')
+          addition = '''\n\ndef test_completed_generation_switches_to_its_new_version_id():\n    sse = _between("stream.onmessage = (event) => {", "return () => {\\n      stopped = true;\\n      stream.close();")\n    assert 'savedVersionId' in sse\n    assert 'openSavedVersion(savedVersionId)' in sse\n    saved_effect = _between('const saved = currentJob?.result?.version_id;', 'async function openGenerationResult(')\n    assert 'currentJob?.kind === "generation"' not in saved_effect\n    assert 'openSavedVersion(saved)' in saved_effect\n\ndef test_generation_result_fallback_does_not_race_persisted_version_switch():\n    auto = _between('useEffect(() => {\\n    if (!session || busy || loading || specDirty.current ||', 'useEffect(() => {\\n    const saved = currentJob?.result?.version_id;')\n    assert 'typeof currentJob.result?.version_id === "string"' in auto\n'''
+          if 'test_completed_generation_switches_to_its_new_version_id' in tests:
+              raise SystemExit('version-selection tests already present')
+          test_path.write_text(tests.rstrip() + addition + '\n', encoding='utf-8', newline='')
+          '@ | python
+          if ($LASTEXITCODE -ne 0) { throw 'Version-selection replacement failed.' }
+      - name: Commit source fix
+        shell: pwsh
+        run: |
+          git config user.name 'Arienax'
+          git config user.email '1307420856@qq.com'
+          git add web/src/App.tsx tests/test_web_frontend_state_flow.py
+          git diff --cached --check
+          git commit -m 'fix(web): open newly generated version automatically'
+          git push origin HEAD:refactor/generation-fast-path
