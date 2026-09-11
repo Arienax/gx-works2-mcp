@@ -1,0 +1,95 @@
+name: Bootstrap Generation Fast Path
+
+on:
+  push:
+    branches: [refactor/generation-fast-path]
+    paths:
+      - '.github/workflows/bootstrap-generation-fast-path.yml'
+      - 'build_inputs/generation_fast_path/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-generation-fast-path
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, 'bootstrap:')
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Preserve repository line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Assemble and verify exact patch sections
+        run: |
+          $parts = Get-ChildItem build_inputs/generation_fast_path/part*.patch | Sort-Object Name
+          $text = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllText((Join-Path $PWD 'generation-fast-path.patch'), $text, [Text.UTF8Encoding]::new($false))
+          @'
+          from pathlib import Path
+          import re, subprocess
+          patch = Path('generation-fast-path.patch').read_text(encoding='utf-8')
+          starts = [m.start() for m in re.finditer(r'(?m)^diff --git a/', patch)] + [len(patch)]
+          kept = []
+          for i in range(len(starts)-1):
+              section = patch[starts[i]:starts[i+1]]
+              header = re.match(r'diff --git a/(.+?) b/(.+?)\n', section)
+              if not header or header.group(1) != header.group(2):
+                  raise SystemExit('Unsupported patch header')
+              path = header.group(1)
+              index = re.search(r'(?m)^index ([0-9a-f]+)\.\.([0-9a-f]+)', section)
+              old = index.group(1) if index else None
+              new = index.group(2) if index else None
+              target = Path(path)
+              if target.exists():
+                  current = subprocess.check_output(['git','hash-object','--',path], text=True).strip()
+                  if new and current.startswith(new):
+                      print('already applied:', path)
+                      continue
+                  if old and old != '0000000' and current.startswith(old):
+                      kept.append(section); print('apply:', path); continue
+                  raise SystemExit(f'Unexpected preimage for {path}: {current}')
+              if old and set(old) == {'0'}:
+                  kept.append(section); print('create:', path); continue
+              raise SystemExit(f'Missing expected preimage: {path}')
+          Path('generation-fast-path.filtered.patch').write_text(''.join(kept), encoding='utf-8', newline='')
+          '@ | python
+          if ($LASTEXITCODE -ne 0) { throw 'Patch preimage verification failed.' }
+          git apply --check generation-fast-path.filtered.patch
+          if ($LASTEXITCODE -ne 0) { throw 'Fast-path patch does not apply cleanly.' }
+          git apply --index generation-fast-path.filtered.patch
+          if ($LASTEXITCODE -ne 0) { throw 'Fast-path patch application failed.' }
+      - name: Compile and run isolated architecture tests
+        run: |
+          python -m pip install pytest==9.1.1
+          python -m compileall -q src tests
+          $env:PYTHONPATH = (Join-Path $PWD 'src')
+          python -m pytest -q tests/test_generation_fast_path.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fast-path architecture tests failed.' }
+      - name: Commit real source and remove bootstrap inputs
+        run: |
+          git rm -r --ignore-unmatch build_inputs/generation_fast_path .github/workflows/bootstrap-generation-fast-path.yml
+          Remove-Item generation-fast-path.patch,generation-fast-path.filtered.patch -ErrorAction SilentlyContinue
+          git config user.name 'Arienax'
+          git config user.email '1307420856@qq.com'
+          git add -A
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+          git commit -m 'refactor(generation): trust confirmed spec and remove semantic repair gate'
+          git push origin HEAD:refactor/generation-fast-path
