@@ -1,0 +1,351 @@
+diff --git a/.github/workflows/generation-fast-path.yml b/.github/workflows/generation-fast-path.yml
+new file mode 100644
+index 0000000..35aaab7
+--- /dev/null
++++ b/.github/workflows/generation-fast-path.yml
+@@ -0,0 +1,65 @@
++name: Generation Fast Path Validation
++
++on:
++  push:
++    branches: [refactor/generation-fast-path]
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  windows-validation:
++    runs-on: windows-2022
++    timeout-minutes: 35
++    defaults:
++      run:
++        shell: pwsh
++    env:
++      PYTHONUTF8: '1'
++      PYTHONDONTWRITEBYTECODE: '1'
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          lfs: true
++          fetch-depth: 0
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++          architecture: x64
++          cache: pip
++          cache-dependency-path: |
++            requirements.txt
++            requirements-web.txt
++      - name: Install project and Web test dependencies
++        run: |
++          python -m pip install -r requirements.txt -r requirements-web.txt
++          python -m pip check
++      - name: Compile Python sources
++        run: python -m compileall -q src tests
++      - name: Validate generation fast path and persistence boundaries
++        run: |
++          python -m pytest -q `
++            tests/test_generation_fast_path.py `
++            tests/test_generation_workflow.py `
++            tests/test_generation_repair_workflow.py `
++            tests/test_generation_delivery.py `
++            tests/test_approval_modes.py `
++            tests/test_plc_core_boundary.py `
++            tests/test_plc_ir.py `
++            tests/test_application_job_errors.py `
++            tests/test_web_api.py `
++            tests/test_web_contract.py `
++            tests/test_prompt_context_policy.py `
++            tests/test_context_refresh_runtime.py `
++            tests/test_runtime_diagnostics.py `
++            tests/test_runtime_diagnostics_web.py
++      - name: Keep strict validators available outside direct generation
++        run: |
++          python -m pytest -q `
++            tests/test_approach_contracts.py `
++            tests/test_timer_semantics_regressions.py `
++            tests/test_motion_control_regressions.py `
++            tests/test_analog_instruction_regressions.py `
++            tests/test_contract_repair_policy.py `
++            tests/test_instruction_registry.py
+diff --git a/docs/architecture/generation-fast-path.md b/docs/architecture/generation-fast-path.md
+new file mode 100644
+index 0000000..8401894
+--- /dev/null
++++ b/docs/architecture/generation-fast-path.md
+@@ -0,0 +1,72 @@
++# Generation fast path: confirmed specification is the semantic authority
++
++## Decision
++
++For the direct Web/Qt generation flow, once the operator has confirmed the specification, the application does **not** reinterpret the request with a second set of heuristic semantic gates.
++
++The direct generation critical path is:
++
++1. confirmed specification and current project context,
++2. one model generation (stream transport may fall back once to non-stream transport),
++3. JSON/ST parsing and model-facing protocol normalization,
++4. structural/processability validation,
++5. deterministic PLC IR construction and IR consistency validation,
++6. artifact rendering and local version save.
++
++There is no automatic semantic re-generation loop after step 2.
++
++## What can block direct generation
++
++`generation_structural` validation is deliberately narrow. It can reject a candidate when the application cannot safely represent or process it, including:
++
++- malformed JSON or wrong top-level response shape;
++- unsupported ladder element encoding;
++- invalid device/address syntax or out-of-range address;
++- an instruction absent from the verified instruction registry, unsupported by the selected CPU, or encoded with invalid arity;
++- writes to CPU-owned read-only targets;
++- duplicate/invalid rung identifiers;
++- an invalid partial-edit envelope or an explicit repair scope escape;
++- internally stale/inconsistent PLC IR.
++
++These are representation/tooling facts, not a second interpretation of user intent.
++
++## What no longer blocks direct generation
++
++The following remain useful for Review, diagnostics, simulator planning and GX/runtime evidence, but they do not reject a direct candidate after specification confirmation:
++
++- `selected_approach.generation_contract` conformance;
++- prose/regex-derived execution semantics;
++- inferred edge/first-scan/cyclic intent;
++- duplicate-coil style/ownership findings;
++- timer-oscillation style rules;
++- same-scan SET/RST toggle findings;
++- M8029 topology preferences;
++- confirmed hardware-family heuristics beyond the model-facing instruction/address contract.
++
++The application still computes IR analysis metadata. It does not turn those findings into a hidden model retry.
++
++## No hidden repair loop
++
++A structurally invalid model response fails once with diagnostics. Direct generation does not call the model up to three additional times to satisfy local semantic validators.
++
++A streaming transport failure may make one ordinary non-streaming request for the same candidate. This is a transport fallback, not a code/semantic repair.
++
++Explicit Debug/patch/contract-repair tools keep their evidence and scope boundaries. They are separate workflows and do not silently run after normal generation.
++
++## Validation profiles
++
++- `generation_structural`: direct confirmed-spec generation. Persisted versions retain this profile so reload/preview verifies IR integrity without retroactively applying semantic gates.
++- `strict`: existing Agent patch, Debug, review/execution-oriented validation unless that workflow explicitly chooses otherwise.
++
++This prevents a version that was intentionally accepted through the direct generation fast path from becoming unreadable merely because a later load path invokes the historical strict validator.
++
++## Product responsibility boundary
++
++- Requirement meaning: model + operator during specification confirmation.
++- Candidate implementation: model using the confirmed specification.
++- Representation integrity: deterministic parser/schema/IR code.
++- Engineering quality findings: optional Review/static analysis.
++- Behavior correctness: simulator/Factory I/O/regression evidence.
++- Native legality: GX/compiler/runtime evidence.
++
++A review warning is not promoted to a generation failure merely because it can be expressed as a deterministic rule.
+diff --git a/src/api.py b/src/api.py
+index da8c87b..64a205c 100644
+--- a/src/api.py
++++ b/src/api.py
+@@ -27,6 +27,10 @@ from model_provider import (
+     strip_legacy_provider_fields,
+ )
+ from resource_paths import resource_path
++from prompt_context_policy import (
++    audit_request, audit_section, context_policy_scope, manual_lookup_decision,
++    resolve_context_policy, select_base_prompt,
++)
+ from plc_json_validator import PLCJsonValidationError, parse_device_address
+ from hardware_profiles import ensure_hardware_questions
+ from pattern_library import (
+@@ -53,7 +57,8 @@ def provider_scope(provider=None, *, model_name=None):
+     token = _provider_session.set(session)
+     model_token = _workflow_model.set(model_name or _workflow_model.get())
+     try:
+-        yield
++        with context_policy_scope():
++            yield
+     finally:
+         _workflow_model.reset(model_token)
+         _provider_session.reset(token)
+@@ -161,7 +166,10 @@ def _build_knowledge_context(
+         _KNOWLEDGE_TASK_SETTINGS["generate"],
+     )
+     query = _build_knowledge_query(primary_query, confirmed_context, evidence)
+-    if not query:
++    should_lookup, lookup_reason = manual_lookup_decision(query)
++    if not should_lookup:
++        audit_section("manual_context", status="excluded", reason=lookup_reason,
++                      source="manual_retriever")
+         return ""
+     try:
+         # Keep application startup unchanged: SQLite and the index are touched
+@@ -175,10 +183,15 @@ def _build_knowledge_context(
+             top_k=top_k,
+             char_budget=char_budget,
+         )
+-    except Exception as error:
+-        print(f"FX3U knowledge retrieval skipped: {error}")
++    except Exception:
++        audit_section("manual_context", status="unavailable", reason="retrieval_failed",
++                      source="manual_retriever")
++        # Never write diagnostic text to MCP stdout or expose arbitrary paths.
++        print("PLC knowledge retrieval unavailable", file=sys.stderr)
+         return ""
+     if not context:
++        audit_section("manual_context", status="empty", reason="no_relevant_results",
++                      source="manual_retriever")
+         return ""
+     precedence = (
+         "# Retrieved-manual precedence\n"
+@@ -190,7 +203,9 @@ def _build_knowledge_context(
+         "required response shape or cause source metadata to be emitted where "
+         "only JSON is allowed.\n"
+     )
+-    return "\n\n" + precedence + context + "\n"
++    result = "\n\n" + precedence + context + "\n"
++    audit_section("manual_context", result, reason=lookup_reason, source="manual_retriever")
++    return result
+ 
+ def load_config():
+     """Compatibility projection for callers that still expect key/base URL."""
+@@ -259,6 +274,7 @@ def _request_model(
+         response_contract=response_contract,
+         preserved_annotations=preserved_annotations,
+     )
++    audit_request(request.messages)
+     return collect_response(
+         _workflow_provider(),
+         request,
+@@ -1097,6 +1113,7 @@ def _select_system_prompt(
+         from plc_generation_contract import ladder_response_schema
+         base_prompt += "\n\n# Machine-readable output schema (authoritative structure)\n" + json.dumps(
+             ladder_response_schema(allow_partial=is_edit_mode), ensure_ascii=False, separators=(",", ":"))
++    base_prompt = select_base_prompt(base_prompt, target_mode)
+     # The selected base prompt already owns role/schema/core platform rules.
+     # Keep the dynamic layer focused on matched patterns and examples so the
+     # retrieved manual evidence replaces duplication instead of only adding
+@@ -1117,9 +1134,13 @@ def _select_system_prompt(
+         "current explicit edits override older cached or historical assignments.\n"
+         f"Detected task_type={route.task_type}, vendor={route.vendor}.\n"
+     )
+-    return "\n\n".join(
++    audit_section("dynamic_prompt", dynamic_prompt, reason="assembled", source="pattern_library")
++    audit_section("workflow_prompt", workflow_prompt, reason="workflow_contract", source="workflow_router")
++    result = "\n\n".join(
+         part for part in (base_prompt, dynamic_prompt, workflow_prompt, route_note) if part
+     )
++    audit_section("system_prompt", result, reason="assembled", source="api")
++    return result
+ 
+ 
+ def _routing_text_with_selected_approach(user_requirement, confirmed_context=None):
+@@ -1201,6 +1222,11 @@ def _build_model_context(model: str, confirmed_context=None, compact=False) -> s
+     profile is retained, so the offline index is an enhancement rather than a
+     new point of failure.
+     """
++    policy = resolve_context_policy()
++    if not policy.legacy:
++        # All controlled arms keep the SAME full target profile. Disabling RAG
++        # must not silently alter special-device facts supplied to the model.
++        compact = False
+     models = _load_plc_models()
+     m = models.get(model, models.get("FX3U", {}))
+     if not m:
+@@ -1239,7 +1265,7 @@ def _build_model_context(model: str, confirmed_context=None, compact=False) -> s
+         profile["confirmed_hardware_profile"] = confirmed_hardware
+     if confirmed_hardware_context:
+         profile["confirmed_hardware_context"] = confirmed_hardware_context
+-    return (
++    result = (
+         "\n# Selected PLC model profile (authoritative for this request)\n"
+         "Use the per-Y capability and output-type notes below. A global "
+         "maximum is not permission to use every Y at that frequency. Do not "
+@@ -1247,6 +1273,9 @@ def _build_model_context(model: str, confirmed_context=None, compact=False) -> s
+         + json.dumps(profile, ensure_ascii=False, indent=2)
+         + "\n"
+     )
++    audit_section("model_profile", result, reason="legacy_auto" if policy.legacy else "fixed_full",
++                  source="model_registry")
++    return result
+ 
+ 
+ _ANALYSIS_IO_KINDS = {"X", "Y", "M", "D", "T", "C", "S", "SM", "SD"}
+diff --git a/src/application/events.py b/src/application/events.py
+index 162d4a7..c44075b 100644
+--- a/src/application/events.py
++++ b/src/application/events.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ from datetime import datetime, timezone
++import re
+ 
+ from .workspace import public_payload
+ 
+@@ -11,7 +12,61 @@ def utc_now() -> str:
+     return datetime.now(timezone.utc).isoformat()
+ 
+ 
++def _public_context_audit(value) -> dict:
++    """A dedicated metadata projection; never widen the generic event whitelist."""
++    from prompt_context_policy import POLICY_NAMES, POLICY_VERSION
++
++    def count(item):
++        if type(item) is not int or not 0 <= item <= 2**53 - 1:
++            raise ValueError("Invalid context audit count")
++        return item
++
++    def digest(item):
++        if not isinstance(item, str) or not re.fullmatch(r"[0-9a-f]{64}", item):
++            raise ValueError("Invalid context audit digest")
++        return item
++
++    def identifier(item):
++        if not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", item):
++            raise ValueError("Invalid context audit identifier")
++        return item
++
++    try:
++        if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] != 1:
++            raise ValueError("Invalid context audit schema")
++        policy = value["policy"]
++        if (not isinstance(policy, dict) or policy.get("name") not in POLICY_NAMES
++                or type(policy.get("version")) is not int or policy["version"] != POLICY_VERSION):
++            raise ValueError("Invalid context policy")
++        messages, sections = value["messages"], value["sections"]
++        if not isinstance(messages, list) or not isinstance(sections, list) or len(messages) > 4096 or len(sections) > 256:
++            raise ValueError("Invalid context audit rows")
++        result = {
++            "schema_version": 1,
++            "policy": {"name": policy["name"], "version": POLICY_VERSION},
++            "request_index": count(value["request_index"]),
++            "message_text_chars": count(value["message_text_chars"]),
++            "dropped_sections": count(value["dropped_sections"]),
++            "measurement": "characters_not_tokens",
++            "section_counts_are_additive": False,
++            "messages": [], "sections": [],
++        }
++        for item in messages:
++            role = item["role"]
++            if role not in ("system", "developer", "user", "assistant", "tool", "unknown"):
++                raise ValueError("Invalid role")
++            result["messages"].append({"role": role, "text_chars": count(item["text_chars"]),
++                                       "images": count(item["images"]), "sha256": digest(item["sha256"])})
++        for item in sections:
++            result["sections"].append({**{key: identifier(item[key]) for key in ("section", "source", "status", "reason")},
++                                        "chars": count(item["chars"]), "sha256": digest(item["sha256"])})
++        return result
++    except (KeyError, TypeError, ValueError):
++        return {"schema_version": 1, "status": "unavailable", "reason": "invalid_context_audit"}
++
++
+ def append_event(record: dict, event_type: str, data=None) -> dict:
++    payload = _public_context_audit(data) if event_type == "context_audit" else public_payload(data or {})
+     event = {
+         "job_id": record["id"],
+         "project_id": record.get("snapshot", {}).get("project_id"),
