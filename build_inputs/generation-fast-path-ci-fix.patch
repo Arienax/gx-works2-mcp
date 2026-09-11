@@ -1,0 +1,92 @@
+diff --git a/src/plc_core.py b/src/plc_core.py
+--- a/src/plc_core.py
++++ b/src/plc_core.py
+@@ -276,9 +276,15 @@
+ 
+         structural = validation_profile == "generation_structural"
+         def render(target: Path) -> Mapping[str, Any]:
+-            artifacts = render_candidate_artifacts(
+-                program, target, validate_ladder=not structural
+-            )
++            # Preserve the historical renderer call shape for strict callers
++            # (including Agent/tool integrations and test doubles). Only the
++            # direct-generation profile opts out of semantic ladder validation.
++            if structural:
++                artifacts = render_candidate_artifacts(
++                    program, target, validate_ladder=False
++                )
++            else:
++                artifacts = render_candidate_artifacts(program, target)
+             hashes = {
+                 name: hashlib.sha256((target / filename).read_bytes()).hexdigest()
+                 for name, filename in artifacts.items()
+diff --git a/tests/test_generation_workflow.py b/tests/test_generation_workflow.py
+--- a/tests/test_generation_workflow.py
++++ b/tests/test_generation_workflow.py
+@@ -8,7 +8,7 @@
+ 
+ import api
+ from application.generation import (
+-    GenerationDependencies, GenerationError, GenerationRequest, GenerationWorkflow,
++    GenerationDependencies, GenerationError, GenerationRequest, GenerationValidationError, GenerationWorkflow,
+ )
+ from i18n import set_language
+ from model_provider import ModelProviderError, TextDelta
+@@ -93,8 +93,10 @@
+             generate_json=lambda *a, **k: pytest.fail("Contract repair secretly retried"),
+         ),
+     )
+-    with pytest.raises(GenerationError, match="不会继续隐藏重试"):
++    with pytest.raises(GenerationValidationError):
+         workflow.run()
++    # Explicit repair scope is still enforced, but failure does not trigger
++    # another hidden model call.
+     assert list(tmp_path.iterdir()) == []
+ 
+ 
+diff --git a/tests/test_plc_ir.py b/tests/test_plc_ir.py
+--- a/tests/test_plc_ir.py
++++ b/tests/test_plc_ir.py
+@@ -386,10 +386,10 @@
+         if task_id == "task-ir" and payload.get("stage") in {"parsing", "parsed"}
+     ]
+     assert any("读取 JSON 结构" in message for message in parsing_messages)
+-    assert any("规范化梯形图结构" in message for message in parsing_messages)
+-    assert any("执行 PLC 硬校验" in message for message in parsing_messages)
+-    assert any("构建并校验 PLC IR" in message for message in parsing_messages)
+-    assert "模型输出解析与硬校验完成" in parsing_messages
++    assert any("规范化梯形图协议" in message for message in parsing_messages)
++    assert any("检查结构与地址" in message for message in parsing_messages)
++    assert any("构建 PLC IR" in message for message in parsing_messages)
++    assert "模型输出已解析为候选程序" in parsing_messages
+     st_text = (tmp_path / result["artifacts"]["st_from_ir"]).read_text(
+         encoding="utf-8"
+     )
+@@ -402,7 +402,7 @@
+     assert program["logic"]["execution_model"] == "plc_scan_cycle"
+ 
+ 
+-def test_compiler_retries_when_requested_edge_was_generated_as_level(
++def test_compiler_does_not_repair_semantic_mismatch_after_confirmed_generation(
+     monkeypatch, tmp_path
+ ):
+     import api
+@@ -451,11 +451,14 @@
+ 
+     assert failed == []
+     assert len(succeeded) == 1
+-    assert repair_requests
+-    assert "扫描周期语义未满足" in repair_requests[0]
++    # The requirement text is model context, not a second local semantic judge.
++    # If the model returns LEVEL logic, direct generation publishes that
++    # candidate instead of spending another model call to rewrite it.
++    assert repair_requests == []
+     program = json.loads((tmp_path / "program.ir.json").read_text(encoding="utf-8"))
+-    assert program["networks"][0]["execution"]["semantics"] == ["RISING_EDGE"]
+-    assert program["timing"]["coverage"][0]["status"] == "satisfied"
++    assert program["networks"][0]["execution"]["semantics"] == ["LEVEL"]
++    assert program["logic"]["requirements"] == []
++    assert program["timing"]["coverage"] == []
+ 
+ 
+ def test_compiler_partial_edit_uses_ir_revision_and_preserves_other_networks(
