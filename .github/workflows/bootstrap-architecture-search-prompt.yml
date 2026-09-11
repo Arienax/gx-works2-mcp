@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/bootstrap-architecture-search-prompt.yml'
       - 'scripts/_bootstrap_architecture_search_prompt.py'
+      - 'scripts/_bootstrap_architecture_search_prompt_v2.py'
 
 permissions:
   contents: write
@@ -40,7 +41,9 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-web.txt
           python -m pip check
       - name: Apply architecture-search prompt refactor
-        run: python scripts/_bootstrap_architecture_search_prompt.py
+        run: |
+          python scripts/_bootstrap_architecture_search_prompt.py
+          python scripts/_bootstrap_architecture_search_prompt_v2.py
       - name: Compile Python sources
         run: python -m compileall -q src tests
       - name: Validate analysis and prompt routing
@@ -64,7 +67,7 @@ jobs:
             tests/test_instruction_registry.py
       - name: Commit real source changes
         run: |
-          git rm scripts/_bootstrap_architecture_search_prompt.py .github/workflows/bootstrap-architecture-search-prompt.yml
+          git rm scripts/_bootstrap_architecture_search_prompt.py scripts/_bootstrap_architecture_search_prompt_v2.py .github/workflows/bootstrap-architecture-search-prompt.yml
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
           git add `
