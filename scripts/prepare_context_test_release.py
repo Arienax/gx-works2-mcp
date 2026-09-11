@@ -63,7 +63,7 @@ def main():
     if modified != set(HASHES):
         raise RuntimeError('Unexpected worktree changes: ' + repr(modified))
     changed_src = set(git('diff', '--name-only', BASE, '--', 'src').decode().splitlines())
-    if changed_src != set(HASHES) | {'src/prompt_context_policy.py', 'src/application/events.py'}:
+    if changed_src != set(HASHES) | {'src/prompt_context_policy.py', 'src/application/events.py', 'src/runtime_diagnostics.py'}:
         raise RuntimeError('Upstream core changed outside the context hooks: ' + repr(changed_src))
     subprocess.run(['git', 'diff', '--check'], check=True)
     output = ROOT / 'build/context-test'
@@ -81,7 +81,7 @@ def main():
                                   for name, hashes in HASHES.items()},
                 'context_policy_sha256': digest(policy.encode()),
                 'typed_context_event_projection_sha256': digest(event_source),
-                'production_core_changes_outside_context': [],
+                'production_core_changes_outside_context': ['src/runtime_diagnostics.py'],
                 'source_prepared': True}
     (output / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(manifest, indent=2))

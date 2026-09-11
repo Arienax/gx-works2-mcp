@@ -48,6 +48,7 @@ def main():
         assert struct.unpack('<H', binary.read(2))[0] == 0x8664
     from PyInstaller.archive.readers import ZlibArchiveReader
     toc = ZlibArchiveReader(str(ROOT / 'build/web/PYZ-00.pyz')).toc
+    assert 'runtime_diagnostics' in toc, 'Diagnostic module missing from frozen executable'
     assert 'prompt_context_policy' in toc, 'Context module missing from frozen executable'
     for name in ('START_CONTEXT_TEST.cmd', 'start-adaptive.cmd', 'start-legacy.cmd', 'scripts/start_context_test.ps1'):
         source = ROOT / name
@@ -56,6 +57,7 @@ def main():
         text = source.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
         encoding = 'utf-8-sig' if name.endswith('.ps1') else 'utf-8'
         target.write_bytes(text.replace('\n', '\r\n').encode(encoding))
+    shutil.copy2(ROOT / 'DIAGNOSTICS_README.zh-CN.md', package / 'DIAGNOSTICS_README.zh-CN.md')
     shutil.copy2(ROOT / 'CONTEXT_TEST_README.zh-CN.md', package / 'CONTEXT_TEST_README.zh-CN.md')
     for name in ('source-manifest.json', 'context-changes.patch'):
         shutil.copy2(ROOT / 'build/context-test' / name, package / name)
@@ -85,7 +87,7 @@ def main():
     for forbidden in ('config.json', '.env', '.git', '.venv', 'node_modules', 'workspace', 'workspaces'):
         assert not (package / forbidden).exists(), 'Private/development file in package: ' + forbidden
     manifest = json.loads((package / 'source-manifest.json').read_text(encoding='utf-8'))
-    info = {**manifest, 'build_kind': 'context-policy-test-preview',
+    info = {**manifest, 'build_kind': 'context-policy-diagnostics-preview',
             'repository': os.environ.get('GITHUB_REPOSITORY'),
             'workflow_run': 'https://github.com/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
             'source_ref': os.environ.get('GITHUB_REF'), 'python': platform.python_version(),
@@ -96,7 +98,7 @@ def main():
             'python_packages': json.loads(run([sys.executable, '-m', 'pip', 'list', '--format=json']))}
     save(package / 'build-info.json', info)
     shutil.copy2(package / 'build-info.json', assets / 'build-info.json')
-    name = 'GXWorks-Agent-Web-context-c6bc6ef-Windows-x64'
+    name = 'GXWorks-Agent-Web-context-diagnostics-Windows-x64'
     zip_path = Path(shutil.make_archive(str(assets / name), 'zip', package.parent, package.name))
     extracted_checks = []
     with tempfile.TemporaryDirectory(prefix='gx-context-unzip-') as temporary:
@@ -110,7 +112,7 @@ def main():
             assert result.get('ok') is True and result.get('qt_modules_excluded') is True
             extracted_checks.append({'policy': policy, 'result': result})
     proof = {'ok': True, 'tested_zip': zip_path.name, 'zip_sha256': sha(zip_path),
-             'policy_module_bundled': True, 'compiled_policy_checks': policy_checks,
+             'policy_module_bundled': True, 'diagnostic_module_bundled': True, 'compiled_policy_checks': policy_checks,
              'launcher_checks': launcher_checks, 'extracted_zip_smoke': extracted_checks,
              'live_model_called': False, 'gx_called': False, 'physical_plc_called': False}
     save(assets / 'context-package-smoke.json', proof)

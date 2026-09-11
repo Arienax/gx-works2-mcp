@@ -29,7 +29,7 @@ const errorMessages: Record<string, string> = {
   generation_failed: "生成流程失败，确认规格和已有版本未被修改。",
 };
 
-export function JobFailure({ job, t }: { job: Job; t: (key: string) => string }) {
+function FailureMessage({ job, t }: { job: Job; t: (key: string) => string }) {
   if (!job.error_code) return null;
   if (job.error_code === "generation_validation_failed") return <div className="job-failure" role="alert">
     <p className="error-text">{t("梯形图候选未通过硬校验，未接受任何程序。")}</p>
@@ -48,4 +48,19 @@ export function JobFailure({ job, t }: { job: Job; t: (key: string) => string })
       </li>)}
     </ul> : <p className="muted">{t("此历史任务未记录具体原因；新任务将显示检查详情。")}</p>}
   </div>;
+}
+
+
+export function JobFailure({ job, t }: { job: Job; t: (key: string) => string }) {
+  if (!job.error_code) return null;
+  return <section>
+    <FailureMessage job={job} t={t} />
+    <div className="job-diagnostic-export">
+      <a className="button secondary" href={`/api/jobs/${encodeURIComponent(job.id)}/diagnostics`} download>
+        {t("下载错误诊断日志")}
+      </a>
+      <p className="muted">{t("任务编号")}：<code>{job.id}</code></p>
+      <p className="muted">{t("仅导出诊断元数据，不含 API Key、提示词、回复正文或工程文件；不会自动上传。")}</p>
+    </div>
+  </section>;
 }
