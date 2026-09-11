@@ -66,7 +66,7 @@ def main(argv=None) -> int:
                 provider = SessionToolContextProvider(args.workspace, args.project, args.version)
                 runner, runner_args = serve_stdio, (provider,)
     except ImportError:
-        parser.error("Install the optional dependencies: python -m pip install -r requirements-mcp.txt")
+        parser.error("Install the optional dependencies: python -m pip install -r requirements/mcp.txt")
     except (OSError, ValueError) as error:
         parser.error(str(error))
     try:

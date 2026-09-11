@@ -86,7 +86,7 @@ def test_model_protocol_does_not_import_application_or_engineering_implementatio
 
 def test_all_application_and_web_modules_import_with_gui_and_desktop_execution_blocked(tmp_path):
     if importlib.util.find_spec("fastapi") is None:
-        pytest.skip("Optional requirements-web.txt is not installed")
+        pytest.skip("Optional requirements/web.txt is not installed")
     modules = []
     for path in [*APPLICATION.rglob("*.py"), *WEB.rglob("*.py")]:
         parts = list(path.relative_to(SOURCE).with_suffix("").parts)
@@ -137,7 +137,7 @@ def _requirements(path, seen=None):
     return names
 
 
-@pytest.mark.parametrize("manifest", ["requirements.txt", "requirements-win7.txt"])
+@pytest.mark.parametrize("manifest", ["requirements.txt", "requirements/win7.txt"])
 def test_optional_web_server_dependencies_do_not_enter_desktop_manifests(manifest):
     web_only = {"fastapi", "uvicorn", "starlette", "sse-starlette", "httptools",
                 "watchfiles", "python-multipart", "pydantic-settings"}
@@ -145,6 +145,27 @@ def test_optional_web_server_dependencies_do_not_enter_desktop_manifests(manifes
 
 
 def test_web_runtime_has_its_own_manifest_without_qt():
-    names = _requirements(ROOT / "requirements-web.txt")
+    names = _requirements(ROOT / "requirements/web.txt")
     assert {"fastapi", "uvicorn"} <= names
     assert not names.intersection({"pyqt5", "pyqt6", "pyside2", "pyside6", "qtpy"})
+
+
+def test_root_build_and_packaging_layout_is_explicit():
+    assert (ROOT / "build-web.bat").is_file()
+    assert (ROOT / "start-web.cmd").is_file()
+    assert not (ROOT / "start.bat").exists()
+    for old_path in (
+        "main.spec", "main_win7.spec", "web.spec", "requirements-web.txt",
+        "requirements-mcp.txt", "requirements-win7.txt", "requirements-gxw-test.txt",
+    ):
+        assert not (ROOT / old_path).exists(), old_path
+    for new_path in (
+        "packaging/pyinstaller/desktop.spec", "packaging/pyinstaller/desktop-win7.spec",
+        "packaging/pyinstaller/web.spec", "requirements/web.txt", "requirements/mcp.txt",
+        "requirements/win7.txt", "requirements/gxw-test.txt",
+    ):
+        assert (ROOT / new_path).is_file(), new_path
+    build_script = (ROOT / "build-web.bat").read_text(encoding="utf-8")
+    assert "npm.cmd ci" in build_script
+    assert "npm.cmd run types" in build_script
+    assert "npm.cmd run build" in build_script

@@ -17,21 +17,18 @@ Web 工作台通过本机 FastAPI 应用服务复用 `ToolRuntime`、PLC Core、
 
 ## 源码启动
 
-在仓库根目录建立 Python 3.10+ 环境，安装 Web 依赖，并用 Node.js 构建前端。Web 依赖与原 Win7/Qt 环境分开维护：
+在仓库根目录建立 Python 3.10+ 环境，安装 Web 后端依赖，再运行根目录 `build-web.bat` 构建前端。Web 依赖与原 Win7/Qt 环境分开维护：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-web.txt
-Push-Location web
-npm ci
-npm run build
-Pop-Location
+python -m pip install -r requirements/web.txt
+.\build-web.bat --no-pause
 $env:PYTHONPATH = Join-Path (Get-Location) "src"
 python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --port 8765 --open-browser
 ```
 
-完成依赖安装和前端构建后，源码目录也可双击 `start-web.cmd`；它使用本目录的 `.venv`。命令行不带 `--open-browser` 时只输出登录链接，不打开浏览器。需要固定工作区或端口，也可调用 `scripts/start_web.ps1 -Workspace "D:\PLCWorkspaces\my-workspace" -Port 8765 -ReadOnly`；加 `-NoBrowser` 只显示链接。
+`build-web.bat` 固定执行 `npm ci`、`npm run types` 和 `npm run build`，输出到 `web/dist`。完成依赖安装和前端构建后，源码目录也可双击 `start-web.cmd`；它使用本目录的 `.venv`。命令行不带 `--open-browser` 时只输出登录链接，不打开浏览器。需要固定工作区或端口，也可调用 `scripts/start_web.ps1 -Workspace "D:\PLCWorkspaces\my-workspace" -Port 8765 -ReadOnly`；加 `-NoBrowser` 只显示链接。
 
 启动后控制台会显示只供当前操作员使用的本地登录链接。令牌放在 URL fragment `#token=...`，登录后换为 HttpOnly、SameSite=Strict 的操作员会话。若需要固定启动凭据，可以提前设置 `PLC_WEB_OPERATOR_TOKEN`；不要把登录链接、模型密钥或令牌写入项目文件或提交到 Git。
 
@@ -119,7 +116,7 @@ python -m integrations.mcp --stdio `
   --project PROJECT_ID
 ```
 
-MCP 环境另需 `python -m pip install -r requirements-mcp.txt`。服务连接模式不需要本地 `--workspace`，也不推断浏览器当前选择；`--project` 必填，`--version` 可固定版本。只接受 loopback HTTP origin，拒绝重定向，令牌只从所指环境变量读取。
+MCP 环境另需 `python -m pip install -r requirements/mcp.txt`。服务连接模式不需要本地 `--workspace`，也不推断浏览器当前选择；`--project` 必填，`--version` 可固定版本。只接受 loopback HTTP origin，拒绝重定向，令牌只从所指环境变量读取。
 
 桥接只调用两个端点：`GET /api/agent/tools` 返回原注册表的 function schema；`POST /api/agent/tools/call` 提交 `{project_id, version_id?, name, arguments, call_id}`，返回完整公开 `data`、`content`、`is_error`，待确认时附上 `proposal_id`。后端仍经过共享 `ToolRuntime.invoke` 和安全工具白名单；`_candidate_ir`、`_confirmed_spec` 不外传。进程级 UUID 与每逻辑调用 UUID 防止 stdio 重启后的数字请求 ID 撞上历史幂等记录。Agent 本身不能调用用户设置或审批接口。默认逐项审批时提案仍待用户确认；替我审批／完全访问模式下，Web 后端按用户授权保存受支持的本地候选，完全访问还可批准 GX 导入。独立 MCP 不改变，服务桥接返回的 version_id／execution_job_id 指向实际保存结果或执行任务。
 
@@ -129,7 +126,7 @@ MCP 环境另需 `python -m pip install -r requirements-mcp.txt`。服务连接�
 
 ## 发布包
 
-`web.spec` 打包独立 Web 入口，收录双击启动器、中英文 README、Web 指南、`web/dist`、默认安全配置、模型与指令资料、语言包、知识库及第三方声明，不收录用户 `config.json`、工作区、密钥或 Qt。原桌面打包入口和依赖继续保留。
+`packaging/pyinstaller/web.spec` 打包独立 Web 入口，收录双击启动器、中英文 README、Web 指南、`web/dist`、默认安全配置、模型与指令资料、语言包、知识库及第三方声明，不收录用户 `config.json`、工作区、密钥或 Qt。保留的桌面打包描述位于同目录的 `desktop.spec` 和 `desktop-win7.spec`。
 
 已有网关二进制时：
 

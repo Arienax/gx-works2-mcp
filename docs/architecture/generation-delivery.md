@@ -34,7 +34,8 @@ recovery and proof that manual refresh never calls the model or mutates a versio
 This is not proof of arbitrary generated PLC logic or native GX/hardware safety.
 
 For a separate, explicitly authorized live API exercise on a Windows development
-machine, install requirements-web.txt and Playwright, build web/dist, then run:
+machine, install `requirements/web.txt` and Playwright, build `web/dist` with
+`build-web.bat`, then run:
 
     python scripts/web_generation_e2e.py --live
 

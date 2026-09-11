@@ -1,6 +1,6 @@
 """Offline initialize -> tools/list -> tools/call against the actual stdio CLI.
 
-Run from any directory with a Python environment containing requirements-mcp.txt.
+Run from any directory with a Python environment containing requirements/mcp.txt.
 Creates and removes its own temporary SessionStore workspace. No desktop data,
 GUI, GX Works2, simulator, PLC, API key, or network service is used.
 """

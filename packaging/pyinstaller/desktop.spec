@@ -1,9 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 
-sdk_datas = collect_data_files('PyQt5', includes=['**/translations/qtbase_ja.qm', '**/translations/qtbase_zh_CN.qm'])
+root = Path(SPECPATH).resolve().parents[1]
+source = root / "src"
+
+sdk_datas = collect_data_files('PyQt6', includes=['**/translations/qtbase_ja.qm', '**/translations/qtbase_zh_CN.qm'])
 sdk_binaries = []
 sdk_hiddenimports = []
 for package_name in (
@@ -22,24 +27,24 @@ for package_name in (
     sdk_hiddenimports += package_hiddenimports
 
 a = Analysis(
-    ['src/main.py'],
-    pathex=['src'],
+    [str(source / 'main.py')],
+    pathex=[str(source)],
     binaries=sdk_binaries,
     datas=[
-        ('resources/config.default.json', '.'),
-        ('resources/locales', 'resources/locales'),
-        ('resources/pattern_library.json', '.'),
-        ('resources/plc_models.json', '.'),
-        ('resources/instructions/mitsubishi', 'resources/instructions/mitsubishi'),
-        ('README.md', '.'),
-        ('resources/app.ico', '.'),
-        ('resources/assets/codicons', 'assets/codicons'),
-        ('resources/knowledge/fx3u_knowledge.sqlite', 'knowledge'),
-        ('resources/knowledge/fx3u_dense_lsa.npz', 'knowledge'),
-        ('resources/knowledge/manifest.json', 'knowledge'),
+        (str(root / 'resources/config.default.json'), '.'),
+        (str(root / 'resources/locales'), 'resources/locales'),
+        (str(root / 'resources/pattern_library.json'), '.'),
+        (str(root / 'resources/plc_models.json'), '.'),
+        (str(root / 'resources/instructions/mitsubishi'), 'resources/instructions/mitsubishi'),
+        (str(root / 'README.md'), '.'),
+        (str(root / 'resources/app.ico'), '.'),
+        (str(root / 'resources/assets/codicons'), 'assets/codicons'),
+        (str(root / 'resources/knowledge/fx3u_knowledge.sqlite'), 'knowledge'),
+        (str(root / 'resources/knowledge/fx3u_dense_lsa.npz'), 'knowledge'),
+        (str(root / 'resources/knowledge/manifest.json'), 'knowledge'),
         # workbench_widgets is now a package facade; the historical module is
         # loaded as the editor engine at runtime and therefore must remain as data.
-        ('src/workbench_widgets.py', '.'),
+        (str(root / 'src/workbench_widgets.py'), '.'),
     ] + sdk_datas,
     hiddenimports=[
         'openai',
@@ -52,8 +57,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'unittest', 'xmlrpc', 'pydoc', 'PyQt6'],
+    excludes=['tkinter','unittest','xmlrpc','pydoc','PyQt5'],
     noarchive=False,
+    optimize=2,
 )
 pyz = PYZ(a.pure)
 
@@ -75,9 +81,10 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['resources/app.ico'],
+    icon=[str(root / 'resources/app.ico')],
 )
 
+# onedir → 启动时不解压，直接运行
 coll = COLLECT(
     exe,
     a.binaries,

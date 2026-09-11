@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -93,6 +94,10 @@ def test_specification_workbench_marks_previous_spec_as_delta():
 
 
 def test_pyinstaller_specs_keep_legacy_editor_as_runtime_data():
-    for path in ("main.spec", "main_win7.spec"):
-        text = open(path, "r", encoding="utf-8").read()
-        assert "('src/workbench_widgets.py', '.')" in text
+    for relative in (
+        "packaging/pyinstaller/desktop.spec",
+        "packaging/pyinstaller/desktop-win7.spec",
+    ):
+        text = (Path(relative)).read_text(encoding="utf-8")
+        assert "workbench_widgets.py" in text
+        assert "Path(SPECPATH).resolve().parents[1]" in text
