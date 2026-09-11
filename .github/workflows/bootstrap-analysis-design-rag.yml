@@ -8,6 +8,7 @@ on:
       - 'scripts/_bootstrap_analysis_design_rag.py'
       - 'scripts/_bootstrap_analysis_design_rag_v2.py'
       - 'scripts/_bootstrap_analysis_design_rag_v3.py'
+      - 'scripts/_bootstrap_analysis_design_rag_v4.py'
 
 permissions:
   contents: write
@@ -47,6 +48,7 @@ jobs:
           python scripts/_bootstrap_analysis_design_rag.py
           python scripts/_bootstrap_analysis_design_rag_v2.py
           python scripts/_bootstrap_analysis_design_rag_v3.py
+          python scripts/_bootstrap_analysis_design_rag_v4.py
       - name: Import curated design knowledge
         run: python tools/import_design_patterns.py
       - name: Rebuild local dense index
@@ -68,12 +70,14 @@ jobs:
           python tools/evaluate_rag_benchmark.py --fail-under-recall-10 0.98
       - name: Commit runtime, knowledge index and tests
         run: |
-          git rm scripts/_bootstrap_analysis_design_rag.py scripts/_bootstrap_analysis_design_rag_v2.py scripts/_bootstrap_analysis_design_rag_v3.py .github/workflows/bootstrap-analysis-design-rag.yml
+          git rm scripts/_bootstrap_analysis_design_rag.py scripts/_bootstrap_analysis_design_rag_v2.py scripts/_bootstrap_analysis_design_rag_v3.py scripts/_bootstrap_analysis_design_rag_v4.py .github/workflows/bootstrap-analysis-design-rag.yml
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
           git add `
             src/api.py `
             src/pattern_library.py `
+            src/knowledge_retriever.py `
+            src/knowledge_retriever_core.py `
             tests/test_analysis_design_rag.py `
             tests/test_motion_control_regressions.py `
             resources/knowledge/README.md `
