@@ -1,0 +1,40 @@
+name: Context Policy Test Release
+
+on:
+  push:
+    branches: [test/context-policy-refresh]
+    paths: ['.github/workflows/context-test-release.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c6bc6ef7c8740d63bca1adb650e0264d0ffd8970
+          lfs: true
+          persist-credentials: false
+      - name: Export the pinned tracked source and materialized LFS resources
+        shell: python
+        run: |
+          import pathlib, subprocess, zipfile
+          paths = subprocess.check_output(['git', 'ls-files', '-z']).decode('utf-8').split('\0')
+          with zipfile.ZipFile('context-base-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for name in paths:
+                  if not name:
+                      continue
+                  path = pathlib.Path(name)
+                  if path.is_symlink() or not path.is_file():
+                      raise RuntimeError('Unexpected tracked file type: ' + name)
+                  archive.write(path, name)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: context-base-c6bc6ef-source
+          path: context-base-source.zip
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
