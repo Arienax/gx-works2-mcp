@@ -1,4 +1,0 @@
-{"id": "basic_direct_output", "request": "FX3U：X0 为按下时有效的输入，Y0 只在 X0 有效时接通，不自锁，不增加其他 I/O。", "plc_model": "FX3U", "target_mode": "ladder"}
-{"id": "explicit_special_instruction", "request": "FX3U：请查证 DRVI 的操作数及完成状态使用条件。", "plc_model": "FX3U", "target_mode": "ladder"}
-{"id": "st_declared_interface", "request": "FX3U ST：比较已确认的两个 INT 变量，仅更新指定 BOOL 结果，不添加初始化或报警。", "plc_model": "FX3U", "target_mode": "st"}
-{"id": "manual_mode_word", "request": "FX3U manual mode control: X0 directly drives Y0 only while pressed; do not add a latch.", "plc_model": "FX3U", "target_mode": "ladder"}
