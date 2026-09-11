@@ -1,0 +1,265 @@
+name: Bootstrap Stable Frontend Edit Flow
+
+on:
+  push:
+    branches: [refactor/generation-fast-path]
+    paths:
+      - '.github/workflows/bootstrap-frontend-edit-flow.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-frontend-edit-flow
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Apply exact frontend state-flow changes
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path('web/src/App.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one preimage, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+          '''  const activeProjectRef = useRef(pid);
+          const projectEpoch = useRef(0);
+          ''',
+          '''  const activeProjectRef = useRef(pid);
+          const projectEpoch = useRef(0);
+          const composerProjectRef = useRef("");
+          ''', 'composer project ref')
+
+          replace_once(
+          '''        setProject(value);
+                  if (!value.versions?.length && value.target_mode === "fbd") setTab("fbd");
+          ''',
+          '''        setProject(value);
+                  if (composerProjectRef.current !== value.id) {
+                    composerProjectRef.current = value.id;
+                    setIntent(value.confirmed_spec && (value.versions?.length || 0) > 0
+                      ? "generation"
+                      : "analysis");
+                  }
+                  if (!value.versions?.length && value.target_mode === "fbd") setTab("fbd");
+          ''', 'project composer default')
+
+          replace_once(
+          '''        setRefresh((n) => n + 1);
+          ''',
+          '''        void reloadProjectSilently(value.project_id);
+          ''', 'terminal job refresh')
+
+          replace_once(
+          '''  async function refreshDrawing() {
+          ''',
+          '''  async function reloadProjectSilently(targetPid = pid) {
+              const epoch = projectEpoch.current;
+              if (!targetPid || activeProjectRef.current !== targetPid) return;
+              const fresh = await api<Project>(`/projects/${targetPid}`);
+              if (epoch !== projectEpoch.current ||
+                  activeProjectRef.current !== targetPid || fresh.id !== targetPid) return;
+              setProject(fresh);
+              setProjects((old) => old.map((item) => item.id === fresh.id ? fresh : item));
+              setVid((old) => fresh.versions?.some((item) => item.id === old)
+                ? old
+                : fresh.active_version_id || fresh.versions?.[0]?.id || "");
+              const binding = fresh.id + ":" + (fresh.confirmed_spec_hash || "");
+              if (!specDirty.current && specBinding.current !== binding) {
+                specBinding.current = binding;
+                setSpec((fresh.confirmed_spec as Spec) || null);
+              }
+            }
+
+            async function refreshDrawing() {
+          ''', 'silent project reload helper')
+
+          replace_once(
+          '''      else { setOutputRetry((n) => n + 1); refreshAll(); return; }
+                if (epoch === projectEpoch.current) {
+                  setOutputRetry((n) => n + 1);
+                  refreshAll();
+                  setNotice(t("预览已刷新，未调用模型或修改程序。"));
+          ''',
+          '''      else { setOutputRetry((n) => n + 1); void reloadProjectSilently(pid); return; }
+                if (epoch === projectEpoch.current) {
+                  setOutputRetry((n) => n + 1);
+                  void reloadProjectSilently(pid);
+                  setNotice(t("预览已刷新，未调用模型或修改程序。"));
+          ''', 'drawing refresh')
+
+          replace_once(
+          '''    if (!project || project.id !== pid) return;
+              if (kind === "generation" && !canGenerate) return;
+              const epoch = projectEpoch.current;
+          ''',
+          '''    if (!project || project.id !== pid) return;
+              const epoch = projectEpoch.current;
+          ''', 'generation client guard')
+
+          replace_once(
+          '''    setPanel("agent");
+              setAttachments([]);
+              refreshAll();
+            }
+            async function saveSpec(value: Spec) {
+              const epoch = projectEpoch.current;
+          ''',
+          '''    setPanel("agent");
+              setAttachments([]);
+              if (kind === "generation") setText("");
+            }
+            async function saveSpec(value: Spec) {
+              const epoch = projectEpoch.current;
+              const generateAfterSave = currentJob?.kind === "analysis" &&
+                currentJob.status === "completed" && !!analysisOutput?.spec_draft &&
+                jobId === currentJob.id;
+          ''', 'submit/save transition')
+
+          replace_once(
+          '''    setNotice(t("规格已确认"));
+              setIntent("generation");
+              setPanel("agent");
+              refreshAll();
+            }
+          ''',
+          '''    setNotice(t("规格已确认"));
+              setIntent("generation");
+              setPanel("agent");
+              if (generateAfterSave) await submitJob("generation");
+              else void reloadProjectSilently(pid);
+            }
+          ''', 'confirm specification transition')
+
+          replace_once(
+          '''    setSelectedProposal(null);
+              setPreview(null);
+              setNotice(t("操作完成"));
+              refreshAll();
+            }
+          ''',
+          '''    setSelectedProposal(null);
+              setPreview(null);
+              setNotice(t("操作完成"));
+              await reloadProjectSilently(pid);
+            }
+          ''', 'proposal decision refresh')
+
+          replace_once(
+          '''              await api(`/projects/${pid}/active-version`, "POST", {version_id:vid,expected_active_version_id:project?.active_version_id});
+                        refreshAll();
+          ''',
+          '''              await api(`/projects/${pid}/active-version`, "POST", {version_id:vid,expected_active_version_id:project?.active_version_id});
+                        await reloadProjectSilently(pid);
+          ''', 'activate version refresh')
+
+          replace_once(
+          '''                    onRetry={() => { setOutputRetry((n) => n + 1); refreshAll(); }}
+          ''',
+          '''                    onRetry={() => { setOutputRetry((n) => n + 1); void reloadProjectSilently(pid); }}
+          ''', 'generation result retry')
+
+          replace_once(
+          '''                  await api(`/jobs/${jobId}/cancel`, "POST");
+                            refreshAll();
+          ''',
+          '''                  await api(`/jobs/${jobId}/cancel`, "POST");
+                            void reloadProjectSilently(pid);
+          ''', 'cancel refresh')
+
+          path.write_text(text, encoding='utf-8', newline='')
+
+          test = Path('tests/test_web_frontend_state_flow.py')
+          test.write_text(r'''from pathlib import Path
+
+
+APP = (Path(__file__).parents[1] / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+
+
+def _between(start: str, end: str) -> str:
+    return APP.split(start, 1)[1].split(end, 1)[0]
+
+
+def test_existing_confirmed_project_defaults_to_generation_edit_mode():
+    assert 'composerProjectRef.current !== value.id' in APP
+    assert 'value.confirmed_spec && (value.versions?.length || 0) > 0' in APP
+    assert '? "generation"' in APP
+
+
+def test_job_completion_uses_silent_project_reload_not_blocking_global_refresh():
+    sse = _between('stream.onmessage = (event) => {', 'return () => {\n      stopped = true;\n      stream.close();')
+    assert 'reloadProjectSilently(value.project_id)' in sse
+    assert 'setRefresh(' not in sse
+
+
+def test_submit_generation_does_not_force_global_reload_or_recheck_spec_client_side():
+    submit = _between('async function submitJob(', 'async function saveSpec(')
+    assert 'kind === "generation" && !canGenerate' not in submit
+    assert 'refreshAll()' not in submit
+    assert 'if (kind === "generation") setText("")' in submit
+
+
+def test_confirmed_analysis_flows_directly_into_generation_without_global_refresh():
+    save = _between('async function saveSpec(', 'async function showProposal(')
+    assert 'generateAfterSave' in save
+    assert 'await submitJob("generation")' in save
+    assert 'refreshAll()' not in save
+
+
+def test_background_project_reload_never_sets_blocking_loading_state():
+    silent = _between('async function reloadProjectSilently(', 'async function refreshDrawing(')
+    assert 'setLoading(' not in silent
+    assert 'setProject(fresh)' in silent
+''', encoding='utf-8', newline='')
+          '@ | python
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend replacement failed.' }
+      - name: Validate frontend and focused workflow tests
+        run: |
+          python -m pip install -r requirements.txt -r requirements-web.txt
+          python -m pytest -q tests/test_web_frontend_state_flow.py tests/test_generation_workflow.py tests/test_generation_delivery.py
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend state-flow regression tests failed.' }
+          Push-Location web
+          npm ci
+          npm run build
+          Pop-Location
+      - name: Commit frontend source changes
+        run: |
+          git config user.name 'Arienax'
+          git config user.email '1307420856@qq.com'
+          git add web/src/App.tsx tests/test_web_frontend_state_flow.py
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+          git commit -m 'fix(web): keep edit flow incremental and refresh silently'
+          git push origin HEAD:refactor/generation-fast-path
