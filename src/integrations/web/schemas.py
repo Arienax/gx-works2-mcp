@@ -96,6 +96,12 @@ class ModelConnectionTest(Command):
     api_key: str | None = Field(default=None, min_length=1, max_length=8192)
 
 
+class ApprovalSettingsUpdate(Command):
+    mode: Literal["ask", "auto", "full"]
+    expected_revision: int = Field(ge=0)
+    confirm_full_access: bool = False
+
+
 class SettingsUpdate(Command):
     language: Literal["zh-CN", "en", "ja"] | None = None
     active_profile_id: str | None = None

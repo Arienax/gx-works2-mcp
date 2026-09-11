@@ -998,7 +998,7 @@
   "读取软元件注释失败": "Failed to read device comments",
   "调试": "Debug",
   "调试修复：{v0}": "Debug repair: {v0}",
-  "调试分析完成": "Diagnostic analysis complete",
+  "调试分析完成": "Debug analysis completed",
   "调试回归未通过": "Diagnostic regression failed",
   "调试回归通过": "Diagnostic regression passed",
   "调试失败": "Diagnostics failed",
@@ -1509,7 +1509,6 @@
   "变频器多段速端子控制": "Inverter multi-speed terminal control",
   "模型响应未通过语言验收（{language}）。请重试或更换模型。位置：{paths}；诊断：{diagnostic}": "The model response failed language validation ({language}). Retry or choose another model. Locations: {paths}; diagnostic: {diagnostic}",
   "在{condition}时观察；{reason}": "Observe when {condition}; {reason}",
-  "调试分析完成": "Debug analysis completed",
   "非软元件类别已移入 hardware_config，未作为 I/O 使用。": "Non-device metadata was moved to hardware_config and was not used as I/O.",
   "I/O 类别必须是地址字典或地址列表，原值已移入 hardware_config。": "An I/O category must contain an address dictionary or list; the original value was moved to hardware_config.",
   "{address} 不是 {model} 的合法软元件地址": "{address} is not a valid {model} device address",
@@ -1525,5 +1524,7 @@
   "模型未返回有效候选结果，请重试或更换模型。": "The model returned no valid candidate. Retry or select another model.",
   "当前模型不支持图片输入，请切换到带视觉能力的模型。": "The current model does not support image input. Select a vision-capable model.",
   "图片编码后的请求体过大，请减少图片数量或压缩图片。": "The encoded image request is too large. Reduce the number or size of images.",
-  "模型服务调用失败，请检查配置或稍后重试。": "The model service request failed. Check the configuration or try again later."
+  "模型服务调用失败，请检查配置或稍后重试。": "The model service request failed. Check the configuration or try again later.",
+  "本次修复以随附的完整失败候选为基线。返回 mode=\"partial\"，rungs 只含需要替换的完整梯级；保持 rung_id，不得删除、新增或重排梯级。也可返回保留全部梯级的完整 JSON。": "Use the attached complete failed candidate as the repair base. Return mode=\"partial\" with only complete replacement rungs; preserve rung_id and do not delete, add or reorder rungs. A complete JSON retaining every rung is also allowed.",
+  "没有可合并的完整候选，必须返回完整 device_comments+rungs JSON，不得返回 partial。": "There is no complete candidate to merge into. Return complete device_comments+rungs JSON, not a partial response."
 }

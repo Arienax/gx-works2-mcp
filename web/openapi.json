@@ -88,6 +88,17 @@
             "title": "Data",
             "type": "object"
           },
+          "execution_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Job Id"
+          },
           "is_error": {
             "title": "Is Error",
             "type": "boolean"
@@ -106,6 +117,17 @@
               }
             ],
             "title": "Proposal Id"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
           }
         },
         "required": [
@@ -136,6 +158,71 @@
           "tools"
         ],
         "title": "AgentTools",
+        "type": "object"
+      },
+      "ApprovalSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "local_autosave": {
+            "title": "Local Autosave",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "ask",
+              "auto",
+              "full"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "revision",
+          "local_autosave",
+          "read_only"
+        ],
+        "title": "ApprovalSettings",
+        "type": "object"
+      },
+      "ApprovalSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_full_access": {
+            "default": false,
+            "title": "Confirm Full Access",
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "ask",
+              "auto",
+              "full"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "expected_revision"
+        ],
+        "title": "ApprovalSettingsUpdate",
         "type": "object"
       },
       "Artifact": {
@@ -1289,6 +1376,17 @@
               }
             ],
             "title": "Status"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
           }
         },
         "title": "JobOutput",
@@ -2256,6 +2354,17 @@
               }
             ],
             "title": "Error Code"
+          },
+          "execution_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Job Id"
           },
           "id": {
             "title": "Id",
@@ -4639,6 +4748,60 @@
           }
         },
         "summary": "Update Settings"
+      }
+    },
+    "/api/settings/approval": {
+      "get": {
+        "operationId": "approval_settings_api_settings_approval_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Approval Settings"
+      },
+      "put": {
+        "operationId": "update_approval_settings_api_settings_approval_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Approval Settings"
       }
     },
     "/api/settings/profiles": {

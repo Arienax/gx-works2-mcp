@@ -311,10 +311,11 @@ def test_analysis_confirm_generate_preview_accept_and_replay_events(offline, tmp
         assert len(provider.requests) == 2
         proposal = generated["proposal_id"]
         pending = client.get("/api/proposals/" + proposal)
-        assert pending.json()["status"] == "pending"
+        assert pending.json()["status"] == "accepted"
+        assert generated["version_id"] == pending.json()["result"]["version_id"]
         assert "_candidate_ir" not in pending.text
         assert "_confirmed_spec" not in pending.text
-        assert client.get("/api/projects/" + project).json()["version_count"] == 0
+        assert client.get("/api/projects/" + project).json()["version_count"] == 1
         preview = client.get("/api/proposals/" + proposal + "/preview")
         assert preview.status_code == 200, preview.text
         assert "<svg" in preview.json()["svg"]
@@ -444,7 +445,8 @@ def test_refresh_during_generation_reads_same_running_job_without_restart(offlin
         _, output = _complete(client, service, response)
         assert output["proposal_id"]
         assert len(provider.requests) == 1
-        assert not store.get_project(project)["versions"]
+        assert len(store.get_project(project)["versions"]) == 1
+        assert store.get_project(project)["active_version_id"] == output["version_id"]
 
 
 def test_live_activity_is_persisted_before_final_content_or_candidate_exists(offline, tmp_path):
@@ -478,7 +480,7 @@ def test_live_activity_is_persisted_before_final_content_or_candidate_exists(off
         _complete(client, service, response)
 
 
-def test_language_preference_does_not_block_a_valid_candidate_or_accept_it(offline, tmp_path):
+def test_language_preference_does_not_block_a_valid_program_autosave(offline, tmp_path):
     workspace = tmp_path / "workspace"
     store = SessionStore(base_dir=workspace, legacy_dir=tmp_path)
     project = store.create_project("Rejected language")["id"]
@@ -500,10 +502,11 @@ def test_language_preference_does_not_block_a_valid_candidate_or_accept_it(offli
         assert len(provider.requests) == 1
         assert provider.requests[0].enforce_response_language is False
         proposals = client.get("/api/proposals").json()["proposals"]
-        assert len(proposals) == 1 and proposals[0]["status"] == "pending"
+        assert len(proposals) == 1 and proposals[0]["status"] == "accepted"
         assert client.get(f"/api/jobs/{job}/output").status_code == 200
         assert list((tmp_path / "state" / "staging").rglob("*.svg"))
-    assert _files(workspace) == before
+    assert _files(workspace) != before
+    assert len(store.get_project(project)["versions"]) == 1
 
 
 def test_retry_uses_original_command_after_project_messages_change(offline, tmp_path):

@@ -26,7 +26,7 @@ SPEC = {"summary": "X0 starts Y0; X1 stops Y0", "io_table": [
     {"address": "X1", "kind": "X", "label": "Stop"},
     {"address": "Y0", "kind": "Y", "label": "Motor"}], "parameters": []}
 DEFAULT_TEXT = "请严格按照已确认规格生成候选程序。"
-CTA = "按已确认规格生成候选"
+CTA = "按已确认规格生成程序"
 STALE_NOTICE = "规格已变化，请重新分析后再应用草稿。"
 
 
@@ -63,6 +63,8 @@ class MockAPI:
         if path == "/session":
             data = {"authenticated": True, "read_only": self.read_only,
                     "role": "operator", "csrf": "mock-csrf"}
+        elif path == "/settings/approval":
+            data = {"mode": "ask", "revision": 0, "local_autosave": True, "read_only": self.read_only}
         elif path == "/settings":
             data = {"active_profile_id": "mock", "profiles": [
                 {"id": "mock", "name": "Mock model", "model": "mock", "configured": True}]}
@@ -185,7 +187,7 @@ async def handoff(page, model):
     await expect(button).to_be_disabled()
     assert len(model.posts) == 1 and model.posts[0]["text"] == DEFAULT_TEXT
     model.finish()
-    await expect(page.get_by_role("button", name="接受为本地版本", exact=True)).to_be_enabled(timeout=15000)
+    await expect(page.get_by_role("button", name="保存旧草稿", exact=True)).to_be_enabled(timeout=15000)
     assert model.preview_reads and not model.decisions
     assert len(model.posts) == 1
 

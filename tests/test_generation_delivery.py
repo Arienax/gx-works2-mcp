@@ -70,7 +70,7 @@ def test_blocked_preview_refuses_tampered_canonical_ir(offline, tmp_path):
         assert service.projects.project(pid)['version_count'] == 0
 
 
-def test_ready_job_preview_uses_its_exact_proposal_and_needs_explicit_accept(offline, tmp_path):
+def test_ready_job_preview_uses_its_exact_automatically_saved_version(offline, tmp_path):
     service, client = prepared(tmp_path)
     with client:
         pid, jid, output, headers = generate(client, service)
@@ -78,7 +78,7 @@ def test_ready_job_preview_uses_its_exact_proposal_and_needs_explicit_accept(off
         assert preview.status_code == 200, preview.text
         assert preview.json()['proposal_id'] == output['proposal_id']
         assert preview.json()['ladder']['rungs'] == _ladder()['rungs']
-        assert service.projects.project(pid)['version_count'] == 0
+        assert service.projects.project(pid)['version_count'] == 1
         response = client.post(f'/api/proposals/{output["proposal_id"]}/decision', json={'decision': 'accept'}, headers=headers)
         assert response.status_code == 200 and response.json()['proposal']['status'] == 'accepted'
         project = client.get(f'/api/projects/{pid}').json()
@@ -111,8 +111,8 @@ def test_refresh_rebuilds_from_frozen_ir_not_old_svg_cache(offline, tmp_path):
             assert '<svg' in result.json()['svg'] and 'BROKEN OLD CACHE' not in result.text
             assert result.headers['cache-control'] == 'no-store'
         assert before == {str(p): p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
-        assert service.projects.project(pid)['version_count'] == 0
-        assert service.proposals.get(output['proposal_id'])['status'] == 'pending'
+        assert service.projects.project(pid)['version_count'] == 1
+        assert service.proposals.get(output['proposal_id'])['status'] == 'accepted'
 
 
 def test_manual_version_redraw_recovers_missing_svg_without_writes(offline, tmp_path):

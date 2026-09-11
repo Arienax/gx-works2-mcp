@@ -42,7 +42,8 @@ def accept(service, proposal):
 
 def test_candidate_is_reviewed_frozen_idempotent_and_accepted_as_fbd(service):
     p, command, proposal = generate(service)
-    assert not service.projects.raw_project(p["id"])["versions"]
+    assert len(service.projects.raw_project(p["id"])["versions"]) == 1
+    assert proposal["status"] == "accepted"
     preview = service.proposal_preview(proposal["id"])
     assert preview["target_mode"] == "fbd"
     assert "TIMER_A" in preview["svg"]
@@ -82,7 +83,9 @@ def test_edits_bind_base_and_synchronize_labels_without_mutating_prior_version(s
 
 
 def test_changed_artifact_and_false_preview_are_rejected_before_acceptance(service):
-    p, _, proposal = generate(service)
+    p = service.create_project(name="Tamper fixture", target_mode="fbd")
+    pending = prepare_candidate(service.state_dir / "pending-tamper", model=two_timers())
+    proposal = service.proposals.create("accept_local", p["id"], pending)
     payload = service.proposals.read_private(proposal["id"])
     from pathlib import Path
     (Path(payload["staging_dir"]) / "program.gxw").write_bytes(b"changed")
@@ -176,13 +179,13 @@ def test_english_fbd_summary_is_allowed_but_dangling_connection_is_rejected(serv
     service.jobs._futures[job["id"]].result(timeout=15)
     state = service.jobs.get(job["id"])
     assert state["status"] == ("failed" if invalid_connection else "completed")
-    assert not service.projects.raw_project(project["id"])["versions"]
+    assert len(service.projects.raw_project(project["id"])["versions"]) == (0 if invalid_connection else 1)
     proposals = service.proposals.list(project["id"])
     if invalid_connection:
         assert proposals == []
         assert not list((service.state_dir / "staging").rglob("*.gxw"))
     else:
-        assert len(proposals) == 1 and proposals[0]["status"] == "pending"
+        assert len(proposals) == 1 and proposals[0]["status"] == "accepted"
         assert service.proposal_preview(proposals[0]["id"])["target_mode"] == "fbd"
 
 

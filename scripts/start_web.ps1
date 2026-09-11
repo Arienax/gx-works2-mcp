@@ -33,12 +33,7 @@ try {
             $Workspace = Read-Host "请输入工作区文件夹完整路径（直接回车取消）"
             if ([string]::IsNullOrWhiteSpace($Workspace)) { exit 0 }
         }
-        if (-not $ReadOnly) {
-            Write-Host "1  只读浏览：适合首次核对旧工作区，不保存工程修改。"
-            Write-Host "2  工程编辑：允许保存项目、生成候选和审批版本。GX 导入及仿真仍须单独审批。"
-            $selection = Read-Host "选择打开方式 [1/2，默认 1]"
-            if ($selection.Trim() -ne "2") { $ReadOnly = $true }
-        }
+
     }
 
     $resolvedWorkspace = [IO.Path]::GetFullPath($Workspace.Trim().Trim('"'))
@@ -88,18 +83,18 @@ try {
     if (-not $NoBrowser) { $backendArgs += "--open-browser" }
 
     Write-Host ("工作区：" + $resolvedWorkspace)
-    Write-Host ("打开方式：" + $(if ($ReadOnly) { "只读浏览" } else { "工程编辑" }))
+    Write-Host ("模式：" + $(if ($ReadOnly) { "只读浏览" } else { "自动保存；审批模式在网页设置中调整" }))
     if ($ValidateOnly) {
         Write-Output (@{ validated = $true; backend = $backendKind; workspace = $resolvedWorkspace; port = $selectedPort; read_only = [bool]$ReadOnly; browser_requested = -not [bool]$NoBrowser; service_started = $false } | ConvertTo-Json -Compress)
         exit 0
     }
     if ($NoBrowser) {
-        Write-Host "请使用下方的 Operator login 本地链接登录。"
+        Write-Host "请使用下方的 Workbench link 本地链接登录。"
     } else {
-        Write-Host "服务准备好后将打开浏览器。若没有自动打开，请使用下方的 Operator login 本地链接。"
+        Write-Host "服务准备好后将打开浏览器。若没有自动打开，请使用下方的 Workbench link 本地链接。"
     }
     Write-Host "请保持此窗口打开；浏览器关闭后服务仍在运行。完成任务后按 Ctrl+C 正常停止。"
-    Write-Host "登录链接只供本机操作员使用，请勿分享。" -ForegroundColor Yellow
+    Write-Host "登录链接只供本机用户使用，请勿分享。" -ForegroundColor Yellow
     $previousPythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH", "Process")
     try {
         if ($backendKind -eq "source") { $env:PYTHONPATH = Join-Path $applicationRoot "src" }

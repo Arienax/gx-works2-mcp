@@ -90,7 +90,7 @@ class Server:
             # Fault injection delays genuine backend requests or fails one read;
             # it never fabricates a job, output, proposal or preview response.
             path = request.url.path
-            if path.startswith('/api/proposals/') and path.endswith('/preview'):
+            if path.startswith('/api/projects/') and '/versions/' in path and path.endswith('/preview'):
                 self.preview_attempts += 1
                 if fault == 'preview-once' and self.preview_attempts == 1:
                     from fastapi.responses import JSONResponse
@@ -145,9 +145,22 @@ async def open_page(browser, server, pid):
     page = await context.new_page()
     errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
-    await page.goto(server.origin + '/?project=' + pid + '#token=' + server.token)
-    await expect(page.locator('.project-title h1')).not_to_have_text('选择工程')
-    return context, page, errors
+    expected_name = server.service.projects.project(pid)['name']
+    try:
+        async with page.expect_response(lambda r: r.request.method == 'GET' and
+                r.url == server.origin + '/api/projects/' + pid, timeout=30000) as loaded:
+            await page.goto(server.origin + '/?project=' + pid + '#token=' + server.token)
+        response = await loaded.value
+        assert response.status == 200, 'Project HTTP load failed: ' + str(response.status)
+        assert (await response.json())['id'] == pid
+        await expect(page.locator('.project-title h1')).to_have_text(expected_name, timeout=30000)
+        return context, page, errors
+    except Exception:
+        evidence = Path(os.environ['GX_DELIVERY_EVIDENCE_DIR'])
+        evidence.mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=str(evidence / 'generation-delivery-failure.png'), full_page=True)
+        await context.close()
+        raise
 
 
 async def visible_svg(page):
@@ -181,10 +194,10 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
                 await expect(page.locator('.spec-editor')).to_be_visible(timeout=180000 if live else 30000)
                 await page.get_by_role('button', name='确认规格', exact=True).click()
                 await expect(page.locator('.composer')).to_be_visible()
-            await page.get_by_role('button', name='按已确认规格生成候选', exact=True).click()
+            await page.get_by_role('button', name='按已确认规格生成程序', exact=True).click()
             job = await wait_job(server, pid)
             output = server.service.output(job['id'])
-            assert server.service.projects.project(pid)['version_count'] == 0
+            assert server.service.projects.project(pid)['version_count'] == (0 if blocked else 1)
             if blocked:
                 assert output['status'] == 'contract_mismatch' and not output.get('proposal_id')
                 assert server.service.proposals.list(pid) == []
@@ -200,7 +213,8 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
                 await visible_svg(page)
                 assert provider.calls == calls_before
                 assert await page.get_by_role('button', name='接受为本地版本', exact=True).count() == 0
-                await expect(page.get_by_role('button', name='导入 GX', exact=True)).to_be_disabled()
+                await expect(page.get_by_role('button', name='发送到 GX', exact=True)).to_be_disabled()
+                await expect(page.get_by_role('button', name='导出文件', exact=False)).to_be_disabled()
                 assert await page.get_by_text('候选内容已通过响应验收，请在待审批中查看校验结果与差异。', exact=True).count() == 0
                 await page.reload()
                 await expect(page.get_by_text('受阻候选预览（不可接受）', exact=True)).to_be_visible(timeout=20000)
@@ -210,28 +224,25 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
             else:
                 assert output.get('proposal_id'), 'Generation finished without a proposal'
                 proposal = server.service.proposals.get(output['proposal_id'])
-                assert proposal['status'] == 'pending'
+                assert proposal['status'] == 'accepted' and output['version_id'] == proposal['result']['version_id']
                 if fault == 'preview-once':
                     await expect(page.get_by_text('Transient preview read failure', exact=True)).to_be_visible(timeout=20000)
-                    await page.get_by_role('button', name='查看候选与校验', exact=True).click()
+                    await page.get_by_role('button', name='查看程序', exact=True).click()
                 await visible_svg(page)
                 calls_before = provider.calls
                 await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
                 await expect(page.get_by_text('预览已刷新，未调用模型或修改程序。', exact=True)).to_be_visible()
                 await visible_svg(page)
                 assert provider.calls == calls_before
-                assert server.service.projects.project(pid)['version_count'] == 0
+                assert server.service.projects.project(pid)['version_count'] == 1
                 # Refresh formerly cleared the preview and permanently marked it shown.
-                await page.get_by_role('button', name='刷新', exact=True).click()
+                await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
                 await expect(page.get_by_text('正在读取工程', exact=True)).to_have_count(0, timeout=20000)
                 await visible_svg(page)
                 await page.reload()
                 await visible_svg(page)
-                assert server.service.projects.project(pid)['version_count'] == 0
-                await page.get_by_role('button', name='接受为本地版本', exact=True).click()
-                for _ in range(100):
-                    if server.service.projects.project(pid)['version_count'] == 1: break
-                    await asyncio.sleep(0.1)
+                assert server.service.projects.project(pid)['version_count'] == 1
+                assert await page.get_by_role('button', name='接受为本地版本', exact=True).count() == 0
                 assert server.service.projects.project(pid)['version_count'] == 1
                 await expect(page.locator('.preview-banner')).to_have_count(0)
                 await visible_svg(page)
@@ -239,6 +250,40 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
                 await visible_svg(page)
                 project = server.service.projects.project(pid)
                 vid = project['active_version_id']
+                # Exercise the visible export menu with real file bytes.
+                await page.locator('.export-menu summary').click()
+                async with page.expect_download() as download_info:
+                    await page.locator('.export-menu').get_by_role('link').filter(has=page.get_by_text('程序 CSV', exact=True)).click()
+                download = await download_info.value
+                assert download.suggested_filename.endswith('.csv')
+                path = await download.path()
+                assert Path(path).read_bytes() == server.service.projects.artifact(pid, vid, 'program_csv').read_bytes()
+                for width in (1920, 1366, 1024):
+                    await page.set_viewport_size({'width': width, 'height': 950})
+                    await expect(page.locator('.project-toolbar')).to_be_visible()
+                    assert await page.locator('.project-toolbar').evaluate('el => el.scrollWidth <= el.clientWidth + 1')
+                    assert await page.locator('.project-toolbar').get_by_role('button', name='刷新结果 / 重绘梯形图').count() == 1
+                if fault is None:
+                    evidence = Path(os.environ['GX_DELIVERY_EVIDENCE_DIR'])
+                    await page.set_viewport_size({'width': 1600, 'height': 1000})
+                    await page.screenshot(path=str(evidence / 'autosaved-toolbar.png'), full_page=True)
+                    await page.locator('.approval-mode-indicator').click()
+                    await expect(page.get_by_role('radio', name='替我审批', exact=False)).to_be_visible()
+                    await page.get_by_role('radio', name='替我审批', exact=False).check()
+                    await page.get_by_role('button', name='保存审批模式', exact=True).click()
+                    await expect(page.get_by_text('审批模式已保存，仅影响后续请求。', exact=True)).to_be_visible()
+                    assert server.service.approval.read()['mode'] == 'auto'
+                    await page.get_by_role('radio', name='完全访问', exact=False).check()
+                    await expect(page.get_by_role('button', name='保存审批模式', exact=True)).to_be_disabled()
+                    await page.get_by_role('checkbox', name='我允许工作台自动执行已支持的 GX、仿真和调试操作。', exact=True).check()
+                    await page.get_by_role('button', name='保存审批模式', exact=True).click()
+                    await expect(page.locator('.approval-mode-indicator')).to_have_text('完全访问')
+                    assert server.service.approval.read()['mode'] == 'full'
+                    await page.screenshot(path=str(evidence / 'approval-settings.png'), full_page=True)
+                    await page.get_by_role('radio', name='逐项审批', exact=False).check()
+                    await page.get_by_role('button', name='保存审批模式', exact=True).click()
+                    await expect(page.locator('.approval-mode-indicator')).to_have_text('逐项审批')
+                    await page.keyboard.press('Escape')
                 artifacts = project['versions'][0]['artifacts']
                 assert {'ir','json','svg','program_csv','st_from_ir'} <= {a['id'] for a in artifacts if a['available']}
                 assert server.service.proposals.get(output['proposal_id'])['status'] == 'accepted'
@@ -274,7 +319,10 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
             await context.close()
 
 
-async def exercise(args, root, live):
+async def exercise(args, root, live, results=None):
+    # Real HTTP calls include persistence and polling; mocked UI timing does not
+    # apply. All state, bytes, permissions and pixel assertions remain required.
+    expect.set_options(timeout=15000)
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
         try:
@@ -282,9 +330,9 @@ async def exercise(args, root, live):
                 return [await run_case(browser, root / 'baseline', args.web_dist, 'blocked outcome baseline', blocked=True, baseline=True)]
             if live:
                 return [await run_case(browser, root / 'live', args.web_dist, 'DeepSeek simple control', live=live)]
-            cases = []
+            cases = results if results is not None else []
             for name, blocked, fault in [
-                ('analysis-confirm-generation-preview-refresh-accept-reload', False, None),
+                ('analysis-confirm-generation-autosave-export-reload', False, None),
                 ('blocked-approach-visible-without-approval', True, None),
                 ('delayed-project-and-proposal-reads', False, 'delayed-reads'),
                 ('transient-preview-failure-can-retry', False, 'preview-once'),
@@ -324,7 +372,7 @@ def main():
               'native_gx_tested': False, 'temporary_workspace_only': True, 'cases': []}
     try:
         with tempfile.TemporaryDirectory(prefix='gx-delivery-e2e-') as scratch:
-            report['cases'] = asyncio.run(exercise(args, Path(scratch), live))
+            report['cases'] = asyncio.run(exercise(args, Path(scratch), live, report['cases']))
         report['ok'] = True
     except Exception as error:
         # SDK exception strings may contain sensitive request data; never log

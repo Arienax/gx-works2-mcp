@@ -571,6 +571,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Approval Settings */
+        get: operations["approval_settings_api_settings_approval_get"];
+        /** Update Approval Settings */
+        put: operations["update_approval_settings_api_settings_approval_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/profiles": {
         parameters: {
             query?: never;
@@ -693,12 +711,16 @@ export interface components {
             data: {
                 [key: string]: components["schemas"]["JsonValue"];
             };
+            /** Execution Job Id */
+            execution_job_id?: string | null;
             /** Is Error */
             is_error: boolean;
             /** Name */
             name: string;
             /** Proposal Id */
             proposal_id?: string | null;
+            /** Version Id */
+            version_id?: string | null;
         };
         /** AgentTools */
         AgentTools: {
@@ -706,6 +728,35 @@ export interface components {
             tools: {
                 [key: string]: components["schemas"]["JsonValue"];
             }[];
+        };
+        /** ApprovalSettings */
+        ApprovalSettings: {
+            /** Local Autosave */
+            local_autosave: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ask" | "auto" | "full";
+            /** Read Only */
+            read_only: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** ApprovalSettingsUpdate */
+        ApprovalSettingsUpdate: {
+            /**
+             * Confirm Full Access
+             * @default false
+             */
+            confirm_full_access: boolean;
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ask" | "auto" | "full";
         };
         /** Artifact */
         Artifact: {
@@ -1054,6 +1105,8 @@ export interface components {
             } | null;
             /** Status */
             status?: string | null;
+            /** Version Id */
+            version_id?: string | null;
         } & {
             [key: string]: components["schemas"]["JsonValue"];
         };
@@ -1351,6 +1404,8 @@ export interface components {
             created_at?: string | null;
             /** Error Code */
             error_code?: string | null;
+            /** Execution Job Id */
+            execution_job_id?: string | null;
             /** Id */
             id: string;
             /** Project Id */
@@ -2743,6 +2798,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approval_settings_api_settings_approval_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalSettings"];
+                };
+            };
+        };
+    };
+    update_approval_settings_api_settings_approval_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalSettings"];
                 };
             };
             /** @description Validation Error */

@@ -234,5 +234,6 @@ class FBDService:
                                     "validation": payload["metadata"]["validation"],
                                     "diff": wb._diff_summary(payload["_preview_diff"])},
                     base_version_id=base_id, request_id="fbd_" + key)
+            proposal = wb._save_local_proposal(proposal)
             atomic_json(saved_path, {"command_hash": digest, "proposal_id": proposal["id"]})
             return proposal

@@ -60,7 +60,15 @@ class ProposalService:
 
     @staticmethod
     def _public(record):
-        return public_payload({key: record.get(key) for key in _PUBLIC})
+        result = public_payload({key: record.get(key) for key in _PUBLIC})
+        # Deliberately project only server-authored enum values. Do not widen
+        # the generic job payload allowlist to arbitrary source/mode fields.
+        audit = (record.get("summary") or {}).get("approval")
+        if isinstance(audit, dict) and audit.get("source") in {"user", "local_autosave", "policy"}:
+            mode = audit.get("mode")
+            if mode is None or mode in {"ask", "auto", "full"}:
+                result.setdefault("summary", {})["approval"] = {"source": audit["source"], "mode": mode}
+        return result
 
     def get(self, proposal_id):
         with self.lock.thread_lock:
@@ -238,7 +246,7 @@ class ProposalService:
             self._save(record)
             return self._public(record)
 
-    def accept(self, proposal_id, executor=None):
+    def accept(self, proposal_id, executor=None, *, approved_by="user", approval_mode=None):
         with self.lock.thread_lock:
             self.lock.require_acquired()
             record = self._load(proposal_id)
@@ -254,6 +262,9 @@ class ProposalService:
                 record.update(status="conflict", error_code="proposal_inputs_changed")
                 self._save(record)
                 raise ConflictError("Proposal inputs changed; regenerate it") from None
+            if approved_by not in {"user", "local_autosave", "policy"}:
+                raise ValueError("Unknown approval source")
+            record["summary"]["approval"] = {"source": approved_by, "mode": approval_mode}
             record["status"] = "executing"
             self._save(record)
             try:
@@ -315,7 +326,7 @@ class ProposalService:
                 allowed = {"summary", "validation", "plc_model", "program_name", "generation_metadata"}
                 metadata = {key: copy.deepcopy(value) for key, value in (payload.get("metadata") or {}).items() if key in allowed}
                 metadata.update(target_mode=payload["target_mode"], artifacts=artifacts, plc_model=payload.get("plc_model", "FX3U"))
-            metadata.update(summary=metadata.get("summary") or "用户确认的候选程序",
+            metadata.update(summary=metadata.get("summary") or record.get("summary", {}).get("summary") or "已校验的程序",
                             parent_version_id=base_id, source_candidate_id=payload.get("candidate_id", record["id"]),
                             lifecycle_status="accepted", confirmed_spec_snapshot=copy.deepcopy(payload.get("_confirmed_spec")))
             from plc_ir import canonical_sha256

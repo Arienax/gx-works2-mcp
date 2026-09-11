@@ -207,6 +207,7 @@ class JobEvent(PublicResource):
 
 
 class JobOutput(ExtensibleResource):
+    version_id: str | None = None
     analysis: JsonObject | None = None
     spec_draft: JsonObject | None = None
     spec_base_hash: str | None = None
@@ -224,6 +225,7 @@ class JobOutput(ExtensibleResource):
 
 
 class Proposal(PublicResource):
+    execution_job_id: str | None = None
     id: str
     action: str
     project_id: str
@@ -358,6 +360,13 @@ class ModelConnectionResult(PublicResource):
     error_code: str | None = None
 
 
+class ApprovalSettings(PublicResource):
+    mode: Literal["ask", "auto", "full"]
+    revision: int = Field(ge=0)
+    local_autosave: bool
+    read_only: bool
+
+
 class ModelSettings(PublicResource):
     language: str
     active_profile_id: str | None = None
@@ -407,6 +416,8 @@ class AgentTools(PublicResource):
 
 
 class AgentToolResult(PublicResource):
+    version_id: str | None = None
+    execution_job_id: str | None = None
     data: JsonObject
     content: str
     is_error: bool

@@ -24,7 +24,7 @@ from .security import LocalSecurity
 from . import responses as dto
 from .schemas import (Login, ProjectCreate, ProjectUpdate, ActivateVersion, SpecUpdate,
                       JobCreate, ProposalDecision, ExecutionProposal, AgentCall,
-                      SettingsUpdate, ModelProfileCreate, ModelKeyUpdate, ModelConnectionTest,
+                      SettingsUpdate, ApprovalSettingsUpdate, ModelProfileCreate, ModelKeyUpdate, ModelConnectionTest,
                       AttachmentUpload, SFCInput, FBDProposal)
 
 
@@ -269,6 +269,14 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.post("/api/proposals/{proposal_id}/decision", response_model=dto.ProposalDecisionResult, response_model_exclude_unset=True)
     def decision(proposal_id: str, command: ProposalDecision):
         return service.decide(proposal_id, command.decision)
+
+    @app.get("/api/settings/approval", response_model=dto.ApprovalSettings)
+    def approval_settings():
+        return service.approval_settings()
+
+    @app.put("/api/settings/approval", response_model=dto.ApprovalSettings)
+    def update_approval_settings(command: ApprovalSettingsUpdate):
+        return service.update_approval_settings(**command.model_dump())
 
     @app.get("/api/settings", response_model=dto.ModelSettings)
     def settings():

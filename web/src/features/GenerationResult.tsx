@@ -28,8 +28,10 @@ export function useGenerationResult(job: Job | undefined, retry: number) {
   const blocked = job?.result?.status === "contract_mismatch" || value?.status === "contract_mismatch" || !!metadata?.contract_mismatch;
   const proposalId = typeof value?.proposal_id === "string" ? value.proposal_id
     : typeof job?.result?.proposal_id === "string" ? job.result.proposal_id : "";
-  const loading = !!id && !proposalId && !blocked && (!result.error || result.id !== id) && !value;
-  return { id, value, metadata, blocked, proposalId, loading,
+  const versionId = typeof value?.version_id === "string" ? value.version_id
+    : typeof job?.result?.version_id === "string" ? job.result.version_id : "";
+  const loading = !!id && !versionId && !proposalId && !blocked && (!result.error || result.id !== id) && !value;
+  return { id, value, metadata, blocked, proposalId, versionId, loading,
     error: result.id === id ? result.error : undefined };
 }
 
@@ -55,9 +57,12 @@ export function GenerationResult({ result, busy, onOpen, onRetry, onSpec, t }: {
       <p>{t("可以查看受阻候选及诊断；不能接受、导入或运行该候选。")}</p>
       <Button disabled={busy} onClick={onOpen}>{t("查看受阻候选")}</Button>{" "}
       <Button disabled={busy} onClick={onSpec}>{t("检查确认规格")}</Button>
+    </> : result.versionId ? <>
+      <p>{t("程序已校验并自动保存，可直接导出文件。")}</p>
+      <Button disabled={busy} onClick={onOpen}>{t("查看程序")}</Button>
     </> : result.proposalId ? <>
-      <p>{t("候选已生成，查看预览后再人工接受。")}</p>
-      <Button disabled={busy} onClick={onOpen}>{t("查看候选与校验")}</Button>
+      <p>{t("这是旧版生成的草稿，可打开后保存。")}</p>
+      <Button disabled={busy} onClick={onOpen}>{t("查看旧草稿")}</Button>
     </> : result.loading ? <p role="status">{t("正在读取生成结果")}</p> : <>
       <p className="error-text" role="alert">{t("任务已结束，但尚未取得可显示的候选结果。")}</p>
       <p>{t("请重试读取结果；不要重复调用模型或重新建立工程。")}</p>

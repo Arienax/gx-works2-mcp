@@ -25,7 +25,6 @@ import {
   Paperclip,
   Play,
   Plus,
-  RefreshCw,
   Send,
   Settings2,
   ShieldCheck,
@@ -55,6 +54,9 @@ import { JobFailure } from "./features/JobFailure";
 import { GenerationResult, useGenerationResult } from "./features/GenerationResult";
 import { JobProgress } from "./features/JobProgress";
 import { Settings } from "./features/Settings";
+import { ApprovalSettingsPanel, approvalLabels } from "./features/ApprovalSettings";
+import type { ApprovalSettings } from "./features/ApprovalSettings";
+import { ProjectToolbar, artifactLabel } from "./features/ProjectToolbar";
 import { FBDPanel, FBDImport, emptyFBD } from "./features/FBDPanel";
 import type { FBDModel } from "./features/FBDPanel";
 
@@ -85,6 +87,10 @@ export default function App() {
   const [tab, setTab] = useState("ladder"),
     [panel, setPanel] = useState("agent"),
     [leftOpen, setLeftOpen] = useState(window.innerWidth > 900);
+  const [approvalSettings, setApprovalSettings] = useState<ApprovalSettings | null>(null);
+  const [settingsTab, setSettingsTab] = useState<"general" | "model">("general");
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsRetry, setSettingsRetry] = useState(0);
   const [settings, setSettings] = useState<ModelSettings | null>(null),
     [environment, setEnvironment] = useState<Record<string, Json>>({});
   const [jobs, setJobs] = useState<Job[]>([]),
@@ -169,6 +175,7 @@ export default function App() {
   const resultKey = generationResult.id ? `${pid}:${generationResult.id}` : "";
   const displayedJobStatus = currentJob?.kind === "generation" && currentJob.status === "completed"
     ? generationResult.blocked ? "contract_mismatch"
+      : generationResult.versionId ? "saved"
       : generationResult.proposalId ? "candidate_ready"
       : generationResult.loading ? "loading_result" : "result_unavailable"
     : currentJob?.status;
@@ -257,6 +264,16 @@ export default function App() {
       stopped = true;
     };
   }, [session, refresh]);
+  useEffect(() => {
+    if (!session) return;
+    let stopped = false;
+    const read = () => api<ApprovalSettings>("/settings/approval").then((value) => {
+      if (!stopped) { setApprovalSettings(value); setSettingsError(""); }
+    }).catch((e) => { if (!stopped) setSettingsError(e.message); });
+    void read();
+    const interval = setInterval(() => void read(), 5000);
+    return () => { stopped = true; clearInterval(interval); };
+  }, [session, settingsRetry]);
   useEffect(() => {
     if (!pid || !session) {
       setProject(null);
@@ -442,11 +459,23 @@ export default function App() {
 
   useEffect(() => {
     if (!session || busy || loading || specDirty.current || !resultKey ||
-        (!generationResult.proposalId && !generationResult.blocked) ||
+        (!generationResult.versionId && !generationResult.proposalId && !generationResult.blocked) ||
         jobId !== jobs[0]?.id || shownCandidates.current.has(resultKey) ||
         failedPreviews.current.has(resultKey)) return;
     void guarded(() => openGenerationResult());
-  }, [resultKey, generationResult.proposalId, generationResult.blocked, jobs, jobId, session, busy, loading]);
+  }, [resultKey, generationResult.versionId, generationResult.proposalId, generationResult.blocked, jobs, jobId, session, busy, loading]);
+
+  useEffect(() => {
+    const saved = currentJob?.result?.version_id;
+    if (currentJob?.kind === "generation" || currentJob?.status !== "completed" || typeof saved !== "string" ||
+        !session || busy || loading || specDirty.current || jobId !== jobs[0]?.id) return;
+    const key = `${pid}:${jobId}:saved`;
+    if (shownCandidates.current.has(key) || failedPreviews.current.has(key)) return;
+    void guarded(async () => {
+      try { await openSavedVersion(saved); shownCandidates.current.add(key); }
+      catch (e) { failedPreviews.current.add(key); throw e; }
+    });
+  }, [currentJob, session, busy, loading, jobs, jobId, pid]);
 
   async function openGenerationResult(previewTheme = theme, reread = false) {
     const epoch = projectEpoch.current;
@@ -470,19 +499,15 @@ export default function App() {
         setDiagnosticJobId(generationResult.id);
         setTab("ladder");
         setPanel("agent");
+      } else if (typeof output?.version_id === "string" || generationResult.versionId) {
+        await openSavedVersion(String(output?.version_id || generationResult.versionId), previewTheme);
       } else if (proposalId) {
         const candidate = await api<Proposal>(`/proposals/${proposalId}`);
         if (epoch !== projectEpoch.current || candidate.project_id !== pid) return;
         setProposals((old) => [candidate, ...old.filter((p) => p.id !== candidate.id)]);
         const acceptedVersion = candidate.result?.version_id;
         if (candidate.status === "accepted" && typeof acceptedVersion === "string") {
-          // A reload must not reopen an already accepted proposal as a candidate.
-          setPreview(null);
-          setSelectedProposal(null);
-          setDiagnosticJobId("");
-          setVid(acceptedVersion);
-          if (reread && project?.target_mode === "ladder")
-            await redrawVersion(acceptedVersion, previewTheme);
+          await openSavedVersion(acceptedVersion, previewTheme);
         } else {
           await showProposal(candidate, previewTheme);
         }
@@ -497,6 +522,18 @@ export default function App() {
       if (epoch === projectEpoch.current) failedPreviews.current.add(key);
       throw error;
     }
+  }
+
+  async function openSavedVersion(versionId: string, previewTheme = theme) {
+    const epoch = projectEpoch.current;
+    const fresh = await api<Project>(`/projects/${pid}`);
+    if (epoch !== projectEpoch.current || fresh.id !== pid) return;
+    const saved = fresh.versions?.find((v) => v.id === versionId);
+    if (!saved) throw new Error(t("已保存版本尚不可用，请刷新重试。"));
+    previewEpoch.current += 1;
+    setProject(fresh); setVid(versionId); setPreview(null); setSelectedProposal(null);
+    setDiagnosticJobId(""); setTab(saved.target_mode || fresh.target_mode || "ladder"); setPanel("agent");
+    if (saved.target_mode === "ladder") await redrawVersion(versionId, previewTheme);
   }
 
   async function redrawVersion(versionId = vid, previewTheme = theme) {
@@ -519,7 +556,7 @@ export default function App() {
       else if (diagnosticJobId) await openGenerationResult(theme, true);
       else if (version?.target_mode === "ladder") await redrawVersion();
       else if (generationResult.id) await openGenerationResult(theme, true);
-      else throw new Error(t("当前没有可重绘的已校验程序。"));
+      else { setOutputRetry((n) => n + 1); refreshAll(); return; }
       if (epoch === projectEpoch.current) {
         setOutputRetry((n) => n + 1);
         refreshAll();
@@ -591,6 +628,15 @@ export default function App() {
     refreshAll();
   }
   async function showProposal(value: Proposal, previewTheme = theme) {
+    if (value.action === "accept_local" && value.status === "accepted" && typeof value.result?.version_id === "string") {
+      await openSavedVersion(value.result.version_id, previewTheme); return;
+    }
+    if (value.execution_job_id) {
+      const running = await api<Job>(`/jobs/${value.execution_job_id}`);
+      if (activeProjectRef.current !== value.project_id) return;
+      setJobId(running.id); setJobs((old) => [running, ...old.filter((j) => j.id !== running.id)]);
+      setPanel("agent"); return;
+    }
     const epoch = projectEpoch.current;
     const request = ++previewEpoch.current;
     const loaded = await api<Record<string, Json>>(
@@ -811,7 +857,11 @@ export default function App() {
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          {session.read_only && <Badge tone="warn">{t("只读")}</Badge>}
+          <button className={`approval-mode-indicator ${approvalSettings?.mode === "full" ? "full-access" : ""}`}
+            title={t("在设置中调整审批模式")} onClick={() => { setSettingsTab("general"); setModal("settings"); }}>
+            <ShieldCheck size={14}/>{t(approvalSettings ? approvalLabels[approvalSettings.mode] : "审批设置")}
+          </button>
+          {session.read_only && <Badge tone="warn">{t("只读恢复")}</Badge>}
           <select
             aria-label={t("响应语言")}
             className="language-select"
@@ -824,8 +874,8 @@ export default function App() {
           </select>
           <button
             className="icon-button"
-            aria-label={t("模型设置")}
-            title={t("模型设置")}
+            aria-label={t("设置")}
+            title={t("设置")}
             onClick={() => setModal("settings")}
           >
             <Settings2 size={18} />
@@ -949,66 +999,28 @@ export default function App() {
             </span>
           </div>
           {version && status(version.validation?.status || version.target_mode)}
-          <div className="project-actions">
-            <Button variant="ghost" aria-label={t("刷新")} onClick={refreshAll}>
-              <RefreshCw size={15} />
-            </Button>
-            <Button
-              disabled={!session || !pid || busy || loading || jobs.some(activeJob) ||
-                !(selectedProposal || diagnosticJobId || version?.target_mode === "ladder" || generationResult.id)}
-              title={t("从已校验的程序重新绘制预览，不调用模型、不接受版本、不导入 GX。")}
-              onClick={() => void guarded(refreshDrawing)}
-            >
-              <RefreshCw size={15} className={refreshingDrawing ? "spin" : ""} />
-              {t(refreshingDrawing ? "正在刷新预览" : "刷新结果 / 重绘梯形图")}
-            </Button>
-            {version && vid !== project?.active_version_id && (
-              <Button
-                disabled={!canWrite}
-                onClick={() =>
-                  void guarded(async () => {
-                    await api(`/projects/${pid}/active-version`, "POST", {
-                      version_id: vid,
-                      expected_active_version_id: project?.active_version_id,
-                    });
-                    refreshAll();
-                  })
-                }
-              >
-                {t("设为当前版本")}
-              </Button>
-            )}
-            <Button
-              disabled={!canWrite || !pid || version?.target_mode === "fbd"}
-              title={t("从 GX 读取")}
-              onClick={() => void guarded(() => submitJob("gx_read"))}
-            >
-              <ArrowLeft size={15} />
-              {t("从 GX 读取")}
-            </Button>
-            <Button
-              disabled={!canWrite || !pid || version?.target_mode === "fbd"}
-              title={t("检查同步")}
-              onClick={() => void guarded(() => submitJob("gx_inspect"))}
-            >
-              <GitBranch size={15} />
-            </Button>
-            <Button disabled={!canWrite || !pid} onClick={() => setModal("fbd-import")}>
-              <FolderOpen size={15} />{t("导入 GXW")}
-            </Button>
-            {operations.fbd_convert && <Button disabled={!canWrite} onClick={() => void guarded(async () => {
-              const proposal = await api<Proposal>("/fbd/proposals", "POST", {operation:"convert",project_id:pid,version_id:vid,request_id:key()});
-              await showFBDProposal(proposal);
-            })}>{t("转换为 FBD")}</Button>}
-            <Button
-              disabled={!canWrite || !!preview || !operations.gx_import}
-              onClick={() => void guarded(() => proposeExecution("gx_import"))}
-            >
-              <ArrowDownToLine size={15} />
-              {t("导入 GX")}
-            </Button>
-          </div>
         </div>
+        <ProjectToolbar pid={pid} vid={vid} artifacts={version?.artifacts || []}
+          exportable={!!version && !preview} canRead={canWrite && !!pid && version?.target_mode !== "fbd"}
+          canSend={canWrite && !preview && !!operations.gx_import}
+          canRefresh={!!session && !!pid && !busy && !loading && !jobs.some(activeJob)}
+          refreshing={refreshingDrawing} onRead={() => void guarded(() => submitJob("gx_read"))}
+          onSend={() => void guarded(() => proposeExecution("gx_import"))} onRefresh={() => void guarded(refreshDrawing)} t={t}
+          more={<>
+            <Button disabled={!canWrite || !pid} onClick={() => setModal("fbd-import")}><FolderOpen size={15}/>{t("导入 GXW")}</Button>
+            <Button disabled={!canWrite || !pid || version?.target_mode === "fbd"} onClick={() => void guarded(() => submitJob("gx_inspect"))}>
+              <GitBranch size={15}/>{t("检查同步")}
+            </Button>
+            {operations.fbd_convert && <Button disabled={!canWrite || !!preview} onClick={() => void guarded(async () => {
+              const result = await api<Proposal>("/fbd/proposals", "POST", {operation:"convert",project_id:pid,version_id:vid,request_id:key()});
+              await showFBDProposal(result);
+            })}>{t("转换为 FBD")}</Button>}
+            {version && vid !== project?.active_version_id && <Button disabled={!canWrite} onClick={() => void guarded(async () => {
+              await api(`/projects/${pid}/active-version`, "POST", {version_id:vid,expected_active_version_id:project?.active_version_id});
+              refreshAll();
+            })}>{t("设为当前版本")}</Button>}
+          </>}/>
+
         <nav className="editor-tabs">
           {(
             [
@@ -1091,12 +1103,12 @@ export default function App() {
               <h2>{t(generationResult.id
                 ? generationResult.blocked ? "候选与确认方案冲突"
                   : generationResult.loading ? "正在读取生成结果"
-                  : generationResult.proposalId ? "候选已生成，等待查看"
+                  : generationResult.proposalId ? "程序已保存，等待查看"
                   : "生成结果暂不可用"
                 : "工程中还没有程序")}</h2>
               <p>{t(generationResult.id
                 ? "请在 Agent 面板查看生成结果及具体诊断。"
-                : "描述控制需求，确认规格后生成第一个候选程序。")}</p>
+                : "描述控制需求，确认规格后生成第一个程序。")}</p>
               {generationResult.id && <Button onClick={() => setPanel("agent")}>{t("查看生成结果")}</Button>}
               <Badge>
                 {project.plc_model} · {project.target_mode.toUpperCase()}
@@ -1346,7 +1358,7 @@ export default function App() {
                 )
                 .map((a: Artifact) => (
                   <a href={artifactUrl(pid, vid, a.id, true)} key={a.id}>
-                    {a.id.replace("_", " ")} <ArrowDownToLine size={12} />
+                    {t(artifactLabel(a.id))} <ArrowDownToLine size={12} />
                   </a>
                 ))}
             </div>
@@ -1374,7 +1386,7 @@ export default function App() {
             ["spec", t("规格")],
             [
               "proposals",
-              `${t("待审批")}${pendingCount ? ` ${pendingCount}` : ""}`,
+              `${t("审批记录")}${pendingCount ? ` ${pendingCount}` : ""}`,
             ],
             ["inspector", t("检查器")],
           ].map(([id, label]) => (
@@ -1403,7 +1415,7 @@ export default function App() {
                   <CircuitBoard size={22} />
                 </span>
                 <h2>{t("工程工作台")}</h2>
-                <p>{t("描述控制需求，确认规格后生成第一个候选程序。")}</p>
+                <p>{t("描述控制需求，确认规格后生成第一个程序。")}</p>
                 <div className="context-chips">
                   <Badge>{project?.plc_model || "FX3U"}</Badge>
                   {vid && <Badge>{vid}</Badge>}
@@ -1417,14 +1429,14 @@ export default function App() {
               </div>
               {project?.id === pid && !!project.confirmed_spec && (
                 <div className="candidate-diff">
-                  <p>{t("规格已确认。下一步生成候选程序，无需重新输入需求。")}</p>
+                  <p>{t("规格已确认。下一步生成程序，无需重新输入需求。")}</p>
                   <Button
                     variant="primary"
                     disabled={!canWrite || !canGenerate}
                     onClick={() => void guarded(() => submitJob("generation"))}
                   >
                     <Play size={14} />
-                    {t("按已确认规格生成候选")}
+                    {t("按已确认规格生成程序")}
                   </Button>
                   {specDirty.current && <p className="muted">{t("规格有未确认修改，请先确认后再生成。")}</p>}
                 </div>
@@ -1523,7 +1535,7 @@ export default function App() {
               )}
               <p className="acceptance-note">
                 <ShieldCheck size={13} />
-                {t("生成期间显示实时进度，完成后查看结果并确认。")}
+                {t("程序校验通过后自动保存；可在版本历史中查看或回退。")}
               </p>
             </div>
             <div className="composer">
@@ -1534,7 +1546,7 @@ export default function App() {
                   onChange={(e) => setIntent(e.target.value as typeof intent)}
                 >
                   <option value="analysis">{t("分析需求")}</option>
-                  <option value="generation">{t("生成候选")}</option>
+                  <option value="generation">{t("生成程序")}</option>
                   <option value="agent">{t("询问 Agent")}</option>
                 </select>
                 <button
@@ -1606,7 +1618,7 @@ export default function App() {
                   onClick={() => void guarded(() => submitJob())}
                 >
                   <Send size={14} />
-                  {t(intent === "generation" ? "生成候选" : "发送")}
+                  {t(intent === "generation" ? "生成程序" : "发送")}
                 </Button>
               </div>
             </div>
@@ -1622,8 +1634,8 @@ export default function App() {
           />
         ) : panel === "proposals" ? (
           <div className="proposal-list">
-            {proposals.length ? (
-              proposals.map((p) => (
+            {proposals.some((p) => p.action !== "accept_local" || p.status === "pending") ? (
+              proposals.filter((p) => p.action !== "accept_local" || p.status === "pending").map((p) => (
                 <section
                   className={`proposal-card ${selectedProposal?.id === p.id ? "selected" : ""}`}
                   key={p.id}
@@ -1632,7 +1644,7 @@ export default function App() {
                     <GitBranch size={15} />
                     <strong>
                       {p.action === "accept_local"
-                        ? t("接受为本地版本")
+                        ? t("保存旧草稿")
                         : p.action}
                     </strong>
                     {status(p.status)}
@@ -1697,7 +1709,7 @@ export default function App() {
                           <Check size={14} />
                           {t(
                             p.action === "accept_local"
-                              ? "接受为本地版本"
+                              ? "保存旧草稿"
                               : "批准执行",
                           )}
                         </Button>
@@ -1856,9 +1868,17 @@ export default function App() {
       <Modal
         open={modal === "settings"}
         onOpenChange={(v) => !v && setModal("")}
-        title={t("模型设置")}
+        title={t("设置")}
       >
-        {settings && (
+        <nav className="settings-tabs" aria-label={t("设置分类")}>
+          <Button variant={settingsTab === "general" ? "primary" : "ghost"} onClick={() => setSettingsTab("general")}>{t("通用与审批")}</Button>
+          <Button variant={settingsTab === "model" ? "primary" : "ghost"} onClick={() => setSettingsTab("model")}>{t("模型")}</Button>
+        </nav>
+        {settingsTab === "general" && (approvalSettings ? <ApprovalSettingsPanel value={approvalSettings}
+          disabled={!!session.read_only} onChange={setApprovalSettings} t={t}/> : <p>{t("正在读取设置")}</p>)}
+        {settingsTab === "general" && settingsError && <p role="alert" className="error-text">{settingsError}
+          <Button onClick={() => setSettingsRetry((n) => n + 1)}>{t("重试")}</Button></p>}
+        {settingsTab === "model" && settings && (
           <Settings
             value={settings}
             t={t}

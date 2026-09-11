@@ -14,6 +14,13 @@ import pytest
 from integrations.web import __main__ as launcher
 
 
+# A fresh Windows runner spent 13.2s starting its first PowerShell process and
+# another exceeded 15s; subsequent preflights took <1s. This is a functional
+# no-side-effects test, not a cold OS/runtime performance benchmark. Keep a
+# finite deadline without letting first-launch initialization hide assertions.
+POWERSHELL_PREFLIGHT_TIMEOUT = 45
+
+
 def test_browser_opens_only_after_this_server_is_ready(monkeypatch):
     server = SimpleNamespace(started=False)
     stopped = threading.Event()
@@ -117,12 +124,12 @@ def windows_release_launcher(tmp_path):
     assert source.read_bytes().startswith(b"\xef\xbb\xbf"), "PowerShell 5.1 needs a BOM for the Chinese prompts"
     target = bundle / "scripts/start_web.ps1"
     shutil.copyfile(source, target)
-    return [powershell, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", str(target)]
+    return [powershell, "-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass", "-File", str(target)]
 
 
 def test_windows_launcher_validates_literal_paths_without_starting(windows_release_launcher, tmp_path):
     workspace = tmp_path / "empty workspace & untouched"
-    result = subprocess.run(windows_release_launcher + ["-Workspace", str(workspace), "-ReadOnly", "-NoBrowser", "-ValidateOnly"], capture_output=True, timeout=15)
+    result = subprocess.run(windows_release_launcher + ["-Workspace", str(workspace), "-ReadOnly", "-NoBrowser", "-ValidateOnly"], capture_output=True, timeout=POWERSHELL_PREFLIGHT_TIMEOUT)
     assert result.returncode == 0, result.stdout.decode(errors="replace")
     record = json.loads(result.stdout.decode(errors="replace").splitlines()[-1])
     assert record["validated"] and record["read_only"]
@@ -135,11 +142,25 @@ def test_windows_launcher_rejects_single_project_and_occupied_port(windows_relea
     project = tmp_path / "single-project"
     project.mkdir()
     (project / "project.json").write_text("{}", encoding="utf-8")
-    result = subprocess.run(windows_release_launcher + ["-Workspace", str(project), "-ReadOnly", "-ValidateOnly"], capture_output=True, timeout=15)
+    result = subprocess.run(windows_release_launcher + ["-Workspace", str(project), "-ReadOnly", "-ValidateOnly"], capture_output=True, timeout=POWERSHELL_PREFLIGHT_TIMEOUT)
     assert result.returncode == 1
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen()
-        result = subprocess.run(windows_release_launcher + ["-Workspace", str(tmp_path / "absent"), "-Port", str(listener.getsockname()[1]), "-ReadOnly", "-ValidateOnly"], capture_output=True, timeout=15)
+        result = subprocess.run(windows_release_launcher + ["-Workspace", str(tmp_path / "absent"), "-Port", str(listener.getsockname()[1]), "-ReadOnly", "-ValidateOnly"], capture_output=True, timeout=POWERSHELL_PREFLIGHT_TIMEOUT)
     assert result.returncode == 1
     assert not (tmp_path / "absent").exists()
+
+
+def test_windows_launcher_defaults_to_workspace_without_role_selection(windows_release_launcher, tmp_path):
+    workspace = tmp_path / "default workspace & untouched"
+    result = subprocess.run(
+        windows_release_launcher + ["-Workspace", str(workspace), "-NoBrowser", "-ValidateOnly"],
+        capture_output=True, timeout=POWERSHELL_PREFLIGHT_TIMEOUT,
+    )
+    assert result.returncode == 0, result.stdout.decode(errors="replace")
+    record = json.loads(result.stdout.decode(errors="replace").splitlines()[-1])
+    assert record["validated"] is True and record["read_only"] is False
+    assert record["workspace"] == str(workspace)
+    assert record["browser_requested"] is False and record["service_started"] is False
+    assert not workspace.exists()
