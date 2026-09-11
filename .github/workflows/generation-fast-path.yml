@@ -56,6 +56,7 @@ jobs:
             tests/test_web_api.py `
             tests/test_web_contract.py `
             tests/test_web_frontend_state_flow.py `
+            tests/test_gx_execution_ui_and_project_delete.py `
             tests/test_prompt_context_policy.py `
             tests/test_context_refresh_runtime.py `
             tests/test_runtime_diagnostics.py `
