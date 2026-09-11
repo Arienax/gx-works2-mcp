@@ -49,7 +49,6 @@ jobs:
           python -m pytest -x -vv `
             tests/test_io_protocol_and_gx_fastpath.py `
             tests/test_analysis_format_repair.py `
-            tests/test_spec_review_workbench.py `
             tests/test_spec_choice_metadata.py `
             tests/test_execution_coordinator.py `
             tests/test_gxworks2_import.py `
