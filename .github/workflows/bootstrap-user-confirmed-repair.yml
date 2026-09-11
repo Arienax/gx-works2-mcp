@@ -91,6 +91,13 @@ jobs:
           Pop-Location
       - name: Commit real source changes
         run: |
+          @'
+          from pathlib import Path
+          path = Path('web/openapi.json')
+          text = path.read_text(encoding='utf-8')
+          with path.open('w', encoding='utf-8', newline='\n') as handle:
+              handle.write(text.replace('\r\n', '\n').replace('\r', '\n'))
+          '@ | python
           git rm scripts/_bootstrap_user_confirmed_repair.py scripts/_bootstrap_user_confirmed_repair_v2.py scripts/_bootstrap_user_confirmed_repair_v3.py
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
