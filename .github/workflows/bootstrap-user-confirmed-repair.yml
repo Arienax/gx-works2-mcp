@@ -7,6 +7,7 @@ on:
       - '.github/workflows/bootstrap-user-confirmed-repair.yml'
       - 'scripts/_bootstrap_user_confirmed_repair.py'
       - 'scripts/_bootstrap_user_confirmed_repair_v2.py'
+      - 'scripts/_bootstrap_user_confirmed_repair_v3.py'
 
 permissions:
   contents: write
@@ -49,6 +50,7 @@ jobs:
         run: |
           python scripts/_bootstrap_user_confirmed_repair.py
           python scripts/_bootstrap_user_confirmed_repair_v2.py
+          python scripts/_bootstrap_user_confirmed_repair_v3.py
       - name: Compile and run generation/Web regressions
         run: |
           python -m compileall -q src tests
@@ -89,7 +91,7 @@ jobs:
           Pop-Location
       - name: Commit real source changes
         run: |
-          git rm scripts/_bootstrap_user_confirmed_repair.py scripts/_bootstrap_user_confirmed_repair_v2.py
+          git rm scripts/_bootstrap_user_confirmed_repair.py scripts/_bootstrap_user_confirmed_repair_v2.py scripts/_bootstrap_user_confirmed_repair_v3.py
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
           git add `
