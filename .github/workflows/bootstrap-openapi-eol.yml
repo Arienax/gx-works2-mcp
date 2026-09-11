@@ -34,7 +34,7 @@ jobs:
           with path.open('w', encoding='utf-8', newline='') as handle:
               handle.write(text.replace('\r\n', '\n').replace('\r', '\n').replace('\n', '\r\n'))
           '@ | python
-          git diff --numstat main...HEAD -- web/openapi.json
+          git diff --numstat origin/main...HEAD -- web/openapi.json
       - name: Commit normalized generated file
         run: |
           git config user.name 'Arienax'
