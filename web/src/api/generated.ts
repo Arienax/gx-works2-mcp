@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Generation Preview */
+        get: operations["generation_preview_api_jobs__job_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/openapi.json": {
         parameters: {
             query?: never;
@@ -398,6 +415,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/versions/{version_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Version Preview */
+        get: operations["version_preview_api_projects__project_id__versions__version_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/versions/{version_id}/program": {
         parameters: {
             query?: never;
@@ -537,6 +571,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Approval Settings */
+        get: operations["approval_settings_api_settings_approval_get"];
+        /** Update Approval Settings */
+        put: operations["update_approval_settings_api_settings_approval_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/profiles": {
         parameters: {
             query?: never;
@@ -659,12 +711,16 @@ export interface components {
             data: {
                 [key: string]: components["schemas"]["JsonValue"];
             };
+            /** Execution Job Id */
+            execution_job_id?: string | null;
             /** Is Error */
             is_error: boolean;
             /** Name */
             name: string;
             /** Proposal Id */
             proposal_id?: string | null;
+            /** Version Id */
+            version_id?: string | null;
         };
         /** AgentTools */
         AgentTools: {
@@ -672,6 +728,35 @@ export interface components {
             tools: {
                 [key: string]: components["schemas"]["JsonValue"];
             }[];
+        };
+        /** ApprovalSettings */
+        ApprovalSettings: {
+            /** Local Autosave */
+            local_autosave: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ask" | "auto" | "full";
+            /** Read Only */
+            read_only: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** ApprovalSettingsUpdate */
+        ApprovalSettingsUpdate: {
+            /**
+             * Confirm Full Access
+             * @default false
+             */
+            confirm_full_access: boolean;
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ask" | "auto" | "full";
         };
         /** Artifact */
         Artifact: {
@@ -1020,6 +1105,8 @@ export interface components {
             } | null;
             /** Status */
             status?: string | null;
+            /** Version Id */
+            version_id?: string | null;
         } & {
             [key: string]: components["schemas"]["JsonValue"];
         };
@@ -1317,6 +1404,8 @@ export interface components {
             created_at?: string | null;
             /** Error Code */
             error_code?: string | null;
+            /** Execution Job Id */
+            execution_job_id?: string | null;
             /** Id */
             id: string;
             /** Project Id */
@@ -1945,6 +2034,39 @@ export interface operations {
             };
         };
     };
+    generation_preview_api_jobs__job_id__preview_get: {
+        parameters: {
+            query?: {
+                theme?: ("light" | "dark") | null;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     schema_api_openapi_json_get: {
         parameters: {
             query?: never;
@@ -2321,6 +2443,40 @@ export interface operations {
             };
         };
     };
+    version_preview_api_projects__project_id__versions__version_id__preview_get: {
+        parameters: {
+            query?: {
+                theme?: ("light" | "dark") | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     program_api_projects__project_id__versions__version_id__program_get: {
         parameters: {
             query?: never;
@@ -2642,6 +2798,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approval_settings_api_settings_approval_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalSettings"];
+                };
+            };
+        };
+    };
+    update_approval_settings_api_settings_approval_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalSettings"];
                 };
             };
             /** @description Validation Error */

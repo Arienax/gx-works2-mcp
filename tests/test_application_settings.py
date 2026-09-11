@@ -285,7 +285,7 @@ def test_browser_demo_uses_real_settings_with_only_temporary_io(tmp_path, monkey
     assert "only-in-demo-memory" not in (tmp_path / "demo-config.json").read_text(encoding="utf-8")
 
 
-def test_browser_demo_main_analysis_confirm_generation_creates_private_proposal(monkeypatch):
+def test_browser_demo_main_analysis_confirm_generation_autosaves_with_private_audit(monkeypatch):
     pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     import model_provider
@@ -313,9 +313,11 @@ def test_browser_demo_main_analysis_confirm_generation_creates_private_proposal(
             assert completed["status"] == "completed", completed
             proposal_id = completed["result"]["proposal_id"]
             proposal = service.proposals.get(proposal_id)
-            assert proposal["status"] == "pending" and proposal["action"] == "accept_local"
+            assert proposal["status"] == "accepted" and proposal["action"] == "accept_local"
+            assert proposal["summary"]["approval"]["source"] == "local_autosave"
+            assert completed["result"]["version_id"] == proposal["result"]["version_id"]
             assert service.proposals.read_private(proposal_id)["_candidate_ir"]
-            assert len(service.store.get_project(project["id"])["versions"]) == 1
+            assert len(service.store.get_project(project["id"])["versions"]) == 2
     monkeypatch.setattr(uvicorn, "run", run_locally)
     monkeypatch.setattr(sys, "argv", ["web_demo.py", "--model-delay", "0"])
     web_demo.main()

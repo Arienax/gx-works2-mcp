@@ -7,6 +7,8 @@ import base64
 import json
 import hashlib
 import threading
+import time
+import runtime_diagnostics as diagnostics
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -549,7 +551,13 @@ class OpenAICompatibleProvider:
         if options:
             client = client.with_options(**options)
         try:
-            response = client.chat.completions.create(**self._request_params(request))
+            params = self._request_params(request)
+            response_format = params.get("response_format")
+            diagnostics.emit("provider_request", stage="provider_transport", stream=request.stream,
+                model=params.get("model"), response_format=(response_format.get("type")
+                    if isinstance(response_format, Mapping) else "unspecified"),
+                max_tokens=params.get("max_tokens"), max_completion_tokens=params.get("max_completion_tokens"))
+            response = client.chat.completions.create(**params)
             if request.stream:
                 yield from self._streaming_events(response)
             else:
@@ -559,6 +567,16 @@ class OpenAICompatibleProvider:
 
     def _complete_events(self, response: Any) -> Iterator[ModelEvent]:
         choices = list(_value(response, "choices", []) or [])
+        choice = choices[0] if choices else None
+        payload = _value(choice, "message", None)
+        finish = _value(choice, "finish_reason", None)
+        usage_data = _value(response, "usage", None)
+        diagnostics.emit("provider_result", stage="provider_transport", stream=False,
+            model=_value(response, "model", None), finish_reason=finish, finish_seen=finish is not None,
+            choice_count=len(choices), content_type=type(_value(payload, "content", None)).__name__,
+            reasoning_type=type(_value(payload, "reasoning_content", None)).__name__,
+            refusal_present=bool(_value(payload, "refusal", None)),
+            reasoning_tokens=_value(_value(usage_data, "completion_tokens_details", None), "reasoning_tokens", None))
         if not choices:
             raise ModelProviderError("AI 未返回任何候选结果。", code="protocol")
         message = _value(choices[0], "message")
@@ -583,40 +601,67 @@ class OpenAICompatibleProvider:
     def _streaming_events(self, response: Iterable[Any]) -> Iterator[ModelEvent]:
         fragments: Dict[int, Dict[str, Any]] = {}
         latest_usage = None
-        for chunk in response:
-            usage = _usage_event(_value(chunk, "usage", None))
-            if usage is not None:
-                latest_usage = usage
-            choices = list(_value(chunk, "choices", []) or [])
-            if not choices:
-                continue
-            delta = _value(choices[0], "delta")
-            if delta is None:
-                continue
-            reasoning = str(_value(delta, "reasoning_content", "") or "")
-            content = str(_value(delta, "content", "") or "")
-            if reasoning:
-                yield ReasoningDelta(reasoning)
-            if content:
-                yield TextDelta(content)
-            for fallback_index, raw_call in enumerate(
-                _value(delta, "tool_calls", []) or []
-            ):
-                raw_index = _value(raw_call, "index", fallback_index)
-                try:
-                    index = int(raw_index)
-                except (TypeError, ValueError):
-                    index = fallback_index
-                fragment = fragments.setdefault(
-                    index,
-                    {"id": "", "name": "", "arguments": ""},
-                )
-                fragment["id"] += str(_value(raw_call, "id", "") or "")
-                function = _value(raw_call, "function", {})
-                fragment["name"] += str(_value(function, "name", "") or "")
-                arguments = _value(function, "arguments", "")
-                if arguments not in (None, ""):
-                    fragment["arguments"] += _wire_arguments(arguments)
+        chunk_count, choice_count = 0, 0
+        finish_reason, response_model, reasoning_tokens = None, None, None
+        content_type, reasoning_type, refusal_present = "NoneType", "NoneType", False
+        try:
+            for chunk in response:
+                chunk_count += 1
+                response_model = _value(chunk, "model", response_model)
+                usage = _usage_event(_value(chunk, "usage", None))
+                if usage is not None:
+                    latest_usage = usage
+                choices = list(_value(chunk, "choices", []) or [])
+                if not choices:
+                    continue
+                finish = _value(choices[0], "finish_reason", None)
+                if finish is not None:
+                    finish_reason = finish
+                choice_count = max(choice_count, len(choices))
+                details = _value(_value(chunk, "usage", None), "completion_tokens_details", None)
+                current_reasoning_tokens = _value(details, "reasoning_tokens", None)
+                if current_reasoning_tokens is not None:
+                    reasoning_tokens = current_reasoning_tokens
+                delta = _value(choices[0], "delta")
+                if delta is None:
+                    continue
+                content_value = _value(delta, "content", None)
+                reasoning_value = _value(delta, "reasoning_content", None)
+                if content_value is not None:
+                    content_type = type(content_value).__name__
+                if reasoning_value is not None:
+                    reasoning_type = type(reasoning_value).__name__
+                refusal_present |= bool(_value(delta, "refusal", None))
+                reasoning = str(_value(delta, "reasoning_content", "") or "")
+                content = str(_value(delta, "content", "") or "")
+                if reasoning:
+                    yield ReasoningDelta(reasoning)
+                if content:
+                    yield TextDelta(content)
+                for fallback_index, raw_call in enumerate(
+                    _value(delta, "tool_calls", []) or []
+                ):
+                    raw_index = _value(raw_call, "index", fallback_index)
+                    try:
+                        index = int(raw_index)
+                    except (TypeError, ValueError):
+                        index = fallback_index
+                    fragment = fragments.setdefault(
+                        index,
+                        {"id": "", "name": "", "arguments": ""},
+                    )
+                    fragment["id"] += str(_value(raw_call, "id", "") or "")
+                    function = _value(raw_call, "function", {})
+                    fragment["name"] += str(_value(function, "name", "") or "")
+                    arguments = _value(function, "arguments", "")
+                    if arguments not in (None, ""):
+                        fragment["arguments"] += _wire_arguments(arguments)
+        finally:
+            diagnostics.emit("provider_result", stage="provider_transport", stream=True,
+                model=response_model, chunk_count=chunk_count, choice_count=choice_count,
+                finish_reason=finish_reason, finish_seen=finish_reason is not None,
+                content_type=content_type, reasoning_type=reasoning_type,
+                refusal_present=refusal_present, reasoning_tokens=reasoning_tokens)
         for index in sorted(fragments):
             fragment = fragments[index]
             call = ToolCall(
@@ -661,6 +706,7 @@ def collect_response(
     failure never triggers transport fallback or automatic PLC regeneration.
     """
     request = with_response_language(request)
+    diagnostics.begin_request(request, provider)
     attempts = []
     progress_observer = _progress_observer.get()
     preview_observer = _preview_observer.get()
@@ -670,6 +716,8 @@ def collect_response(
             preview_observer(ResponsePreview(kind, text))
 
     def consume(current: ModelRequest) -> RawModelResponse:
+        diagnostics.begin_attempt()
+        attempt_started = time.monotonic()
         reasoning = []
         content = []
         calls = []
@@ -707,6 +755,8 @@ def collect_response(
                 elif isinstance(event, Usage):
                     usage = event
         except Exception as error:
+            diagnostics.exception_record(error, event="provider_exception", stage="provider_transport")
+            diagnostics.response_received(snapshot(), current)
             preview("discard")
             safe_error = public_model_error(error)
             attempts.append(snapshot(safe_error.code))
@@ -718,6 +768,9 @@ def collect_response(
                 raise
             raise safe_error from error
         raw = snapshot()
+        diagnostics.response_received(raw, current)
+        diagnostics.emit("attempt_finished", stage="response_acceptance",
+                         elapsed_ms=int((time.monotonic() - attempt_started) * 1000))
         attempts.append(raw)
         progress("validating")
         return raw
@@ -778,6 +831,8 @@ def collect_response(
                             "latin_prose", "ambiguous_han_only"}
         violations = [v for v in violations if v.reason not in language_reasons]
     if violations:
+        diagnostics.emit("response_rejected", stage="response_acceptance",
+                         violations=[{"reason": v.reason} for v in violations])
         preview("discard")
         raise ResponseRejectedError(request, attempts, violations)
 
@@ -788,6 +843,7 @@ def collect_response(
                         if reasoning_violations else raw.message)
     accepted_events = tuple(event for event in raw.events
                             if not (reasoning_violations and isinstance(event, ReasoningDelta)))
+    diagnostics.emit("model_accepted", stage="publication")
     preview("complete")
     for event in accepted_events:
         if on_event is not None:

@@ -5,6 +5,7 @@ import codecs
 import json
 import re
 import unicodedata
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -359,9 +360,11 @@ class CSVManager:
             for char in str(project_name or "GXWorks2")
         ).strip("._") or "GXWorks2"
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        folder = Path(backup_root).expanduser().resolve() / safe_name / stamp
-        folder.mkdir(parents=True, exist_ok=False)
-        return folder
+        parent = Path(backup_root).expanduser().resolve() / safe_name
+        parent.mkdir(parents=True, exist_ok=True)
+        # Wall-clock resolution is not a uniqueness guarantee on Windows.
+        # Atomically allocate a fresh directory even for same-tick operations.
+        return Path(tempfile.mkdtemp(prefix=stamp + "-", dir=parent))
 
     @staticmethod
     def write_checksum(path):

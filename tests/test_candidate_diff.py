@@ -123,7 +123,8 @@ def test_generation_freezes_real_diff_for_first_and_revised_candidates(tmp_path,
         assert completed["status"] == "completed", completed
         proposal_id = completed["result"]["proposal_id"]
         proposal = service.proposals.get(proposal_id)
-        assert proposal["status"] == "pending" and proposal["base_version_id"] == base_id
+        assert proposal["status"] == "accepted" and proposal["base_version_id"] == base_id
+        assert completed["result"]["version_id"] == proposal["result"]["version_id"]
         assert "diff" in proposal["summary"]
         assert "_preview_diff" not in json.dumps(proposal)
         preview = service.proposal_preview(proposal_id)
@@ -131,7 +132,7 @@ def test_generation_freezes_real_diff_for_first_and_revised_candidates(tmp_path,
         assert diff["kind"] == mode and diff["base_version_id"] == base_id
         assert diff["has_changes"] is True
         assert diff == service.proposals.read_private(proposal_id)["_preview_diff"]
-        assert len(store.get_project(project_id)["versions"]) == int(with_base)
+        assert len(store.get_project(project_id)["versions"]) == int(with_base) + 1
         if mode == "ladder":
             assert diff["changes"][0]["after"]["reads"] == ["X1"]
             assert diff["changes"][0]["before"] is None if not with_base else diff["changes"][0]["before"]["reads"] == ["X0"]
@@ -209,7 +210,8 @@ def test_gx_read_candidate_gets_the_same_core_review_with_no_desktop_execution(t
         diff = service.proposal_preview(current["result"]["proposal_id"])["diff"]
         assert diff["modified"] == ["N0001"]
         assert diff["changes"][0]["before"]["reads"] == ["X0"]
-        assert len(store.get_project(project_id)["versions"]) == 1
+        assert len(store.get_project(project_id)["versions"]) == 2
+        assert current["result"]["version_id"] == store.get_project(project_id)["active_version_id"]
     finally:
         service.close()
 

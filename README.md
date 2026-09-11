@@ -32,10 +32,9 @@ For the packaged Windows release, extract the complete `GXWorks-Agent-Web` direc
 start-web.cmd
 ```
 
-Choose a workspace folder and then select:
+Choose a workspace folder. There is no startup role picker: validated generation and direct local edits are saved automatically, with version history. In **Settings → General → Operation approvals**, choose **Ask for approval** (default), **Approve for me**, or **Full access**. These modes govern existing GX/simulation/debug execution, not PLC validation. Full access requires explicit confirmation. The optional `-ReadOnly` recovery flag remains available.
 
-- **Read-only** to inspect an existing workspace without creating or migrating versions.
-- **Engineering edit** to create projects, confirm specifications, generate candidates, accept versions, and approve controlled GX operations.
+The toolbar exposes **Export files**, **Read from GX**, **Send to GX**, a single refresh/redraw control, and **More** for import, conversion and synchronization. File exports do not require a GX connection.
 
 The launcher opens a local browser session after the backend is ready. Keep the service window open while using the workbench and press `Ctrl+C` in that window to stop it.
 
@@ -198,7 +197,7 @@ The workbench currently provides:
 - editable confirmed specifications
 - persistent job progress and reconnectable event history
 - candidate proposal review and Diff inspection
-- explicit approval for local acceptance, GX import, simulation, and debug execution
+- automatic validated local saves, plus workspace-configured approval for GX import, simulation and debug execution
 - model configuration and connection testing
 - GX environment observation
 - GXW import and FBD editing
@@ -316,9 +315,9 @@ Validation
       ↓
 Diff
       ↓
-Operator approval
+Automatic local save
       ↓
-Accepted version
+Version history
 ```
 
 For example:
@@ -577,7 +576,7 @@ The MCP server reads an explicitly selected workspace and exposes engineering to
 
 An external MCP client can connect to the running local Web service with a dedicated Agent token.
 
-In this mode, an external agent can submit a candidate proposal into the Web workbench, but **cannot approve its own proposal or bypass operator-only routes**.
+In service mode, external agents cannot change approval settings or bypass operator-only routes. The default **Ask for approval** keeps their candidate proposals pending. **Approve for me** and **Full access** explicitly delegate supported local saves to the Web backend; only **Full access** delegates GX import. Standalone MCP is unchanged.
 
 See [`docs/integrations/mcp.md`](docs/integrations/mcp.md) and [`docs/integrations/web.md`](docs/integrations/web.md).
 
@@ -605,7 +604,7 @@ Model providers are deliberately separated from engineering state. Program versi
 
 # Safety and approval model
 
-GXWorks Agent separates local program acceptance from external execution.
+GXWorks Agent separates automatic, validated local saves from external execution. Workspace approval modes apply to the latter; they never bypass validation. See [approval modes](docs/architecture/approval-modes.md).
 
 | Approval action | What it authorizes | What it does **not** prove |
 | --- | --- | --- |

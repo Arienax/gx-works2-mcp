@@ -19,12 +19,13 @@ from fastapi.staticfiles import StaticFiles
 from application.projects import media_type, public
 from application.workbench import WorkbenchService, sfc_requirement
 from application.fbd import FBDValidationError
+from application.execution import ExecutionUnavailableError
 from application.workspace import ConflictError, WorkspaceBusyError
 from .security import LocalSecurity
 from . import responses as dto
 from .schemas import (Login, ProjectCreate, ProjectUpdate, ActivateVersion, SpecUpdate,
                       JobCreate, ProposalDecision, ExecutionProposal, AgentCall,
-                      SettingsUpdate, ModelProfileCreate, ModelKeyUpdate, ModelConnectionTest,
+                      SettingsUpdate, ApprovalSettingsUpdate, ModelProfileCreate, ModelKeyUpdate, ModelConnectionTest,
                       AttachmentUpload, SFCInput, FBDProposal)
 
 
@@ -60,6 +61,13 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     async def invalid_schema(_request, _error):
         # Pydantic's default response includes submitted inputs, possibly secrets.
         return JSONResponse({"error": {"code": "invalid_command", "message": "请求字段不符合接口要求。"}}, status_code=422)
+
+    @app.exception_handler(ExecutionUnavailableError)
+    async def execution_unavailable(_request, error):
+        return JSONResponse(
+            {"error": {"code": "execution_unavailable", "message": public(str(error))}},
+            status_code=409,
+        )
 
     @app.exception_handler(KeyError)
     async def missing(_request, _error):
@@ -146,6 +154,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     def update_project(project_id: str, command: ProjectUpdate):
         return service.update_project(project_id, **command.model_dump(exclude_none=True))
 
+    @app.delete("/api/projects/{project_id}", response_model=dto.PublicObject)
+    def delete_project(project_id: str):
+        return service.delete_project(project_id)
+
     @app.post("/api/projects/{project_id}/active-version", response_model=dto.Project, response_model_exclude_unset=True)
     def activate(project_id: str, command: ActivateVersion):
         return service.activate_version(project_id, **command.model_dump())
@@ -165,6 +177,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.get("/api/projects/{project_id}/versions/{version_id}/program", response_model=dto.NullablePublicObject)
     def program(project_id: str, version_id: str):
         return public(service.projects.program(project_id, version_id))
+
+    @app.get("/api/projects/{project_id}/versions/{version_id}/preview", response_model=dto.PublicObject)
+    def version_preview(project_id: str, version_id: str, theme: Literal["light", "dark"] | None = None):
+        return service.version_preview(project_id, version_id, theme=theme)
 
     @app.get("/api/projects/{project_id}/versions/{version_id}/diagnostics", response_model=dto.PublicObject)
     def diagnostics(project_id: str, version_id: str):
@@ -209,10 +225,29 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     def output(job_id: str):
         return service.output(job_id)
 
+    @app.get("/api/jobs/{job_id}/preview", response_model=dto.PublicObject)
+    def generation_preview(job_id: str, theme: Literal["light", "dark"] | None = None):
+        return service.generation_preview(job_id, theme=theme)
+
     @app.post("/api/jobs/{job_id}/cancel", response_model=dto.Job, response_model_exclude_unset=True)
     def cancel(job_id: str):
         service.writable()
         return service.jobs.cancel(job_id)
+
+    @app.get("/api/jobs/{job_id}/diagnostics")
+    def job_diagnostics(job_id: str, request: Request):
+        # Diagnostic exports are operator-only, not an Agent data-reading tool.
+        if not security.session(request):
+            raise PermissionError("Operator session required")
+        if not service.jobs:
+            raise KeyError(job_id)
+        job = service.jobs.get(job_id)
+        from runtime_diagnostics import export_diagnostics
+        data = export_diagnostics(service.state_dir, job)
+        return Response(data, media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="gxworks-diagnostics-{job["id"]}.zip"',
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        })
 
     @app.get("/api/jobs/{job_id}/events")
     async def events(job_id: str, request: Request, after: int = Query(0, ge=0)):
@@ -261,6 +296,14 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.post("/api/proposals/{proposal_id}/decision", response_model=dto.ProposalDecisionResult, response_model_exclude_unset=True)
     def decision(proposal_id: str, command: ProposalDecision):
         return service.decide(proposal_id, command.decision)
+
+    @app.get("/api/settings/approval", response_model=dto.ApprovalSettings)
+    def approval_settings():
+        return service.approval_settings()
+
+    @app.put("/api/settings/approval", response_model=dto.ApprovalSettings)
+    def update_approval_settings(command: ApprovalSettingsUpdate):
+        return service.update_approval_settings(**command.model_dump())
 
     @app.get("/api/settings", response_model=dto.ModelSettings)
     def settings():

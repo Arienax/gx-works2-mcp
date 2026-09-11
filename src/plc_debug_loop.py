@@ -618,10 +618,20 @@ def normalize_and_apply_debug_patch(
     return candidate, normalized_patch
 
 
-def render_candidate_artifacts(program: Mapping[str, Any], output_dir: Path) -> Dict[str, str]:
-    """Render every user-facing/backend artifact from one validated IR."""
+def render_candidate_artifacts(
+    program: Mapping[str, Any],
+    output_dir: Path,
+    *,
+    validate_ladder: bool = True,
+) -> Dict[str, str]:
+    """Render user-facing/backend artifacts from a consistent IR.
 
-    validate_plc_ir(program)
+    Direct confirmed-spec generation can pass ``validate_ladder=False`` because
+    semantic/style acceptance is deliberately deferred to Review/simulation/GX.
+    Debug and patch workflows retain the historical strict default.
+    """
+
+    validate_plc_ir(program, validate_ladder=validate_ladder)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     ladder = ir_to_ladder(program)

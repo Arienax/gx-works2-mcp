@@ -1053,3 +1053,20 @@ def test_export_completion_uses_created_file_without_slow_uia_probe(
 
     assert result["success"]
     assert "备份" in result["message"]
+
+
+def test_backup_folders_are_unique_when_windows_clock_has_not_advanced(tmp_path, monkeypatch):
+    import gxworks2.csv_manager as module
+    class FrozenClock:
+        @staticmethod
+        def now():
+            return FrozenClock()
+        def strftime(self, _format):
+            return "20260911-000000-000000"
+    monkeypatch.setattr(module, "datetime", FrozenClock)
+    first = CSVManager.backup_folder(tmp_path, "Fixture")
+    (first / "original.csv").write_bytes(b"original backup")
+    folders = [CSVManager.backup_folder(tmp_path, "Fixture") for _ in range(5)]
+    assert len(set([first, *folders])) == 6
+    assert all(folder.is_dir() and folder.parent == tmp_path / "Fixture" for folder in folders)
+    assert (first / "original.csv").read_bytes() == b"original backup"

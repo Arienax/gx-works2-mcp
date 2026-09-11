@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "src/model_provider.py",
+      "before_sha256": "8c944a6280673f1398e41bc51e4cde82488c50573f39bc0bef6e0dce1574bf0d",
+      "after_sha256": "05ffb63577a4cb4e745905d30c498927de40989b881aa45c4e714ffff58cb33e"
+    },
+    {
+      "path": "src/application/jobs.py",
+      "before_sha256": "a5d84e76bc9d5b05f5d89b0ddc51b4e3fc3a0344cccb26396c28311961113e5c",
+      "after_sha256": "a8a56f56e6a1d417481792f86c7606e6a3583828de018127c46d186e4cbdf355"
+    },
+    {
+      "path": "src/integrations/web/app.py",
+      "before_sha256": "a5e1abcc5c5f2c9651ed423ebfbeb3431e117a045a795a2d6d5e585c48444ce5",
+      "after_sha256": "66a94949db58e1e68f661d1601760a1782ab4431e18427f33f650cd789da1e2b"
+    }
+  ],
+  "patch_sha256": "e9d631f111b7c5ef3a4ae67254924a2cb01793fb2011fb06f911042b5e958d93"
+}

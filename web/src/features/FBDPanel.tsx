@@ -57,7 +57,7 @@ export function FBDImport({ pid, vid, disabled, onProposal, t }: {
     <label>{t("选择 GXW 工程")}<input type="file" accept=".gxw" disabled={disabled || busy} onChange={e => void read(e.target.files?.[0])} /></label>
     {upload && <label>{t("程序")}<select value={program} onChange={e => setProgram(e.target.value)}>{programs.map(p => <option key={p}>{p}</option>)}</select></label>}
     {error && <p role="alert" className="fbd-error">{error}</p>}
-    <Button disabled={disabled || busy || !upload} variant="primary" onClick={() => void propose()}><FileUp size={15} />{t(busy ? "正在读取…" : "预览导入候选")}</Button>
+    <Button disabled={disabled || busy || !upload} variant="primary" onClick={() => void propose()}><FileUp size={15} />{t(busy ? "正在读取…" : "预览导入并保存")}</Button>
   </div>;
 }
 
@@ -125,7 +125,7 @@ export function FBDPanel({ value, svg, pid, vid, readOnly, preview, onProposal, 
     </div>
     {error && <p role="alert" className="fbd-error">{error}</p>}
     {section === "diagram" ? <div className="fbd-diagram"><div className="fbd-zoom"><Button onClick={() => setZoom(v => Math.max(.25, v-.25))}>−</Button><span>{Math.round(zoom*100)}%</span><Button onClick={() => setZoom(v => Math.min(4, v+.25))}>+</Button></div>
-      {svg ? <img alt={t("结构化梯形图/FBD")} src={svg} style={{ width: `${zoom*100}%`, minWidth: `${1100*zoom}px`, maxWidth: "none" }} /> : <div className="empty-state"><GitBranch size={38} /><h2>{t("生成 FBD 工程")}</h2><p>{t("在右侧描述需求并选择“生成候选”，或在对象和连接页签中创建程序。")}</p><Button onClick={() => setSection("objects")}>{t("添加对象")}</Button></div>}
+      {svg ? <img alt={t("结构化梯形图/FBD")} src={svg} style={{ width: `${zoom*100}%`, minWidth: `${1100*zoom}px`, maxWidth: "none" }} /> : <div className="empty-state"><GitBranch size={38} /><h2>{t("生成 FBD 工程")}</h2><p>{t("在右侧描述需求并选择“生成程序”，或在对象和连接页签中创建程序。")}</p><Button onClick={() => setSection("objects")}>{t("添加对象")}</Button></div>}
     </div> : section === "objects" ? <div className="fbd-sheet">
       <div className="fbd-inline"><select aria-label={t("对象类型")} value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)}>{catalog.map(c => <option key={c.template} value={c.template}>{templateLabel(c.template, t)}</option>)}</select>
         <Button disabled={disabled} onClick={() => change(d => { const c = catalog.find(c => c.template === selectedTemplate); if (c) d.nodes.push({ id: `node_${key().replaceAll("-", "")}`, template: c.template, symbol: c.symbol || (c.kind === "function_block" ? `FB_${d.nodes.length+1}` : c.kind === "coil" || c.kind === "output" ? "Y0" : "X0"), x: 3, y: 2+d.nodes.length*5 }); })}><Plus size={14}/>{t("添加对象")}</Button></div>

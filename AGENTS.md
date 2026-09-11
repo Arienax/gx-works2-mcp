@@ -24,7 +24,7 @@
 
 - 外部适配器必须经过 `ToolRuntime.invoke`，遵守 `SAFE_TOOL_NAMES` 和 `ToolRegistry`。
 - 不暴露任意鼠标、键盘、文件删除、`write_plc`、`force_device` 或其他低层写入。
-- 候选补丁与 GX 导入保持 `confirmation_required`；不添加自动批准。独立 MCP 当前没有确认执行或桌面桥接接口。
+- 独立 MCP 的候选补丁与 GX 导入保持 `confirmation_required`，没有确认执行或桌面桥接接口。Web 工作台由用户选择工作区审批模式：直接请求的本地程序校验后自动保存版本，现有 GX/仿真操作通过工作区策略或人工授权执行；不能放宽 PLC 校验、跨域保护和资源绑定检查。
 - `ToolResult.data` 含 UI 私有数据；对外使用 `public_tool_result_data`，不发送 `_candidate_ir`、`_confirmed_spec`。
 - stdio 的 stdout 只用于 MCP；诊断输出走 stderr。依赖保持可选，不向 Win7 桌面依赖集加入 MCP。
 

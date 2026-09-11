@@ -16,9 +16,9 @@ def _open_when_started(server, login_url, stopped):
         if server.started:
             try:
                 if not webbrowser.open(login_url, new=2):
-                    print("Browser did not open; use the Operator login link above.", file=sys.stderr)
+                    print("Browser did not open; use the Workbench link above.", file=sys.stderr)
             except Exception:
-                print("Browser could not open; use the Operator login link above.", file=sys.stderr)
+                print("Browser could not open; use the Workbench link above.", file=sys.stderr)
             return
 
 
@@ -39,7 +39,7 @@ def main(argv=None):
     app = create_app(args.workspace, state_dir=args.state_dir, read_only=args.read_only,
         origin=origin, operator_token=token, agent_token=os.environ.get("PLC_WEB_AGENT_TOKEN"))
     login_url = origin + "/#token=" + quote(token, safe="")
-    print("Operator login (keep private): " + login_url, file=sys.stderr)
+    print("Workbench link (keep private): " + login_url, file=sys.stderr)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port, workers=1, access_log=False))
     stopped = threading.Event()
     if args.open_browser:

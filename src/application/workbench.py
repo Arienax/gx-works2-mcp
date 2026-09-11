@@ -14,6 +14,7 @@ from application.settings import SettingsService
 from application.workspace import WorkspaceWriterLock, ConflictError, atomic_json, canonical_hash, read_json
 from tool_messages import ToolCall
 from tool_runtime import public_tool_result_data
+from prompt_context_policy import ContextAudit, context_policy_scope, resolve_context_policy
 
 
 class WorkbenchService:
@@ -28,6 +29,8 @@ class WorkbenchService:
         self.jobs = None
         self.proposals = None
         self.execution = None
+        from application.approval import ApprovalPolicy
+        self.approval = ApprovalPolicy(self.state_dir)
         from application.fbd import FBDService
         self.fbd = FBDService(self)
 
@@ -59,6 +62,37 @@ class WorkbenchService:
             raise PermissionError("工作台以只读模式打开。")
         self.lock.require_acquired()
 
+    def approval_settings(self):
+        return {**self.approval.read(), "local_autosave": True, "read_only": self.read_only}
+
+    def update_approval_settings(self, **values):
+        self.writable()
+        with self.lock.thread_lock:
+            self.approval.update(**values)
+            return self.approval_settings()
+
+    def _save_local_proposal(self, proposal):
+        """Internal transaction/validation boundary, not an extra UI approval."""
+        self.writable()
+        if proposal["action"] != "accept_local":
+            raise ValueError("Not a local save")
+        return self.proposals.accept(proposal["id"], approved_by="local_autosave")
+
+    def _apply_execution_policy(self, proposal, consent=None):
+        """New requests only. Mode changes never drain previously pending actions."""
+        from application.approval import allows
+        if proposal["status"] != "pending":
+            return proposal
+        current = self.approval.read()
+        # A running Agent may not inherit a later escalation of permission.
+        if consent is not None and consent != current:
+            return proposal
+        payload = self.proposals.read_private(proposal["id"])
+        if allows(current["mode"], proposal["action"], payload):
+            result = self.decide(proposal["id"], "accept", policy=current)
+            return {**self.proposals.get(proposal["id"]), "execution_job_id": result["job"]["id"]}
+        return proposal
+
     def create_project(self, **values):
         self.writable()
         with self.lock.thread_lock:
@@ -71,6 +105,26 @@ class WorkbenchService:
             self.projects.raw_project(project_id)
             self.store.update_project_settings(project_id, **values)
             return self.projects.project(project_id)
+
+    def delete_project(self, project_id):
+        """Delete one managed project after proving no live work still references it."""
+        self.writable()
+        with self.lock.thread_lock:
+            self.projects.raw_project(project_id)
+            active_jobs = [
+                job for job in (self.jobs.list(project_id) if self.jobs else [])
+                if job.get("status") in {"queued", "running", "cancelling"}
+            ]
+            if active_jobs:
+                raise ConflictError("Project still has active jobs")
+            active_proposals = [
+                proposal for proposal in (self.proposals.list(project_id) if self.proposals else [])
+                if proposal.get("status") in {"pending", "executing"}
+            ]
+            if active_proposals:
+                raise ConflictError("Project still has pending or executing proposals")
+            self.store.delete_project(project_id)
+            return {"deleted": True, "project_id": project_id}
 
     def activate_version(self, project_id, version_id, expected_active_version_id):
         self.writable()
@@ -164,6 +218,84 @@ class WorkbenchService:
                 output["spec_draft"] = restore_review_choices(output["spec_draft"], output["analysis"])
         return public(output)
 
+    def _render_ladder_preview(
+        self, program, *, theme=None, confirmed_spec=None, validation_profile="strict"
+    ):
+        """Deterministic, in-memory view. Never trust an old rendered-file cache."""
+        from plc_ir import ir_to_ladder, validate_plc_ir
+        from plc_st_renderer import render_plc_ir_to_st
+        from draw import AdvancedSVGLadder
+
+        validate_plc_ir(
+            program, confirmed_spec=confirmed_spec,
+            validate_ladder=(validation_profile != "generation_structural"),
+        )
+        ladder = ir_to_ladder(program)
+        svg = AdvancedSVGLadder().generate_ladder(json.dumps(ladder, ensure_ascii=False))
+        return {"target_mode": "ladder", "ladder": ladder, "program": public(program),
+                "svg": self.projects.themed_svg(svg, theme), "st": render_plc_ir_to_st(program)}
+
+    def version_preview(self, project_id, version_id, *, theme=None):
+        """Re-render a saved ladder from its verified IR without changing a version.
+
+        A missing/corrupt SVG can be recovered as a display-only response. The
+        original files, approval state, project history and GX state stay intact.
+        """
+        from plc_ir import canonical_sha256
+
+        version = self.projects.raw_version(project_id, version_id)
+        if version.get("target_mode") != "ladder":
+            raise ValueError("Only a ladder version has a regenerable ladder preview")
+        program = self.projects.program(project_id, version_id)
+        if not program:
+            raise KeyError("Canonical program is unavailable")
+        if version.get("ir_sha256") and canonical_sha256(program) != version["ir_sha256"]:
+            raise ConflictError("Version IR changed after validation")
+        return {**self._render_ladder_preview(
+                    program, theme=theme,
+                    confirmed_spec=version.get("confirmed_spec_snapshot"),
+                    validation_profile=version.get("validation_profile", "strict")),
+                "version_id": version_id, "read_only": True}
+
+    def generation_preview(self, job_id, *, theme=None):
+        """Inspect a completed candidate, including explicitly blocked diagnostics.
+
+        This is not an acceptance route. Legacy completed jobs retain their
+        staged IR and can be inspected without paying for another generation.
+        """
+        from plc_ir import canonical_sha256
+
+        if not self.jobs:
+            raise KeyError("Generation jobs are unavailable")
+        job = self.jobs.get(job_id)
+        if job["kind"] != "generation" or job["status"] != "completed":
+            raise KeyError("No completed generation is available")
+        self.projects.raw_project(job["project_id"])
+        output = self.output(job_id)
+        if output.get("proposal_id"):
+            proposal = self.proposals.get(output["proposal_id"])
+            if proposal["project_id"] != job["project_id"]:
+                raise ConflictError("Generation proposal belongs to another project")
+            return {**self.proposal_preview(proposal["id"], theme=theme), "job_id": job_id,
+                    "read_only": True, "proposal_id": proposal["id"]}
+        metadata = output.get("generation") or {}
+        mismatch = metadata.get("contract_mismatch")
+        if not mismatch or output.get("status") != "contract_mismatch" or metadata.get("target_mode") != "ladder":
+            raise KeyError("No inspectable generation candidate is available")
+        root = contained(self.state_dir / "staging" / record_id(job_id), self.state_dir / "staging")
+        path = contained(root / "program.ir.json", root)
+        if not path.is_file():
+            raise KeyError("Generated IR is unavailable")
+        program = read_json(path)
+        if canonical_sha256(program) != metadata.get("ir_sha256"):
+            raise ConflictError("Generated IR changed after validation")
+        # Display the known approach mismatch; do not waive it for acceptance.
+        # Structural, instruction and IR consistency checks remain mandatory.
+        return {**self._render_ladder_preview(program, theme=theme),
+                "job_id": job_id, "read_only": True, "status": "contract_mismatch",
+                "contract_mismatch": public(mismatch),
+                "validation": public(metadata.get("validation") or {})}
+
     def submit(self, command):
         self.writable()
         # Retry identity is the original HTTP command, not a newly observed
@@ -198,6 +330,10 @@ class WorkbenchService:
             requires_model = command["kind"] not in ("gx_read", "gx_inspect") and (command["kind"] != "review" or command.get("deep", True))
             provider, model = self.model_factory() if requires_model else (None, {})
             snapshot["model"] = model
+            snapshot["approval_consent"] = self.approval.read()
+            snapshot["context_policy"] = resolve_context_policy(
+                None if requires_model else "legacy"
+            ).snapshot()
             if command["kind"] == "debug_plan":
                 snapshot["saved_run"] = self.projects.simulator_run(project_id, context.version_id, command.get("run_id"))
 
@@ -211,7 +347,10 @@ class WorkbenchService:
             ctx.checkpoint()
             model_context = ModelJobContext(ctx)
             model_progress = ModelProgressReporter(model_context)
-            with language_context(snapshot["response_language"]), provider_scope(provider, model_name=model.get("model")), response_policy_scope(
+            context_audit = ContextAudit(lambda report: ctx.emit("context_audit", report))
+            with language_context(snapshot["response_language"]), context_policy_scope(
+                    snapshot.get("context_policy", "legacy"), audit=context_audit), provider_scope(
+                    provider, model_name=model.get("model")), response_policy_scope(
                     enforce_language=False, on_progress=model_progress, on_preview=model_progress.preview):
                 try:
                     result = self._run_job(model_context, snapshot, context, images, provider)
@@ -233,11 +372,13 @@ class WorkbenchService:
                     {"_candidate_ir": result["_candidate_ir"], "_confirmed_spec": result.get("_confirmed_spec"), "target_mode": "ladder"})
                 proposal = self.proposals.create("accept_local", snapshot["project_id"],
                     candidate,
-                    public_summary={"summary": "从 GX Works2 读取的程序，接受后保存为本地版本", "diff": self._diff_summary(candidate["_preview_diff"])},
+                    public_summary={"summary": "从 GX Works2 读取的程序", "diff": self._diff_summary(candidate["_preview_diff"])},
                     base_version_id=snapshot["version_id"], request_id=ctx.job_id)
+                proposal = self._save_local_proposal(proposal)
                 output["proposal_id"] = proposal["id"]
+                output["version_id"] = proposal["result"]["version_id"]
             atomic_json(self.state_dir / "outputs" / (ctx.job_id + ".json"), output)
-            return {"status": result.get("status"), "proposal_id": output.get("proposal_id"), "passed": False}
+            return {"status": result.get("status"), "proposal_id": output.get("proposal_id"), "version_id": output.get("version_id"), "passed": False}
 
     def _run_job(self, ctx, snapshot, context, images, provider):
         kind, project_id, text = snapshot["kind"], snapshot["project_id"], snapshot.get("text", "")
@@ -276,12 +417,9 @@ class WorkbenchService:
                 metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider, check_cancelled=ctx.checkpoint)).run()
             ctx.checkpoint()
             output = {"generation": metadata}
-            if metadata.get("contract_mismatch"):
-                output["status"] = "contract_mismatch"
-                atomic_json(self.state_dir / "outputs" / (ctx.job_id + ".json"), output)
-                return {"status": "contract_mismatch", "summary": "候选与确认规格存在冲突，请检查诊断。"}
             payload = {"project_id": project_id, "target_mode": metadata["target_mode"],
-                       "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec")}
+                       "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec"),
+                       "_validation_profile": metadata.get("validation_profile", "strict")}
             if metadata["target_mode"] == "ladder":
                 payload["_candidate_ir"] = json.loads((out_dir / metadata["artifacts"]["ir"]).read_text(encoding="utf-8"))
             else:
@@ -294,7 +432,11 @@ class WorkbenchService:
                 proposal = self.proposals.create("accept_local", project_id, payload,
                     public_summary={"summary": text[:500], "validation": metadata["validation"], "diff": self._diff_summary(payload["_preview_diff"])},
                     base_version_id=(version or {}).get("id"), request_id=ctx.job_id)
-            output["proposal_id"] = proposal["id"]
+                ctx.checkpoint()
+                proposal = self._save_local_proposal(proposal)
+            output.update(proposal_id=proposal["id"], version_id=proposal["result"]["version_id"], status="saved")
+            ctx.emit("progress", {"stage": "version_saved", "version_id": output["version_id"],
+                "message": "程序已根据确认规格生成并自动保存；可选 Review、仿真或 GX 验证。"})
         elif kind == "agent":
             from plc_agent import run_tool_agent
             result = run_tool_agent(text, context=context, runtime=self.projects.runtime, provider=provider,
@@ -305,14 +447,17 @@ class WorkbenchService:
             ctx.checkpoint()
             with self.lock.thread_lock:
                 self._check_snapshot(snapshot)
-                proposals = [self._pending_proposal(p, f"{ctx.job_id}_{i}", base_version_id=snapshot.get("version_id"))
+                proposals = [self._pending_proposal(p, f"{ctx.job_id}_{i}", base_version_id=snapshot.get("version_id"), consent=snapshot["approval_consent"], direct_request=True)
                              for i, p in enumerate(result.pending_actions)]
                 self.store.add_message(project_id, "assistant", result.content, kind="agent")
             output = {"content": result.content, "audit": result.audit, "proposal_ids": [p["id"] for p in proposals]}
+            saved = [(p.get("result") or {}).get("version_id") for p in proposals if p["action"] == "accept_local"]
+            if saved and saved[-1]:
+                output["version_id"] = saved[-1]
         else:
             output = self._plan_or_review(ctx, snapshot, provider)
         atomic_json(self.state_dir / "outputs" / (ctx.job_id + ".json"), output)
-        return {key: output[key] for key in ("proposal_id", "proposal_ids", "report_id", "plan_id", "status") if key in output}
+        return {key: output[key] for key in ("proposal_id", "proposal_ids", "version_id", "report_id", "plan_id", "status") if key in output}
 
     def _plan_or_review(self, ctx, snapshot, provider):
         # Pure workflow services are imported only when requested. Their signatures
@@ -347,7 +492,7 @@ class WorkbenchService:
                 saved_run=snapshot["saved_run"], **common).run()
         return {"plan_id": plan["plan_id"], "plan": plan}
 
-    def _pending_proposal(self, pending, request_id, *, base_version_id=None):
+    def _pending_proposal(self, pending, request_id, *, base_version_id=None, consent=None, direct_request=False):
         kind = pending.get("type")
         if kind in ("accept_candidate_patch", "accept_generated_program"):
             action = "accept_local"
@@ -357,9 +502,18 @@ class WorkbenchService:
             raise ValueError("Unsupported pending engineering action")
         base_id = pending.get("base_version_id") or pending.get("version_id") or base_version_id
         payload = self._with_candidate_diff(pending["project_id"], base_id, pending) if action == "accept_local" else dict(pending)
-        return self.proposals.create(action, pending["project_id"], payload,
+        proposal = self.proposals.create(action, pending["project_id"], payload,
             public_summary={"summary": "Agent 提出的工程操作", "diff": self._diff_summary(payload["_preview_diff"]) if "_preview_diff" in payload else pending.get("diff"), "validation": pending.get("validation")},
             base_version_id=base_id, request_id=request_id)
+        if action == "accept_local":
+            # Direct UI requests save without a second prompt. Connected API
+            # clients are delegated explicitly by auto/full; default ask retains
+            # their existing confirmation boundary. Standalone MCP is unchanged.
+            current = self.approval.read()
+            if direct_request or (current["mode"] in {"auto", "full"} and (consent is None or consent == current)):
+                return self._save_local_proposal(proposal)
+            return proposal
+        return self._apply_execution_policy(proposal, consent)
 
     def agent_call(self, command):
         self.writable()
@@ -381,6 +535,10 @@ class WorkbenchService:
             if not result.is_error and result.data.get("status") == "confirmation_required" and pending:
                 proposal = self._pending_proposal(pending, request_key, base_version_id=context.version_id or None)
                 response["proposal_id"] = proposal["id"]
+                if (proposal.get("result") or {}).get("version_id"):
+                    response["version_id"] = proposal["result"]["version_id"]
+                if proposal.get("execution_job_id"):
+                    response["execution_job_id"] = proposal["execution_job_id"]
             atomic_json(path, {"input_hash": digest, "response": response})
             return response
 
@@ -388,19 +546,36 @@ class WorkbenchService:
         self.writable()
         project_id, version_id = command["project_id"], command["version_id"]
         with self.lock.thread_lock:
-            self.projects.raw_version(project_id, version_id)
+            version = self.projects.raw_version(project_id, version_id)
+            if command["action"] == "gx_import":
+                from application.execution import ExecutionUnavailableError, read_gx_environment
+
+                environment = read_gx_environment()
+                if not environment.get("gx_works2_running"):
+                    raise ExecutionUnavailableError(
+                        environment.get("message")
+                        or "GX Works2 未运行，请先启动 GX Works2 后再发送。"
+                    )
+                if version.get("target_mode") != "fbd" and environment.get("project_open") is False:
+                    raise ExecutionUnavailableError(
+                        "GX Works2 已运行，但尚未新建或打开目标工程。"
+                    )
             payload = {"project_id": project_id, "version_id": version_id}
             plan_id = command.get("plan_id")
             if command["action"] in ("simulation", "debug"):
                 record_id(plan_id)
                 plan = self.projects.plan(project_id, version_id, plan_id, kind=command["action"])
                 payload["plan"] = plan
-            return self.proposals.create(command["action"], project_id, payload,
+            # A replay returns the original proposal; a mode escalation must not execute it.
+            prior = next((p for p in self.proposals.list(project_id)
+                          if self.proposals._load(p["id"]).get("request_id") == command["request_id"]), None)
+            proposal = self.proposals.create(command["action"], project_id, payload,
                 public_summary={"summary": {"gx_import": "将指定版本导入 GX Works2", "simulation": "导入指定版本并运行指定仿真方案", "debug": "执行指定调试方案"}[command["action"]],
                                 "version_id": version_id, "plan_id": plan_id},
                 base_version_id=version_id, request_id=command["request_id"])
+            return proposal if prior else self._apply_execution_policy(proposal)
 
-    def decide(self, proposal_id, decision):
+    def decide(self, proposal_id, decision, *, policy=None):
         self.writable()
         proposal = self.proposals.get(proposal_id)
         if decision == "reject":
@@ -412,13 +587,21 @@ class WorkbenchService:
             # before any external effect and must be honored after acquiring it.
             with self.lock.thread_lock:
                 ctx.checkpoint()
-                result = self.proposals.accept(proposal_id, executor=lambda payload, approved_id:
+                if policy is not None:
+                    from application.approval import allows
+                    current = self.approval.read()
+                    payload = self.proposals.read_private(proposal_id)
+                    if current != policy or not allows(current["mode"], proposal["action"], payload):
+                        raise PermissionError("Approval settings changed before execution; manual review required")
+                result = self.proposals.accept(proposal_id, approved_by="policy" if policy else "user",
+                    approval_mode=policy["mode"] if policy else None, executor=lambda payload, approved_id:
                     self.execution.submit_approved({"gx_import": "import_gx", "simulation": "simulate", "debug": "debug"}[proposal["action"]],
                         payload, approval_id=approved_id,
                         progress=lambda *m: ctx.emit("progress", {"message": str(m[-1])})).result())
             return {"proposal_id": proposal_id, "status": result["status"], "result": result.get("result")}
         return {"job": self.jobs.submit("execution", {"project_id": proposal["project_id"], "version_id": proposal["base_version_id"],
-                    "proposal_id": proposal_id}, worker, request_id="approve_" + proposal_id)}
+                    "proposal_id": proposal_id, "approval_policy": policy}, worker,
+                    request_id=("policy_" + str(policy["revision"]) + "_" if policy else "approve_") + proposal_id)}
 
     def _candidate_diff(self, project_id, base_version_id, payload):
         """Review the proposal's bound version, never the UI's active selection."""
@@ -478,7 +661,6 @@ class WorkbenchService:
         return payload
 
     def proposal_preview(self, proposal_id, *, theme=None):
-        from plc_ir import ir_to_ladder
         record = self.proposals.get(proposal_id)
         payload = self.proposals.read_private(proposal_id)
         if payload.get("target_mode") == "fbd":
@@ -487,16 +669,12 @@ class WorkbenchService:
             return {"target_mode": "fbd", "program": public(json.loads(artifacts["fbd"])),
                     "svg": artifacts["svg"].decode("utf-8"), "diff": public(payload["_preview_diff"])}
         if "_candidate_ir" in payload:
-            from plc_core import PLCCore
-            program = payload["_candidate_ir"]
-            # Managed, deterministic previews; no transient file names cross HTTP.
-            root = self.state_dir / "previews" / proposal_id
-            with self.lock.thread_lock:
-                if not (root / "ladder.svg").is_file():
-                    PLCCore().compile_project(program, root)
-            return {"target_mode": "ladder", "ladder": ir_to_ladder(program), "program": public(program),
-                    "svg": self.projects.themed_svg((root / "ladder.svg").read_text(encoding="utf-8"), theme),
-                    "st": (root / "program_from_ir.st").read_text(encoding="utf-8"),
+            # read_private verified the frozen payload hash. Re-render each read
+            # instead of returning a stale/corrupt cache. No project writes occur.
+            return {**self._render_ladder_preview(
+                        payload["_candidate_ir"], theme=theme,
+                        confirmed_spec=payload.get("_confirmed_spec"),
+                        validation_profile=payload.get("_validation_profile", "strict")),
                     "diff": public(payload.get("_preview_diff") or self._candidate_diff(record["project_id"], record["base_version_id"], payload))}
         if payload.get("target_mode") == "st":
             entry = payload["artifacts"]["st"]

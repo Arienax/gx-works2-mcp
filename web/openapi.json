@@ -88,6 +88,17 @@
             "title": "Data",
             "type": "object"
           },
+          "execution_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Job Id"
+          },
           "is_error": {
             "title": "Is Error",
             "type": "boolean"
@@ -106,6 +117,17 @@
               }
             ],
             "title": "Proposal Id"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
           }
         },
         "required": [
@@ -136,6 +158,71 @@
           "tools"
         ],
         "title": "AgentTools",
+        "type": "object"
+      },
+      "ApprovalSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "local_autosave": {
+            "title": "Local Autosave",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "ask",
+              "auto",
+              "full"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "revision",
+          "local_autosave",
+          "read_only"
+        ],
+        "title": "ApprovalSettings",
+        "type": "object"
+      },
+      "ApprovalSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_full_access": {
+            "default": false,
+            "title": "Confirm Full Access",
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "ask",
+              "auto",
+              "full"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "expected_revision"
+        ],
+        "title": "ApprovalSettingsUpdate",
         "type": "object"
       },
       "Artifact": {
@@ -1289,6 +1376,17 @@
               }
             ],
             "title": "Status"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
           }
         },
         "title": "JobOutput",
@@ -2256,6 +2354,17 @@
               }
             ],
             "title": "Error Code"
+          },
+          "execution_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Job Id"
           },
           "id": {
             "title": "Id",
@@ -3526,6 +3635,65 @@
         "summary": "Output"
       }
     },
+    "/api/jobs/{job_id}/preview": {
+      "get": {
+        "operationId": "generation_preview_api_jobs__job_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "theme",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "light",
+                    "dark"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generation Preview"
+      }
+    },
     "/api/openapi.json": {
       "get": {
         "operationId": "schema_api_openapi_json_get",
@@ -4058,6 +4226,74 @@
         "summary": "Diagnostics"
       }
     },
+    "/api/projects/{project_id}/versions/{version_id}/preview": {
+      "get": {
+        "operationId": "version_preview_api_projects__project_id__versions__version_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "theme",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "light",
+                    "dark"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Preview"
+      }
+    },
     "/api/projects/{project_id}/versions/{version_id}/program": {
       "get": {
         "operationId": "program_api_projects__project_id__versions__version_id__program_get",
@@ -4512,6 +4748,60 @@
           }
         },
         "summary": "Update Settings"
+      }
+    },
+    "/api/settings/approval": {
+      "get": {
+        "operationId": "approval_settings_api_settings_approval_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Approval Settings"
+      },
+      "put": {
+        "operationId": "update_approval_settings_api_settings_approval_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Approval Settings"
       }
     },
     "/api/settings/profiles": {

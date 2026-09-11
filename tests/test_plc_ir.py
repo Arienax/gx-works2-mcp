@@ -386,10 +386,10 @@ def test_compiler_thread_persists_ir_and_all_legacy_artifacts(monkeypatch, tmp_p
         if task_id == "task-ir" and payload.get("stage") in {"parsing", "parsed"}
     ]
     assert any("读取 JSON 结构" in message for message in parsing_messages)
-    assert any("规范化梯形图结构" in message for message in parsing_messages)
-    assert any("执行 PLC 硬校验" in message for message in parsing_messages)
-    assert any("构建并校验 PLC IR" in message for message in parsing_messages)
-    assert "模型输出解析与硬校验完成" in parsing_messages
+    assert any("规范化梯形图协议" in message for message in parsing_messages)
+    assert any("检查结构与地址" in message for message in parsing_messages)
+    assert any("构建 PLC IR" in message for message in parsing_messages)
+    assert "模型输出已解析为候选程序" in parsing_messages
     st_text = (tmp_path / result["artifacts"]["st_from_ir"]).read_text(
         encoding="utf-8"
     )
@@ -402,7 +402,7 @@ def test_compiler_thread_persists_ir_and_all_legacy_artifacts(monkeypatch, tmp_p
     assert program["logic"]["execution_model"] == "plc_scan_cycle"
 
 
-def test_compiler_retries_when_requested_edge_was_generated_as_level(
+def test_compiler_does_not_repair_semantic_mismatch_after_confirmed_generation(
     monkeypatch, tmp_path
 ):
     import api
@@ -451,11 +451,14 @@ def test_compiler_retries_when_requested_edge_was_generated_as_level(
 
     assert failed == []
     assert len(succeeded) == 1
-    assert repair_requests
-    assert "扫描周期语义未满足" in repair_requests[0]
+    # The requirement text is model context, not a second local semantic judge.
+    # If the model returns LEVEL logic, direct generation publishes that
+    # candidate instead of spending another model call to rewrite it.
+    assert repair_requests == []
     program = json.loads((tmp_path / "program.ir.json").read_text(encoding="utf-8"))
-    assert program["networks"][0]["execution"]["semantics"] == ["RISING_EDGE"]
-    assert program["timing"]["coverage"][0]["status"] == "satisfied"
+    assert program["networks"][0]["execution"]["semantics"] == ["LEVEL"]
+    assert program["logic"]["requirements"] == []
+    assert program["timing"]["coverage"] == []
 
 
 def test_compiler_partial_edit_uses_ir_revision_and_preserves_other_networks(

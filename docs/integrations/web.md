@@ -8,10 +8,10 @@ Web 工作台通过本机 FastAPI 应用服务复用 `ToolRuntime`、PLC Core、
 
 1. 把整个 `GXWorks-Agent-Web` 目录解压到本机可读取的位置，不要只移动其中的 `.exe`。发布包无需另装 Python、Node.js 或 Qt。
 2. 双击目录内的 `start-web.cmd`，选择工作区文件夹。已有工作区应选择包含 `index.json` 和 `projects` 的外层目录；新工程可以选择一个空文件夹。取消选择不会启动服务。
-3. 在启动窗口输入 `1` 只读浏览或 `2` 工程编辑，直接回车默认只读。已有 Qt 正在编辑同一工作区时，先正常关闭 Qt 再选择工程编辑。
-4. 服务准备好后，浏览器自动打开操作员登录页。若未自动打开，复制启动窗口中的 `Operator login` 本地链接到浏览器。使用期间保持启动窗口打开；结束时按 `Ctrl+C` 停止服务。
+3. 不再选择只读／操作员角色，默认打开可编辑工作区。已有 Qt 正在编辑同一工作区时，先正常关闭 Qt。审批模式在网页设置中调整。
+4. 服务准备好后，浏览器自动打开本地工作台。若未自动打开，复制启动窗口中的 `Workbench link` 本地链接到浏览器。使用期间保持启动窗口打开；结束时按 `Ctrl+C` 停止服务。
 
-关闭浏览器不会停止服务。登录链接只供本机操作员使用，请勿分享。启动器默认使用端口 `8765`；已被占用时自动选择空闲的本机端口，并显示实际登录链接。启动或浏览项目不会自动运行 GX Works2、Simulator Gateway 或操作 PLC；导入及仿真仍需在工作台分别审批。
+关闭浏览器不会停止服务。登录链接只供本机操作员使用，请勿分享。启动器默认使用端口 `8765`；已被占用时自动选择空闲的本机端口，并显示实际登录链接。启动或浏览项目不会自动运行 GX Works2、Simulator Gateway 或操作 PLC；GX 导入、仿真和调试按网页设置中的审批模式执行；启动本身不会执行旧的待审批操作。
 
 若启动窗口提示“源码环境尚未安装”，说明打开的是源代码目录，请完成下一节安装，或使用完整发布包。若提示工作区被占用，正常关闭原来的 Qt/Web 写入服务后再试。不要删除占用锁来绕过正在运行的任务。
 
@@ -47,13 +47,15 @@ python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --read-on
 
 ## 操作与审批
 
-项目和版本是工程状态的主入口。需求分析先形成可检查的规格，再确认并生成；生成任务保存候选提案，接受提案后才形成正式本地版本。候选并不意味着已经导入 GX 或通过仿真。
+项目和版本是工程状态的主入口。需求分析先形成可检查的规格，再确认并生成；程序校验通过后自动保存为新版本并显示梯形图，无需二次点击接受。失败或方案冲突不会保存为活动程序。顶部“导出文件”下载实际存在的 CSV、注释、SVG、JSON、IR、ST 或 GXW 产物；“刷新结果 / 重绘梯形图”不调用模型。
+
+在“设置 → 常规 → 操作审批”选择：逐项审批（默认，GX／仿真／调试执行前确认）；替我审批（按确定性规则自动批准绑定版本的仿真／调试，GX 导入仍确认）；完全访问（显式确认后自动批准这三类已支持操作）。模式不是 Windows 安全隔离，也不会放宽校验或开放任意命令。策略版本冲突会拒绝保存；升级权限不会执行旧提案，降级会阻止尚未启动的自动操作。
 
 授权动作分别记录：
 
 | 提案动作 | 获批准后执行的范围 | 不可推断的结论 |
 | --- | --- | --- |
-| `accept_local` | 接受冻结候选为本地版本 | 没有 GX 导入或 PLC 写入 |
+| `accept_local` | 内部自动保存事务；兼容旧草稿／默认外部 Agent 提案的显式保存 | 没有 GX 导入或 PLC 写入 |
 | `gx_import` | 把指定版本的托管 CSV 导入 GX Works2；FBD 版本则打开 GXW 工程副本 | 导入完成不等于原生编译或仿真通过 |
 | `simulation` | 导入指定版本并运行指定已保存测试方案 | 环境不可用、未执行或执行错误不能显示通过 |
 | `debug` | 执行指定版本和失败证据绑定的调试方案，沿用现有回归与回滚策略 | 不能绕过候选哈希、版本和仿真证据校验 |
@@ -62,17 +64,17 @@ python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --read-on
 
 GX 导入、仿真和调试统一进入 `GXExecutionCoordinator` 固定单线程队列，COM 的初始化和释放发生在同一线程，桌面资源另有跨进程锁。旧 Qt 的导入、同步检查、拉取、仿真和调试入口使用同一资源锁。打开网页及环境查询只观察环境，不启动 Simulator Gateway。真实执行仍需要已登录且可交互的 Windows 桌面、GX Works2、GX Simulator2 和 MX Component。
 
-显式的 GX 读取和同步检查也进入同一队列。同步检查返回已有基线与两侧程序的比较报告；读取沿用原生 CSV 解码和无损往返验证，仅形成可审查候选，接受本地版本仍需单独审批。Web 的只读调用关闭旧 GX 服务中默认的工程保存与基线写入，因此不会因为“检查”而保存 GX 工程或覆盖活动版本。空项目可先读取 GX 初始程序再审批接受。
+显式的 GX 读取和同步检查也进入同一队列。同步检查返回已有基线与两侧程序的比较报告；读取沿用原生 CSV 解码和无损往返验证，通过原有校验后自动保存新的本地快照。Web 的只读调用关闭旧 GX 服务中默认的工程保存与基线写入，因此不会因为“检查”而保存 GX 工程或覆盖活动版本。空项目也可读取 GX 初始程序并保存。
 
 原生程序如果含有本地语义目录尚未覆盖的 vendor 指令，Web 读取返回明确的 `unsupported`，不创建候选、不放宽 Agent/提案校验。原 Qt 的原生保真回读路径继续保留；这种程序不能据此视为已完成 Web 编辑/审批迁移。
 
 ## 结构化梯形图 / FBD
 
-新建工程选择 `FBD` 后，可在 Agent 中描述需求并生成候选，也可在 FBD 页签的对象、连接和声明表中编辑。先预览图形与差异，再接受为本地版本。候选包含 `program.gxw`、`fbd.json`、`fbd.svg` 和写入报告；正式版本提供 GXW 下载。
+新建工程选择 `FBD` 后，可在 Agent 中描述需求并生成候选，也可在 FBD 页签的对象、连接和声明表中编辑。校验通过后自动保存并显示图形，原版本保留。候选包含 `program.gxw`、`fbd.json`、`fbd.svg` 和写入报告；正式版本提供 GXW 下载。
 
-“导入 GXW”上传本机工程（最多 30 MiB），选择其中一个 Program.pou，再检查并接受候选。原工程其他 POU、元数据及未知字段保留。CPU 参数保持原样；目前没有完整的导入 CPU 识别，工作台机型设置不能作为导入工程 CPU 已校验的依据。现有 ladder 版本可“转换为 FBD”，范围为 NO/NC/COIL 串并联；原注释保留为 source_ladder 附件。
+“导入 GXW”上传本机工程（最多 30 MiB），选择其中一个 Program.pou，经校验后自动保存。原工程其他 POU、元数据及未知字段保留。CPU 参数保持原样；目前没有完整的导入 CPU 识别，工作台机型设置不能作为导入工程 CPU 已校验的依据。现有 ladder 版本可“转换为 FBD”，范围为 NO/NC/COIL 串并联；原注释保留为 source_ladder 附件。
 
-“导入 GX”需要单独审批，使用与 CSV 相同的桌面执行队列，打开已确认 GXW 的独立副本，避免 GX 编译或保存修改正式版本。随后在 GX Works2 中执行全部编译、保存；需要回读时再次“导入 GXW”选择保存的副本。打开成功只报告 `imported`，编译状态仍为 `unverified`。遇到已有保存提示或未知对话框时停留待操作员处理，不自动选择保存或丢弃。
+“发送到 GX”按当前审批模式处理，使用与 CSV 相同的桌面执行队列，打开已确认 GXW 的独立副本，避免 GX 编译或保存修改正式版本。随后在 GX Works2 中执行全部编译、保存；需要回读时再次“导入 GXW”选择保存的副本。打开成功只报告 `imported`，编译状态仍为 `unverified`。遇到已有保存提示或未知对话框时停留待操作员处理，不自动选择保存或丢弃。
 
 默认生成模板目前覆盖 FX3U，支持常开/常闭触点、线圈、输入/输出终端、MOV、TON/TON_E/CTU/CTU_E。声明编辑覆盖已知基本类型、数组、常量和 FB 实例；FB 调用会同步实例声明。未知调用保留源记录，不能任意新增未知 ABI。FBD 仿真、诊断和 CSV 同步目前未接通。实际原生编译证据、已知 C2034 警告及边界见[本轮实验记录](../research/gxw_declarations_allocation_web_fbd_20260910.md)。
 
@@ -96,7 +98,7 @@ GX 导入、仿真和调试统一进入 `GXExecutionCoordinator` 固定单线程
 | 程序、诊断与下载 | 版本资源下的 `/program`、`/diagnostics`、`/artifacts/{artifact_id}` |
 | 任务与重连事件 | `/api/jobs`、`/api/jobs/{job_id}/events` |
 | 提案预览和决定 | `/api/proposals/{proposal_id}/preview`、`/decision` |
-| 设置与附件 | `/api/settings`、`/api/projects/{project_id}/attachments` |
+| 设置与附件 | `/api/settings`、`/api/settings/approval`、`/api/projects/{project_id}/attachments` |
 | 需求形式的 SFC 输入 | `/api/sfc/requirement`，不代表 GX SFC 编译能力 |
 | FBD 对象、文件及候选 | `/api/fbd/catalog`、`/api/fbd/inspect`、`/api/fbd/proposals`；后者支持 generate/edit/import/convert，沿用既有审批接口 |
 | 环境观察 | `/api/environment`，不自动启动网关 |
@@ -119,7 +121,7 @@ python -m integrations.mcp --stdio `
 
 MCP 环境另需 `python -m pip install -r requirements-mcp.txt`。服务连接模式不需要本地 `--workspace`，也不推断浏览器当前选择；`--project` 必填，`--version` 可固定版本。只接受 loopback HTTP origin，拒绝重定向，令牌只从所指环境变量读取。
 
-桥接只调用两个端点：`GET /api/agent/tools` 返回原注册表的 function schema；`POST /api/agent/tools/call` 提交 `{project_id, version_id?, name, arguments, call_id}`，返回完整公开 `data`、`content`、`is_error`，待确认时附上 `proposal_id`。后端仍经过共享 `ToolRuntime.invoke` 和安全工具白名单；`_candidate_ir`、`_confirmed_spec` 不外传。进程级 UUID 与每逻辑调用 UUID 防止 stdio 重启后的数字请求 ID 撞上历史幂等记录。Agent 只能提出候选，不能通过此连接审批或执行；操作员在 Web 看到同一后端保存的提案后决定。
+桥接只调用两个端点：`GET /api/agent/tools` 返回原注册表的 function schema；`POST /api/agent/tools/call` 提交 `{project_id, version_id?, name, arguments, call_id}`，返回完整公开 `data`、`content`、`is_error`，待确认时附上 `proposal_id`。后端仍经过共享 `ToolRuntime.invoke` 和安全工具白名单；`_candidate_ir`、`_confirmed_spec` 不外传。进程级 UUID 与每逻辑调用 UUID 防止 stdio 重启后的数字请求 ID 撞上历史幂等记录。Agent 本身不能调用用户设置或审批接口。默认逐项审批时提案仍待用户确认；替我审批／完全访问模式下，Web 后端按用户授权保存受支持的本地候选，完全访问还可批准 GX 导入。独立 MCP 不改变，服务桥接返回的 version_id／execution_job_id 指向实际保存结果或执行任务。
 
 ## 开源 Agent 框架的取舍
 

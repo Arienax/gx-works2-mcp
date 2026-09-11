@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import uuid
 import threading
+import time
+import runtime_diagnostics as diagnostics
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -151,6 +153,25 @@ class JobManager:
             return copy.deepcopy(event)
 
     def _run(self, job_id, worker):
+        with self._record_lock:
+            initial = self._load(job_id)
+            snapshot = initial.get("snapshot", {})
+        with diagnostics.diagnostic_scope(self.state_dir, job_id,
+                kind=initial.get("kind"), project_id=snapshot.get("project_id"),
+                version_id=snapshot.get("version_id"),
+                policy=(snapshot.get("context_policy") or {}).get("name")) as capture:
+            try:
+                return self._run_recorded(job_id, worker)
+            except BaseException as error:
+                diagnostics.exception_record(error)
+                raise
+            finally:
+                with self._record_lock:
+                    outcome = self._load(job_id).get("status")
+                diagnostics.emit("job_finished", stage="workflow", status=outcome,
+                    elapsed_ms=int((time.monotonic() - capture.started) * 1000))
+
+    def _run_recorded(self, job_id, worker):
         error_details = None
         try:
             with self._record_lock:
@@ -167,6 +188,7 @@ class JobManager:
         except JobCancelled:
             status, error_code, result = "cancelled", None, None
         except Exception as exc:
+            diagnostics.exception_record(exc)
             safe_codes = {"ResponseRejectedError": "response_rejected", "ConflictError": "input_conflict",
                           "ContextUnavailableError": "context_unavailable"}
             status, error_code, result = "failed", safe_codes.get(type(exc).__name__, "job_failed"), None

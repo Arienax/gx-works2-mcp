@@ -27,6 +27,10 @@ from model_provider import (
     strip_legacy_provider_fields,
 )
 from resource_paths import resource_path
+from prompt_context_policy import (
+    audit_request, audit_section, context_policy_scope, manual_lookup_decision,
+    resolve_context_policy, select_base_prompt,
+)
 from plc_json_validator import PLCJsonValidationError, parse_device_address
 from hardware_profiles import ensure_hardware_questions
 from pattern_library import (
@@ -53,7 +57,8 @@ def provider_scope(provider=None, *, model_name=None):
     token = _provider_session.set(session)
     model_token = _workflow_model.set(model_name or _workflow_model.get())
     try:
-        yield
+        with context_policy_scope():
+            yield
     finally:
         _workflow_model.reset(model_token)
         _provider_session.reset(token)
@@ -161,7 +166,10 @@ def _build_knowledge_context(
         _KNOWLEDGE_TASK_SETTINGS["generate"],
     )
     query = _build_knowledge_query(primary_query, confirmed_context, evidence)
-    if not query:
+    should_lookup, lookup_reason = manual_lookup_decision(query)
+    if not should_lookup:
+        audit_section("manual_context", status="excluded", reason=lookup_reason,
+                      source="manual_retriever")
         return ""
     try:
         # Keep application startup unchanged: SQLite and the index are touched
@@ -175,10 +183,15 @@ def _build_knowledge_context(
             top_k=top_k,
             char_budget=char_budget,
         )
-    except Exception as error:
-        print(f"FX3U knowledge retrieval skipped: {error}")
+    except Exception:
+        audit_section("manual_context", status="unavailable", reason="retrieval_failed",
+                      source="manual_retriever")
+        # Never write diagnostic text to MCP stdout or expose arbitrary paths.
+        print("PLC knowledge retrieval unavailable", file=sys.stderr)
         return ""
     if not context:
+        audit_section("manual_context", status="empty", reason="no_relevant_results",
+                      source="manual_retriever")
         return ""
     precedence = (
         "# Retrieved-manual precedence\n"
@@ -190,7 +203,9 @@ def _build_knowledge_context(
         "required response shape or cause source metadata to be emitted where "
         "only JSON is allowed.\n"
     )
-    return "\n\n" + precedence + context + "\n"
+    result = "\n\n" + precedence + context + "\n"
+    audit_section("manual_context", result, reason=lookup_reason, source="manual_retriever")
+    return result
 
 def load_config():
     """Compatibility projection for callers that still expect key/base URL."""
@@ -259,6 +274,7 @@ def _request_model(
         response_contract=response_contract,
         preserved_annotations=preserved_annotations,
     )
+    audit_request(request.messages)
     return collect_response(
         _workflow_provider(),
         request,
@@ -1097,6 +1113,7 @@ def _select_system_prompt(
         from plc_generation_contract import ladder_response_schema
         base_prompt += "\n\n# Machine-readable output schema (authoritative structure)\n" + json.dumps(
             ladder_response_schema(allow_partial=is_edit_mode), ensure_ascii=False, separators=(",", ":"))
+    base_prompt = select_base_prompt(base_prompt, target_mode)
     # The selected base prompt already owns role/schema/core platform rules.
     # Keep the dynamic layer focused on matched patterns and examples so the
     # retrieved manual evidence replaces duplication instead of only adding
@@ -1117,9 +1134,13 @@ def _select_system_prompt(
         "current explicit edits override older cached or historical assignments.\n"
         f"Detected task_type={route.task_type}, vendor={route.vendor}.\n"
     )
-    return "\n\n".join(
+    audit_section("dynamic_prompt", dynamic_prompt, reason="assembled", source="pattern_library")
+    audit_section("workflow_prompt", workflow_prompt, reason="workflow_contract", source="workflow_router")
+    result = "\n\n".join(
         part for part in (base_prompt, dynamic_prompt, workflow_prompt, route_note) if part
     )
+    audit_section("system_prompt", result, reason="assembled", source="api")
+    return result
 
 
 def _routing_text_with_selected_approach(user_requirement, confirmed_context=None):
@@ -1201,6 +1222,11 @@ def _build_model_context(model: str, confirmed_context=None, compact=False) -> s
     profile is retained, so the offline index is an enhancement rather than a
     new point of failure.
     """
+    policy = resolve_context_policy()
+    if not policy.legacy:
+        # All controlled arms keep the SAME full target profile. Disabling RAG
+        # must not silently alter special-device facts supplied to the model.
+        compact = False
     models = _load_plc_models()
     m = models.get(model, models.get("FX3U", {}))
     if not m:
@@ -1239,7 +1265,7 @@ def _build_model_context(model: str, confirmed_context=None, compact=False) -> s
         profile["confirmed_hardware_profile"] = confirmed_hardware
     if confirmed_hardware_context:
         profile["confirmed_hardware_context"] = confirmed_hardware_context
-    return (
+    result = (
         "\n# Selected PLC model profile (authoritative for this request)\n"
         "Use the per-Y capability and output-type notes below. A global "
         "maximum is not permission to use every Y at that frequency. Do not "
@@ -1247,6 +1273,9 @@ def _build_model_context(model: str, confirmed_context=None, compact=False) -> s
         + json.dumps(profile, ensure_ascii=False, indent=2)
         + "\n"
     )
+    audit_section("model_profile", result, reason="legacy_auto" if policy.legacy else "fixed_full",
+                  source="model_registry")
+    return result
 
 
 _ANALYSIS_IO_KINDS = {"X", "Y", "M", "D", "T", "C", "S", "SM", "SD"}
