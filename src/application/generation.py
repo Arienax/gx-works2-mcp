@@ -81,6 +81,11 @@ class GenerationWorkflow:
         self.dependencies = dependencies or GenerationDependencies()
         self.conversation_history = self.conversation_history or []
         self.task_type = self.task_type or ("edit" if self.previous_json is not None else "generate")
+        # The local merge base must also be visible to the model. Previously an
+        # edit request set ``is_edit_mode`` but omitted the current ladder from
+        # model context, so the model often regenerated the program from spec.
+        if self.current_version_json is None and self.previous_json is not None:
+            self.current_version_json = copy.deepcopy(self.previous_json)
         self.previous_ir = self.previous_ir if is_plc_ir(self.previous_ir) else None
         self.plc_model = str(self.plc_model or "FX3U").upper()
         self.program_name = str(self.program_name or "MAIN").strip() or "MAIN"
@@ -153,6 +158,20 @@ class GenerationWorkflow:
             full_content = ""
             streaming_succeeded = False
             is_edit_mode = self.target_mode == "ladder" and self.previous_json is not None
+            model_user_input = self.user_input
+            if is_edit_mode and not self.repair_mode:
+                # This is a model instruction, not an application-side gate.
+                # The parser deliberately continues to accept both partial and
+                # full JSON so an imperfect model choice never becomes another
+                # hard-validation failure or hidden retry loop.
+                model_user_input = (
+                    '这是对系统提供的 Current version JSON 的修改请求。除非用户明确要求整体重写，'
+                    '优先返回 mode="partial"：device_comments 只列新增或修改项，rungs 只列修改或新增的完整梯级，'
+                    'delete_rung_ids 只列需要删除的梯级；不要重复输出未修改梯级。'
+                    '如果你仍返回完整 JSON，应用也会正常接受，不需要为了格式选择重新生成。\n\n'
+                    '用户修改要求：\n'
+                    + self.user_input
+                )
             try:
                 stream_model_response = self.dependencies.stream_response or api.stream_model_response
 
@@ -165,7 +184,7 @@ class GenerationWorkflow:
                 self._emit("progress", {"stage": "connecting", "message": tr('正在连接模型')})
                 _reasoning, full_content = model_call(
                     stream_model_response,
-                    self.user_input,
+                    model_user_input,
                     self.model_name,
                     self.effort,
                     self.target_mode,
@@ -205,7 +224,7 @@ class GenerationWorkflow:
             else:
                 json_str = model_call(
                     self.dependencies.generate_json or api.generate_model_json,
-                    self.user_input,
+                    model_user_input,
                     self.model_name,
                     self.effort,
                     self.target_mode,

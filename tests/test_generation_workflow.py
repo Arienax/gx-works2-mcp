@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 from pathlib import Path
@@ -67,6 +68,64 @@ def test_generation_trusts_confirmed_spec_without_posthoc_approach_rejection(tmp
     assert result["contract_mismatch"] is None
     assert json.loads((tmp_path / "ladder.json").read_text(encoding="utf-8")) == ladder
     assert (tmp_path / result["artifacts"]["program_csv"]).is_file()
+
+
+def test_edit_generation_sends_current_program_and_prefers_partial_output(tmp_path):
+    base = _ladder()
+    changed_rung = copy.deepcopy(base["rungs"][0])
+    changed_rung["branches"][0]["inputs"][0]["type"] = "NC"
+    partial = {
+        "mode": "partial",
+        "device_comments": {},
+        "rungs": [changed_rung],
+        "delete_rung_ids": [],
+    }
+    observed = {}
+
+    def stream(user_input, *args, **kwargs):
+        observed["user_input"] = user_input
+        observed["current_version_json"] = copy.deepcopy(kwargs.get("current_version_json"))
+        observed["is_edit_mode"] = kwargs.get("is_edit_mode")
+        return "", json.dumps(partial, ensure_ascii=False)
+
+    result = GenerationWorkflow(
+        GenerationRequest("把 X0 改成常闭", previous_json=base, model_name="offline"),
+        tmp_path,
+        dependencies=GenerationDependencies(stream_response=stream),
+    ).run()
+
+    assert observed["is_edit_mode"] is True
+    assert observed["current_version_json"] == base
+    assert '优先返回 mode="partial"' in observed["user_input"]
+    assert "不要重复输出未修改梯级" in observed["user_input"]
+    persisted = json.loads((tmp_path / "ladder.json").read_text(encoding="utf-8"))
+    assert persisted["rungs"][0]["branches"][0]["inputs"][0]["type"] == "NC"
+    assert result["repair_attempts"] == 0
+
+
+def test_edit_generation_full_json_remains_accepted_without_retry(tmp_path):
+    base = _ladder()
+    full = copy.deepcopy(base)
+    full["rungs"][0]["branches"][0]["inputs"][0]["type"] = "NC"
+    calls = []
+
+    def stream(*args, **kwargs):
+        calls.append((args, kwargs))
+        return "", json.dumps(full, ensure_ascii=False)
+
+    result = GenerationWorkflow(
+        GenerationRequest("把 X0 改成常闭", previous_json=base, model_name="offline"),
+        tmp_path,
+        dependencies=GenerationDependencies(
+            stream_response=stream,
+            generate_json=lambda *a, **k: pytest.fail("Full edit response must not trigger retry"),
+        ),
+    ).run()
+
+    assert result["validation"]["status"] == "candidate_ready"
+    assert result["repair_attempts"] == 0
+    assert len(calls) == 1
+    assert json.loads((tmp_path / "ladder.json").read_text(encoding="utf-8")) == full
 
 
 @pytest.mark.parametrize("mutation", ["delete", "rung", "device", "comment", "full"])
