@@ -647,15 +647,54 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
         target = edits[0]
         target.set_edit_text(str(Path(path).resolve()))
 
-        buttons = [
-            control
-            for control in dialog.children(class_name="Button")
-            if control.is_enabled()
-        ]
+        # GX Works2 uses a legacy MFC common dialog. Depending on Windows/GX
+        # build, the default Save/Open button may be a direct child or exposed
+        # deeper in the Win32 wrapper. Search both before falling back to the
+        # native IDOK command; merely pressing Enter in the edit box is not
+        # reliable and was leaving comment exports waiting for a manual Save.
+        buttons = []
+        seen = set()
+        for getter in (dialog.children, dialog.descendants):
+            try:
+                candidates = getter(class_name="Button")
+            except Exception:
+                candidates = []
+            for control in candidates:
+                try:
+                    enabled = control.is_enabled()
+                except Exception:
+                    enabled = True
+                if not enabled:
+                    continue
+                handle = int(getattr(control, "handle", 0) or 0)
+                key = handle or id(control)
+                if key in seen:
+                    continue
+                seen.add(key)
+                buttons.append(control)
         for button in buttons:
-            if int(getattr(button, "control_id", lambda: 0)() or 0) == 1:
-                button.click()
-                return
+            raw_id = getattr(button, "control_id", 0)
+            try:
+                control_id = int(raw_id() if callable(raw_id) else raw_id or 0)
+            except Exception:
+                control_id = 0
+            if control_id != 1:
+                continue
+            handle = int(getattr(button, "handle", 0) or 0)
+            if os.name == "nt" and handle:
+                ctypes.windll.user32.SendMessageW(handle, 0x00F5, 0, 0)  # BM_CLICK
+            else:
+                click = getattr(button, "click", None)
+                if callable(click):
+                    click()
+                else:
+                    button.click_input()
+            return
+
+        dialog_handle = int(getattr(dialog, "handle", 0) or 0)
+        if os.name == "nt" and dialog_handle:
+            ctypes.windll.user32.SendMessageW(dialog_handle, 0x0111, 1, 0)  # WM_COMMAND/IDOK
+            return
         target.type_keys("{ENTER}")
 
     def _wait_confirmation_and_accept(self, session, context, timeout=None):
@@ -808,7 +847,9 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
                             details={"operation": operation},
                         )
                     command.invoke()
-                    self._wait_confirmation_and_accept(session, "写入")
+                    self._wait_confirmation_and_accept(
+                        session, "写入", timeout=min(self.timeout, 4.0)
+                    )
                 except GXAutomationError:
                     raise
                 except Exception as error:
@@ -831,6 +872,7 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
             dialog = self._wait_legacy_dialog(
                 session,
                 re.compile(r"打开|保存|CSV|Open|Save", re.I),
+                timeout=min(self.timeout, 5.0),
                 failure_stage=file_dialog_stage if operation else "",
             )
         else:
@@ -849,6 +891,7 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
                 dialog = self._wait_legacy_dialog(
                     session,
                     re.compile(r"打开|保存|CSV|Open|Save", re.I),
+                    timeout=min(self.timeout, 5.0),
                 )
         if operation:
             self._report_progress(
@@ -872,7 +915,9 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
                 details={"operation": operation},
             ) from error
         if not confirm_before_file:
-            self._wait_confirmation_and_accept(session, "读取")
+            self._wait_confirmation_and_accept(
+                session, "读取", timeout=min(self.timeout, 4.0)
+            )
         result_stage = (
             "wait_comment_export_file"
             if operation == "comment_export"
@@ -909,6 +954,7 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
         last_message = ""
         destination_signature = None
         destination_stable_since = None
+        main_ready_since = None
         while time.monotonic() < deadline:
             # Export mode is determined only from the requested backup file.
             # Do not ask the legacy UIA provider for another main-window
@@ -971,7 +1017,8 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
                     "warning_count": warning_count,
                 }
 
-            for handle in self._native_dialog_handles(session):
+            dialog_handles = self._native_dialog_handles(session)
+            for handle in dialog_handles:
                 message = self._native_dialog_text(handle)
                 if not message:
                     continue
@@ -984,7 +1031,29 @@ class PywinautoGXWorks2UIAutomation(GXWorks2UIAutomation):
                 if self.SUCCESS_TEXT.search(message):
                     self._native_confirm_dialog(handle)
                     return {"success": True, "message": message}
-            time.sleep(0.15)
+
+            # Some GX Works2 versions never expose a parseable completion text.
+            # The old code intentionally accepted an enabled MAIN frame as the
+            # fallback acknowledgement, but only after waiting the full 12 s.
+            # Accept the same observable state once it is stable and no modal
+            # dialog remains; this removes ~12 s from each program/comment read.
+            now = time.monotonic()
+            if (
+                not destination
+                and main_ready
+                and not dialog_handles
+                and now - started_at >= 0.60
+            ):
+                if main_ready_since is None:
+                    main_ready_since = now
+                elif now - main_ready_since >= 0.45:
+                    return {
+                        "success": True,
+                        "message": last_message or "GX Works2已返回可编辑状态",
+                    }
+            else:
+                main_ready_since = None
+            time.sleep(0.10)
         # Some GX Works2 versions close a successful import without a success
         # dialog. Returning to the editable main window is the observable ack.
         main = self._main_window(session)

@@ -1619,6 +1619,125 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
     return _select_with_budget(candidates, top_k, char_budget)
 
 
+def _retrieve_design_uncached(path, identity, query, plc_model, task_type, top_k, char_budget):
+    """Rank analysis-scoped curated design chunks separately from hard facts.
+
+    This lane is intentionally source-type based. It contains no architecture
+    catalog in code; the design vocabulary, applicability and trade-offs live in
+    SQLite rows with ``manual_type=curated_design``.
+    """
+    if str(task_type or "").casefold() != "analysis":
+        return []
+    connection = _connection(path, identity)
+    schema = _schema(connection)
+    table = schema.get("chunks")
+    if not table:
+        return []
+    required = {"manual_type", "text"}
+    if not required.issubset(set(table["columns"])):
+        return []
+
+    table_name = _quote_identifier(table["name"])
+    rows = connection.execute(
+        f"SELECT rowid AS _chunk_rowid, * FROM {table_name} "
+        "WHERE manual_type='curated_design' ORDER BY manual_priority DESC, id LIMIT 512"
+    ).fetchall()
+    if not rows:
+        return []
+
+    # The appended generic words are retrieval metadata within an already
+    # source-scoped lane; they do not describe or privilege any architecture.
+    scoring_query = _normalize_text(query) + " 控制架构 方案设计"
+    query_tokens = _fts_tokens(scoring_query)
+    query_bigrams = _cjk_bigram_set(scoring_query)
+    candidates = []
+    for row in rows:
+        result = _chunk_result(row, {}, path, plc_model, task_type)
+        if result is None:
+            continue
+        haystack = _normalize_text(
+            str(result.get("section") or "") + " " + str(result.get("text") or "")
+        ).casefold()
+        matched = [token for token in query_tokens if token.casefold() in haystack]
+        candidate_bigrams = _cjk_bigram_set(haystack)
+        overlap = query_bigrams.intersection(candidate_bigrams)
+        bigram_coverage = len(overlap) / len(query_bigrams) if query_bigrams else 0.0
+        if len(matched) < 2 and bigram_coverage < 0.06:
+            continue
+        score = (
+            300.0
+            + 28.0 * len(matched)
+            + 900.0 * bigram_coverage
+            + min(100, int(result.get("manual_priority", 0) or 0)) * 0.5
+        )
+        result["score"] = round(score, 4)
+        result["match_type"] = "curated_design"
+        result["matched_entity"] = ""
+        result["retrieval_signals"] = ["curated_design"]
+        result["query_coverage"] = round(bigram_coverage, 4)
+        candidates.append(result)
+
+    candidates.sort(
+        key=lambda item: (
+            -float(item.get("score", 0.0)),
+            -int(item.get("manual_priority", 0) or 0),
+            str(item.get("id", "")),
+        )
+    )
+    return _select_with_budget(candidates, top_k, char_budget)
+
+
+@lru_cache(maxsize=_CACHE_SIZE)
+def _retrieve_design_cached(identity, query, plc_model, task_type, top_k, char_budget):
+    if identity[0] == "missing":
+        return "[]"
+    path = Path(identity[0])
+    return _freeze_results(
+        _retrieve_design_uncached(
+            path, identity, query, plc_model, task_type, top_k, char_budget
+        )
+    )
+
+
+def retrieve_design_knowledge(
+    query,
+    plc_model="FX3U",
+    task_type="analysis",
+    top_k=2,
+    char_budget=2400,
+):
+    """Return curated design evidence only for requirement analysis."""
+    normalized_query = _normalize_text(query)
+    normalized_task = _normalize_text(task_type).casefold() or "analysis"
+    if not normalized_query or normalized_task != "analysis":
+        return []
+    try:
+        normalized_top_k = max(0, min(_MAX_TOP_K, int(top_k)))
+        normalized_budget = max(0, int(char_budget))
+    except (TypeError, ValueError):
+        return []
+    if normalized_top_k == 0 or normalized_budget == 0:
+        return []
+    normalized_model = _normalize_text(plc_model).upper() or "FX3U"
+    if _query_is_out_of_scope(normalized_query, normalized_model):
+        return []
+    path = _index_path()
+    identity = _index_identity(path)
+    try:
+        frozen = _retrieve_design_cached(
+            identity,
+            normalized_query,
+            normalized_model,
+            normalized_task,
+            normalized_top_k,
+            normalized_budget,
+        )
+        return json.loads(frozen)
+    except (OSError, sqlite3.Error, TypeError, ValueError, KeyError, IndexError):
+        _close_thread_connection()
+        return []
+
+
 def _freeze_results(results):
     return json.dumps(
         results,
@@ -1740,4 +1859,4 @@ def build_knowledge_context(
     return "\n\n".join(parts) if len(parts) > 1 else ""
 
 
-__all__ = ["retrieve_knowledge", "build_knowledge_context"]
+__all__ = ["retrieve_knowledge", "retrieve_design_knowledge", "build_knowledge_context"]

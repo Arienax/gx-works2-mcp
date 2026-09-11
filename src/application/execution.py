@@ -379,9 +379,13 @@ class GXExecutionCoordinator:
                         "message": imported.get("message", ""), "import": imported,
                         "gx_compile_status": "unverified", "simulation_status": "not_run"}
             paths = self._csv_artifacts(version, root)
+            # Normal “Send to GX” already keeps a pre-import backup and waits
+            # for GX Works2 to acknowledge each import. Exporting program/comments
+            # again after the write doubles the MFC-dialog traffic and belongs to
+            # explicit inspect/sync workflows, not the fast send path.
             imported = _mapping(bundle["importer"](
                 paths[0], comment_csv_path=paths[1], start_if_needed=False,
-                synchronize_comments=True, verify_roundtrip=True, save_project=True,
+                synchronize_comments=True, verify_roundtrip=False, save_project=True,
                 progress=progress,
                 import_context={
                     "project_id": project_id, "version_id": version_id,

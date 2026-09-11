@@ -167,6 +167,13 @@ def _build_knowledge_context(
     )
     query = _build_knowledge_query(primary_query, confirmed_context, evidence)
     should_lookup, lookup_reason = manual_lookup_decision(query)
+    if (
+        not should_lookup
+        and normalized_task == "analysis"
+        and resolve_context_policy().manuals == "adaptive"
+        and query.strip()
+    ):
+        should_lookup, lookup_reason = True, "analysis_design_retrieval"
     if not should_lookup:
         audit_section("manual_context", status="excluded", reason=lookup_reason,
                       source="manual_retriever")
@@ -194,8 +201,11 @@ def _build_knowledge_context(
                       source="manual_retriever")
         return ""
     precedence = (
-        "# Retrieved-manual precedence\n"
-        "Use retrieved blocks for PLC platform and instruction facts. Priority "
+        "# Retrieved-knowledge precedence\n"
+        "Use retrieved blocks as read-only PLC evidence relevant to the current task. "
+        "Official manual evidence is authoritative for platform, device and instruction facts; "
+        "analysis-scoped curated design evidence describes design trade-offs only and must not "
+        "override confirmed project choices or official manual facts. Priority "
         "is: hard output schemas and deterministic local findings > explicit "
         "current-turn edits for the fields they change > the confirmed project "
         "specification and canonical I/O for all remaining project choices > "
@@ -1377,13 +1387,21 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
         if isinstance(values, dict):
             entries = list(values.items())
         elif isinstance(values, list):
+            if is_device_category:
+                add_diagnostic(
+                    "io_labels_required",
+                    "suggested_io.%s" % category_text,
+                    str(tr("普通 I/O 类别必须使用地址到非空用途说明的字典；仅地址列表已忽略。")),
+                    values,
+                )
+                continue
             entries = [(value, "") for value in values]
         else:
             metadata[category_text] = values
             add_diagnostic(
                 "invalid_io_container",
                 "suggested_io.%s" % category_text,
-                str(tr("I/O 类别必须是地址字典或地址列表，原值已移入 hardware_config。")),
+                str(tr("I/O 类别必须是地址字典；特殊软元件类别也可使用地址列表，原值已移入 hardware_config。")),
                 values,
             )
             continue
@@ -1435,6 +1453,13 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
                 label = json.dumps(label, ensure_ascii=False, separators=(",", ":"))
             else:
                 label = str(label or "").strip()
+            if is_device_category and not label:
+                add_diagnostic(
+                    "missing_io_label",
+                    path,
+                    str(tr("普通 I/O 地址缺少用途说明，已忽略该项。")),
+                )
+                continue
             if actual_kind == "SM" or (special_relays and actual_kind == "M"):
                 target_category = "special_relays"
             elif actual_kind == "SD" or (special_registers and actual_kind == "D"):
@@ -1571,99 +1596,39 @@ turn, reflect that change and do not restore older cached values.
 - FX3U-2HSY-ADP 使用 Y2/Y3 高速轴时，`positioning_module_quantity` 条件必填且必须确认 2 块；Y0/Y1 高速轴只需 1 块。
 - M8336 是 DVIT 中断输入指定功能有效，不是 ZRN/DSZR 完成标志。M8029 必须与对应指令关联；需要确认机械停止时使用驱动器定位完成输入。
 
-# 方案设计（核心！给出不同编程思路让用户选）
+# 方案设计（检索知识后再给用户选）
 
-根据需求分析，给出 1~3 种**本质上不同的梯形图实现方案**。每种方案含 `generation_guide` 字段——简要说明该方案对应的生成要点，便于生成阶段参考。方案之间互斥，用户只需选一种。
+在输出 `approaches` 前，先结合当前需求、PLC 型号以及 `Retrieved PLC knowledge` 中检索到的设计知识，在内部搜索适用的实现架构，再筛选 1~3 个候选。
 
-方案示例（分拣/顺序控制）：
-- 方案A「直接逻辑法」：每个通道独立梯级，COMPARE触点+定时器直控 → guide:"各通道独立梯级，不设状态机"
-- 方案B「步进状态机法」：MOV K D0统一调度，BLOCK_INPUT区分步骤 → guide:"用M8002→MOV K1 D0初始化，BLOCK_INPUT状态机"
-
-方案示例（运动控制）：
-- 方案A「PLSY匀速」：恒频脉冲，无加减速 → guide:"用PLSY发脉冲，M8029检测完成"
-- 方案B「DRVI定位」：带加减速相对定位 → guide:"用DRVI；偏置速度MOV到D8342，最高速度用DMOV写D8343/D8344，加减速时间分别写D8348/D8349；D8345是回原点爬行速度，不作为DRVI最高速度"
-
-方案示例（三泵轮换）：
-- 方案A「D指针轮换法（推荐）」：D0只记录1→2→3轮换顺序，实际主泵和备用泵按健康状态组合选择 → guide:"对M0 AND X2取上升沿更新D0；故障替补不改D0；X3 OR T0触发第二台泵"
-- 方案B「独立非重叠位令牌法」：仅在确需位移指令且传送源位位于目标区外时使用 → guide:"SFTLP源位区与目标区不得重叠；先保存回卷位；按FX3U手册验证K6710约束"
+- 候选必须在状态/顺序组织方式、核心数据模型或核心指令族上存在本质差异。
+- 仅更换软元件编号、定时器编号、梯级顺序、触点排布，或增加一个只复制同一条件的中间继电器，不算新的架构方案。
+- 不得为了凑足数量制造重复方案；设计空间很窄时允许只给 1 个。
+- 不要因为 system prompt 中出现过某个实现方式就强制采用它；具体架构的适用条件、优缺点和实现事实以当前需求与检索知识为依据。
+- 每个实际候选必须包含 `generation_guide` 和可机器校验的 `generation_contract`，不同候选的 contract 应能体现其架构级差异。
 
 # 输出要求
 control_type 从 启停、顺序、定位、计数、模拟量、通讯、PID 中选择 1–3 个字符串。
+下面 JSON 仅展示顶层字段形状，`approaches` 故意留空以避免把某种实现写成默认答案；实际回复必须根据当前需求与检索知识填写 1~3 个候选。每个 approach 必须包含 `approach_id`、`name`、`description`、`pros`、`cons`、`generation_guide`、`generation_contract`。
 返回纯JSON（不要```json包裹），格式：
 {
   "summary": "一句话总结",
   "control_type": ["启停"],
-  "approaches": [
-    {
-      "approach_id":"direct_logic",
-      "name":"直接逻辑法",
-      "description":"各通道独立梯级，COMPARE触点+定时器直控",
-      "pros":"直观易懂",
-      "cons":"梯级较多",
-      "generation_guide":"各通道独立梯级，不用状态机，COMPARE触点判断条件",
-      "generation_contract":{
-        "required_opcodes":[],
-        "forbidden_opcodes":[],
-        "required_devices":[],
-        "forbidden_devices":[],
-        "required_structures":["direct_logic"],
-        "forbidden_structures":["register_state_machine","bit_state_machine"],
-        "any_of_opcode_groups":[],
-        "any_of_structure_groups":[]
-      }
-    },
-    {
-      "approach_id":"register_step_machine",
-      "name":"步进状态机法",
-      "description":"MOV K D0 状态机统一调度",
-      "pros":"结构清晰",
-      "cons":"代码量稍大",
-      "generation_guide":"M8002→MOV K1 D0初始化，BLOCK_INPUT区分步骤，MOV Kn D0跳转",
-      "generation_contract":{
-        "required_opcodes":["MOV"],
-        "forbidden_opcodes":[],
-        "required_devices":["M8002","D0"],
-        "forbidden_devices":[],
-        "required_structures":["register_state_machine","state_initialization","state_comparison","state_transition"],
-        "forbidden_structures":["bit_state_machine"],
-        "any_of_opcode_groups":[],
-        "any_of_structure_groups":[]
-      }
-    }
-  ],
-  "missing_info": [
-    {"id":"pulse_output_axis","question":"脉冲输出轴?","options":["Y0","Y1","Y2"],"default":"Y0","required":true},
-    {"id":"homing_required","question":"是否需要回原点?","options":["否（不需要）","是（需要）","不确定"],"default":"否（不需要）","required":true},
-    {"id":"homing_method","question":"回原点方式?","options":["ZRN简单回零","DSZR带DOG搜索回零"],"required":true,"required_when":{"parameter":"homing_required","contains_any":["是","需要"],"not_contains":["否","不需要"]}}
-  ],
-  "suggested_io": {
-    "X":{"X0":"启动"},
-    "Y":{"Y0":"脉冲输出"},
-    "M":{"M0":"运行标志"},
-    "special_relays":["M8029"],
-    "special_registers":["D8342","D8343","D8344","D8348","D8349"]
-  },
-  "hardware_config": {
-    "drive": {},
-    "analog_module": {}
-  },
-  "assumptions": ["尚未确认的硬件事实；不得把这些文字写入 suggested_io"],
+  "approaches": [],
+  "missing_info": [],
+  "suggested_io": {},
+  "hardware_config": {},
+  "assumptions": [],
   "format_diagnostics": [],
-  "execution_semantics": [
-    {"semantic":"RISING_EDGE","devices":["X0"],"evidence":"每次按下 X0 一次","strict":true},
-    {"semantic":"FIRST_SCAN","devices":[],"evidence":"上电初始化默认参数","strict":true}
-  ],
+  "execution_semantics": [],
   "flowchart_steps": [
-    {"type":"step","label":"初始化 D0=K1"},
-    {"type":"transition","label":"X0 启动"},
-    {"type":"step","label":"步骤1: Y0运行 T0延时"},
-    {"type":"transition","label":"T0 延时到"},
-    {"type":"step","label":"步骤2: 停止 回K1"}
+    {"type":"step","label":"初始状态"}
   ]
 }
-
 # suggested_io 硬约束
 - 只允许普通类别 X、Y、M、D、T、C、S，以及 special_relays、special_registers；FX5U 的 SM 地址归入 special_relays，SD 地址归入 special_registers。
+- 普通类别 X/Y/M/D/T/C/S 必须使用 JSON 对象：键为真实软元件地址，值为基于当前需求的简短非空用途说明；不得只返回地址数组。
+- 普通类别中的每个地址都必须有非空说明。若用途无法从当前需求确定，就不要把该地址写入 suggested_io，而应在 assumptions 或 missing_info 中表达不确定性。
+- special_relays / special_registers 可以使用地址数组或“地址到说明”的对象；系统软元件的固定说明允许由程序补全。
 - 类别中的键必须是该 PLC 型号下真实、语法合法且前缀一致的软元件地址。
 - CHANNEL、ADDRESS、NOTE、ANALOG_OUTPUT、模块名、通道、量程、接线和频率档位都不是 I/O 类别或地址；必须放入 hardware_config 或 assumptions。
 - 不确定的地址不得写入 suggested_io。把不确定性写入 assumptions；不要因此生成硬件必填项。
@@ -1733,7 +1698,7 @@ def analyze_requirement(
     workflow_prompt, _route = build_workflow_prompt(
         routing_requirement,
         target_mode="ladder",
-        forced_task=task_type or "generate",
+        forced_task=task_type or "analysis",
     )
     knowledge_ctx = _build_knowledge_context(
         user_requirement,
@@ -1811,7 +1776,7 @@ def analyze_requirement_streaming(
     workflow_prompt, _route = build_workflow_prompt(
         routing_requirement,
         target_mode="ladder",
-        forced_task=task_type or "generate",
+        forced_task=task_type or "analysis",
     )
     knowledge_ctx = _build_knowledge_context(
         user_requirement,

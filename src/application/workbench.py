@@ -296,6 +296,57 @@ class WorkbenchService:
                 "contract_mismatch": public(mismatch),
                 "validation": public(metadata.get("validation") or {})}
 
+    def repair_generation(self, job_id, request_id):
+        """Submit one operator-confirmed model call to repair a rejected ladder shape."""
+        self.writable()
+        record_id(request_id)
+        with self.lock.thread_lock:
+            if not self.jobs:
+                raise KeyError(job_id)
+            record = self.jobs._load(record_id(job_id))
+            if (record.get("kind") != "generation" or record.get("status") != "failed"
+                    or record.get("error_code") != "generation_validation_failed"):
+                raise ConflictError("Only a failed structural generation can be repaired")
+            snapshot = copy.deepcopy(record.get("snapshot") or {})
+            self._check_snapshot(snapshot)
+            project_id = snapshot["project_id"]
+            version_id = snapshot.get("version_id")
+            root = contained(self.state_dir / "staging" / record_id(job_id), self.state_dir / "staging")
+            candidate_path = contained(root / "repair_candidate.json", root)
+            if not candidate_path.is_file():
+                raise ConflictError("The rejected candidate is no longer available for repair")
+            candidate = candidate_path.read_text(encoding="utf-8")
+            if not candidate.strip() or len(candidate) > 512000:
+                raise ConflictError("The rejected candidate is too large or empty")
+            details = record.get("error_details") or {}
+            violations = details.get("violations") if isinstance(details, dict) else []
+            locations = []
+            for item in violations or []:
+                if isinstance(item, dict):
+                    path = item.get("path")
+                    reason = item.get("reason")
+                    if isinstance(path, str):
+                        locations.append(path + (f" ({reason})" if isinstance(reason, str) else ""))
+            language = snapshot.get("response_language") if snapshot.get("response_language") in ("zh-CN", "en", "ja") else "zh-CN"
+
+        repair_text = (
+            "这是用户明确确认的一次结构修复。不要重新分析需求，也不要改变控制逻辑、地址、参数、触点极性或未出错梯级。"
+            "只修复下面失败候选的 JSON 协议/结构问题。debug_note 是可选字段，默认删除；不要用它解释推理。"
+            "label、debug_note、device_comment 单条目标不超过48字符且绝不能超过64字符。"
+            "只使用梯形图 schema 允许的字段，保持原候选的 mode 和语义，修好后只返回 JSON。\n"
+            "失败位置：" + ("；".join(locations) if locations else "ladder schema") + "\n\n"
+            "失败候选 JSON：\n" + candidate
+        )
+        return self.submit({
+            "kind": "generation",
+            "project_id": project_id,
+            "version_id": version_id,
+            "request_id": request_id,
+            "text": repair_text,
+            "response_language": language,
+            "attachment_ids": [],
+        })
+
     def submit(self, command):
         self.writable()
         # Retry identity is the original HTTP command, not a newly observed
@@ -414,7 +465,9 @@ class WorkbenchService:
                     confirmed_context=project.get("confirmed_spec"), conversation_history=project.get("messages", []),
                     plc_model=project.get("plc_model", "FX3U"), revision=(program or {}).get("revision", 0) + 1,
                     requirement_text=text, image_attachments=images, model_name=snapshot.get("model", {}).get("model"), response_language=language)
-                metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(provider=provider, check_cancelled=ctx.checkpoint)).run()
+                metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(
+                    provider=provider, check_cancelled=ctx.checkpoint, preserve_rejected_candidate=True
+                )).run()
             ctx.checkpoint()
             output = {"generation": metadata}
             payload = {"project_id": project_id, "target_mode": metadata["target_mode"],

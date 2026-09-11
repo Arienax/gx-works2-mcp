@@ -192,6 +192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Diagnostics */
+        get: operations["job_diagnostics_api_jobs__job_id__diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/events": {
         parameters: {
             query?: never;
@@ -237,6 +254,23 @@ export interface paths {
         get: operations["generation_preview_api_jobs__job_id__preview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Repair Generation */
+        post: operations["repair_generation_api_jobs__job_id__repair_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -289,7 +323,8 @@ export interface paths {
         get: operations["project_api_projects__project_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Project */
+        delete: operations["delete_project_api_projects__project_id__delete"];
         options?: never;
         head?: never;
         /** Update Project */
@@ -931,6 +966,11 @@ export interface components {
             /** Version Id */
             version_id?: string | null;
         };
+        /** GenerationRepair */
+        GenerationRepair: {
+            /** Request Id */
+            request_id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1468,7 +1508,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "unsupported_script" | "non_english_script" | "japanese_script" | "latin_prose" | "ambiguous_han_only" | "invalid_prose_field" | "invalid_json_object" | "invalid_code_field" | "invalid_response" | "invalid_shared_input" | "invalid_ladder_structure" | "repair_base_invalid" | "repair_identity_invalid" | "repair_shape_invalid" | "repair_scope_violation" | "repair_no_progress";
+            reason: "unsupported_script" | "non_english_script" | "japanese_script" | "latin_prose" | "ambiguous_han_only" | "invalid_prose_field" | "invalid_json_object" | "invalid_code_field" | "invalid_response" | "invalid_shared_input" | "invalid_ladder_structure" | "field_too_long" | "repair_base_invalid" | "repair_identity_invalid" | "repair_shape_invalid" | "repair_scope_violation" | "repair_no_progress";
         };
         /** SFCInput */
         SFCInput: {
@@ -1970,6 +2010,37 @@ export interface operations {
             };
         };
     };
+    job_diagnostics_api_jobs__job_id__diagnostics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     events_api_jobs__job_id__events_get: {
         parameters: {
             query?: {
@@ -2054,6 +2125,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repair_generation_api_jobs__job_id__repair_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerationRepair"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
                 };
             };
             /** @description Validation Error */
@@ -2158,6 +2264,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicObject"];
                 };
             };
             /** @description Validation Error */

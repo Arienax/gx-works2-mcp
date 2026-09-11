@@ -769,6 +769,22 @@
         "title": "FBDProposal",
         "type": "object"
       },
+      "GenerationRepair": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "GenerationRepair",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2575,6 +2591,7 @@
               "invalid_response",
               "invalid_shared_input",
               "invalid_ladder_structure",
+              "field_too_long",
               "repair_base_invalid",
               "repair_identity_invalid",
               "repair_shape_invalid",
@@ -3543,6 +3560,43 @@
         "summary": "Cancel"
       }
     },
+    "/api/jobs/{job_id}/diagnostics": {
+      "get": {
+        "operationId": "job_diagnostics_api_jobs__job_id__diagnostics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Diagnostics"
+      }
+    },
     "/api/jobs/{job_id}/events": {
       "get": {
         "operationId": "events_api_jobs__job_id__events_get",
@@ -3694,6 +3748,55 @@
         "summary": "Generation Preview"
       }
     },
+    "/api/jobs/{job_id}/repair": {
+      "post": {
+        "operationId": "repair_generation_api_jobs__job_id__repair_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRepair"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Repair Generation"
+      }
+    },
     "/api/openapi.json": {
       "get": {
         "operationId": "schema_api_openapi_json_get",
@@ -3765,6 +3868,43 @@
       }
     },
     "/api/projects/{project_id}": {
+      "delete": {
+        "operationId": "delete_project_api_projects__project_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project"
+      },
       "get": {
         "operationId": "project_api_projects__project_id__get",
         "parameters": [

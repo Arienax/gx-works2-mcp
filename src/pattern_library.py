@@ -36,7 +36,7 @@ class KnowledgeRouterResult:
 KNOWLEDGE_BUNDLES = {
     "task_router": """
 ## PLC workflow router
-- Classify the user request before writing code: generate, edit, review, debug, explain, sfc, or io_mapping.
+- Classify the user request before writing code: analysis, generate, edit, review, debug, explain, sfc, or io_mapping.
 - Use the smallest relevant rule set. Do not mix vendor ecosystems unless the user explicitly asks for migration.
 - If the request is incomplete, list open points instead of silently inventing safety-critical parameters.
 - Never auto-add stop or emergency-stop inputs. Use stop/e-stop only when the
@@ -499,7 +499,7 @@ class KnowledgeRouter:
         if task_type in {"review", "program_review", "debug"}:
             bundles.append("output_ownership")
             bundles.append("debugging" if task_type == "debug" else "review")
-        if task_type in {"generate", "edit", "repair", "debug_fix", "contract_repair"}:
+        if task_type in {"analysis", "generate", "edit", "repair", "debug_fix", "contract_repair"}:
             bundles.extend(["io_mapping", "output_ownership", "scan_semantics"])
         if task_type in {"repair", "debug_fix", "contract_repair"}:
             bundles.append("debugging")

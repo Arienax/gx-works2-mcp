@@ -263,8 +263,8 @@ def main():
         "vector_embeddings"
     ] = vector_count
     manifest["verification"]["vector_status"] = "ready"
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    manifest_path.write_bytes(
+        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     )
     print(json.dumps({**metadata, "artifact_bytes": output.stat().st_size}))
     return 0

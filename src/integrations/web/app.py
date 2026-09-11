@@ -24,7 +24,7 @@ from application.workspace import ConflictError, WorkspaceBusyError
 from .security import LocalSecurity
 from . import responses as dto
 from .schemas import (Login, ProjectCreate, ProjectUpdate, ActivateVersion, SpecUpdate,
-                      JobCreate, ProposalDecision, ExecutionProposal, AgentCall,
+                      JobCreate, GenerationRepair, ProposalDecision, ExecutionProposal, AgentCall,
                       SettingsUpdate, ApprovalSettingsUpdate, ModelProfileCreate, ModelKeyUpdate, ModelConnectionTest,
                       AttachmentUpload, SFCInput, FBDProposal)
 
@@ -233,6 +233,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     def cancel(job_id: str):
         service.writable()
         return service.jobs.cancel(job_id)
+
+    @app.post("/api/jobs/{job_id}/repair", status_code=202, response_model=dto.Job, response_model_exclude_unset=True)
+    def repair_generation(job_id: str, command: GenerationRepair):
+        return service.repair_generation(job_id, command.request_id)
 
     @app.get("/api/jobs/{job_id}/diagnostics")
     def job_diagnostics(job_id: str, request: Request):

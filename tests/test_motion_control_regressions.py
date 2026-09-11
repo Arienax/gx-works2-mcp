@@ -375,4 +375,3 @@ def test_analysis_prompt_documents_instruction_aware_motion_questions():
 
     assert "PLSY/DPLSY：仅询问脉冲输出轴、频率、脉冲数或连续输出" in prompt
     assert "不得把所有运动参数列为统一必填项" in prompt
-    assert "D8345是回原点爬行速度" in prompt

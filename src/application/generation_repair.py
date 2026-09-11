@@ -136,8 +136,9 @@ _SEGMENTS = frozenset({"rungs", "rung_id", "branches", "branch_id", "y_offset_le
     "header_element", "inputs", "outputs", "type", "address", "expression", "opcode", "operands",
     "label", "debug_note", "value", "device_comments", "mode", "delete_rung_ids", "confirmed_spec",
     "selected_approach", "networks"})
-REPAIR_REASONS = frozenset({"invalid_shared_input", "invalid_ladder_structure", "repair_base_invalid",
-    "repair_identity_invalid", "repair_shape_invalid", "repair_scope_violation", "repair_no_progress"})
+REPAIR_REASONS = frozenset({"invalid_shared_input", "invalid_ladder_structure", "field_too_long",
+    "repair_base_invalid", "repair_identity_invalid", "repair_shape_invalid", "repair_scope_violation",
+    "repair_no_progress"})
 
 
 def validation_diagnostic(error):
@@ -151,17 +152,19 @@ def validation_diagnostic(error):
     reason = (error.reason if isinstance(error, RepairAssemblyError) else
               "invalid_json_object" if isinstance(error, json.JSONDecodeError) else
               "invalid_shared_input" if "shared_inputs" in safe and "parallel_block" in text else
+              "field_too_long" if ("must be <=" in text or "invalid text length" in text) else
               "invalid_ladder_structure")
     return {"path": "content$" + ("." + ".".join(safe) if safe else ""), "reason": reason}
 
 
 class GenerationValidationError(GenerationError):
-    def __init__(self, errors, *, attempts, language, stop_reason="attempt_limit"):
+    def __init__(self, errors, *, attempts, language, stop_reason="attempt_limit",
+                 max_attempts=MAX_VALIDATION_REPAIRS):
         rows = [validation_diagnostic(error) for error in errors][-16:]
         self.diagnostics = {"response_language": language, "contract_name": "ladder",
             "diagnostic_id": hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()[:16],
             "violations": rows, "violation_count": len(rows), "truncated": False,
             "stage": "generation_validation", "attempt_count": attempts,
-            "max_attempts": MAX_VALIDATION_REPAIRS, "stop_reason": stop_reason}
+            "max_attempts": max_attempts, "stop_reason": stop_reason}
         super().__init__("梯形图候选未通过硬校验；未接受任何程序。" +
                          "; ".join(row["path"] + ": " + row["reason"] for row in rows))

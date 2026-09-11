@@ -18,6 +18,10 @@ NumPy LSA 向量索引；PDF 解析、第三方 Markdown 导入和向量构建�
 
 官方源文件、地址和 SHA-256 记录在 `sources.json`。构建时会强制校验文件哈希。
 
+当前内置的分析设计知识源：
+
+- `design_patterns.json`：人工整理的 PLC 控制架构选择知识，仅以 `task_types=analysis` 写入 SQLite；它描述方案之间的结构差异、适用条件与取舍，不作为 PLC 型号/指令事实的权威来源。
+
 当前打包的第三方支持知识源：
 
 - `Serhioromano/gxw2-skill` 1.6.1：GX Works 2 / FX 系列 ST、CSV Label Editor、设备、数据类型、兼容性、指令说明和 `.iecst/.csv` 示例。
@@ -91,6 +95,7 @@ deterministic cross-signal reranker + source priority + task-aware ranking
 
 ```powershell
 python tools/build_fx3u_knowledge_v3.py
+python tools/import_design_patterns.py
 python tools/import_gxw2_skill.py
 python tools/tune_gxw2_skill_ranking.py
 python tools/build_dense_embeddings.py
