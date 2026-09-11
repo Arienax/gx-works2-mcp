@@ -46,7 +46,7 @@ Web 发布包无需另行安装 Python、Node.js 或 Qt。
 
 ### 源码安装
 
-以下命令启动保留的 Qt 桌面入口：
+Web 源码版本先安装后端运行依赖，再使用根目录的一键前端构建脚本：
 
 ```powershell
 git clone https://github.com/Arienax/gxworks-agent.git
@@ -54,21 +54,21 @@ cd gxworks-agent
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements/web.txt
 
-pip install -r requirements.txt
-python src\main.py
-```
+.\build-web.bat --no-pause
 
-构建并启动 Web 源码版本：
-
-```powershell
-python -m pip install -r requirements-web.txt
-Push-Location web
-npm ci
-npm run build
-Pop-Location
 $env:PYTHONPATH = (Resolve-Path .\src).Path
 python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --port 8765 --open-browser
+```
+
+`build-web.bat` 固定执行 `npm ci → npm run types → npm run build`，构建结果写入 `web/dist`。
+
+保留的 Qt 桌面开发入口仍可单独使用：
+
+```powershell
+python -m pip install -r requirements.txt
+python src\main.py
 ```
 
 运行测试：
@@ -80,7 +80,7 @@ pytest -q
 仓库还保留 Windows 7 兼容依赖：
 
 ```powershell
-pip install -r requirements-win7.txt
+pip install -r requirements/win7.txt
 ```
 
 API Key 保存在 Windows Credential Manager 中，不提交到仓库配置文件。
@@ -652,10 +652,13 @@ src/                         PLC 核心、工作流、适配器与应用服务
 web/                         React/Vite Web 工作台
 simulator_gateway/           隔离的 GX Simulator2 网关
 benchmarks/                  检索与 Agent 路由基准测试
+packaging/pyinstaller/       PyInstaller 构建描述
+requirements/                Web、MCP、Win7 与 GXW 测试专用依赖
 docs/integrations/           Web、MCP、Codex 及集成文档
 docs/architecture/           架构与迁移记录
 docs/research/               GXW 逆向证据与研究结论
 research/                    受控 GXW 模型、结果与证据辅助工具
+scripts/                     启动、构建与发布辅助脚本
 tests/                       确定性回归测试
 tools/                       GXW 与工程实用工具
 ```

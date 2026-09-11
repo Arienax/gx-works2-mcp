@@ -32,7 +32,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements.txt
-            requirements-web.txt
+            requirements/web.txt
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install project and Web test dependencies
         run: |
-          python -m pip install -r requirements.txt -r requirements-web.txt
+          python -m pip install -r requirements.txt -r requirements/web.txt
           python -m pip check
       - name: Compile Python sources
         run: python -m compileall -q src tests
@@ -75,9 +75,7 @@ jobs:
             tests/test_analog_instruction_regressions.py `
             tests/test_contract_repair_policy.py `
             tests/test_instruction_registry.py
-      - name: Build Web frontend
+      - name: Build Web frontend through the repository entry point
         run: |
-          Push-Location web
-          npm ci
-          npm run build
-          Pop-Location
+          & .\build-web.bat --no-pause
+          if ($LASTEXITCODE -ne 0) { throw 'Web frontend build failed.' }

@@ -46,27 +46,29 @@ See [Web workbench guide](docs/integrations/web.md) for source installation, app
 
 ### Source installation
 
+For the Web source build, install the backend runtime once and use the root one-click frontend builder:
+
 ```powershell
 git clone https://github.com/Arienax/gxworks-agent.git
 cd gxworks-agent
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements/web.txt
 
-pip install -r requirements.txt
-python src\main.py
-```
+.\build-web.bat --no-pause
 
-For the Web source build:
-
-```powershell
-python -m pip install -r requirements-web.txt
-Push-Location web
-npm ci
-npm run build
-Pop-Location
 $env:PYTHONPATH = (Resolve-Path .\src).Path
 python -m integrations.web --workspace "D:\PLCWorkspaces\my-workspace" --port 8765 --open-browser
+```
+
+`build-web.bat` performs the reproducible frontend sequence `npm ci → npm run types → npm run build` and writes the result to `web/dist`.
+
+The retained Qt desktop development entry is still available separately:
+
+```powershell
+python -m pip install -r requirements.txt
+python src\main.py
 ```
 
 Run the test suite with:
@@ -78,7 +80,7 @@ pytest -q
 A Windows 7 compatibility dependency set is also retained:
 
 ```powershell
-pip install -r requirements-win7.txt
+pip install -r requirements/win7.txt
 ```
 
 API keys are stored in Windows Credential Manager rather than committed into repository configuration files.
@@ -646,10 +648,13 @@ src/                         PLC core, workflows, adapters, application services
 web/                         React/Vite Web workbench
 simulator_gateway/           isolated GX Simulator2 gateway
 benchmarks/                  retrieval and agent-routing benchmarks
+packaging/pyinstaller/       PyInstaller build specifications
+requirements/                optional Web, MCP, Win7 and GXW-test dependency sets
 docs/integrations/           Web, MCP, Codex and integration documentation
 docs/architecture/           architecture and migration records
 docs/research/               GXW reverse-engineering evidence and findings
 research/                    controlled GXW models, results, and evidence helpers
+scripts/                     launch, build and release helpers
 tests/                       deterministic regression suite
 tools/                       GXW and engineering utilities
 ```

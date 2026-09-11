@@ -11,7 +11,8 @@
 
 ## 重要入口
 
-- `src/main.py`、`src/qt_compat.py`：PyQt 桌面及 Win7 兼容层。
+- `start-web.cmd`：Windows 发布包/源码 Web 工作台启动入口；`build-web.bat`：源码前端一键构建入口。
+- `src/main.py`、`src/qt_compat.py`：保留的 PyQt 桌面及 Win7 兼容层。
 - `src/plc_agent.py`、`src/model_provider.py`：内置编排及规范消息类型。
 - `src/tool_runtime.py`、`src/plc_agent_tools.py`：共享运行时、注册表、白名单、ToolContext。
 - `src/plc_core.py`、`src/plc_ir.py`、`src/plc_*validator.py`、`src/plc_static_analyzer.py`：确定性工程逻辑。
@@ -19,6 +20,8 @@
 - `src/integrations/mcp/`：独立 MCP 服务、上下文提供器与协议适配。
 - `src/gxworks2/`、`src/simulator/`、`simulator_gateway/`：GX Works2、GX Simulator2 与 MX Component 网关边界。
 - `docs/integrations/mcp.md`、`docs/integrations/codex.md`：启动、配置、已实现与未来边界。
+- `packaging/pyinstaller/`：桌面、Win7 与 Web 的 PyInstaller 构建描述；不要在仓库根新增 `.spec`。
+- `requirements/`：Web、MCP、Win7 与 GXW 测试的专用依赖集；根 `requirements.txt` 仅保留 Qt 桌面开发环境。
 
 ## 安全约束
 
@@ -38,4 +41,4 @@ python -m pytest -q tests/test_mcp.py tests/test_plc_agent.py tests/test_plc_cor
 python scripts/mcp_smoke.py
 ```
 
-完整桌面测试需要 `requirements.txt`（Win7 使用 `requirements-win7.txt`）；MCP 测试/烟测另需 Python 3.10+ 和 `requirements-mcp.txt`。未安装 MCP 时该测试模块跳过，不能据此声称 MCP 验证通过。GX/Simulator/MX 的实际集成需要相应 Windows 软件；单元测试使用临时项目和模拟后端，不操作真实 PLC。提交前检查全部改动，保留用户已有修改。
+完整桌面测试需要根目录 `requirements.txt`（Win7 使用 `requirements/win7.txt`）；Web 环境使用 `requirements/web.txt`；MCP 测试/烟测另需 Python 3.10+ 和 `requirements/mcp.txt`。未安装 MCP 时该测试模块跳过，不能据此声称 MCP 验证通过。GX/Simulator/MX 的实际集成需要相应 Windows 软件；单元测试使用临时项目和模拟后端，不操作真实 PLC。提交前检查全部改动，保留用户已有修改。

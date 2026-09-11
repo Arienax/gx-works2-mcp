@@ -58,7 +58,7 @@ jobs:
           python-version: '3.12'
           architecture: x64
           cache: pip
-          cache-dependency-path: requirements-web.txt
+          cache-dependency-path: requirements/web.txt
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -85,7 +85,7 @@ jobs:
           "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
       - name: Install Web runtime and packaging dependencies
         run: |
-          python -m pip install -r requirements-web.txt pyinstaller==6.21.0
+          python -m pip install -r requirements/web.txt pyinstaller==6.21.0
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
           python -m pip check
           if ($LASTEXITCODE -ne 0) { throw 'Dependency consistency check failed.' }

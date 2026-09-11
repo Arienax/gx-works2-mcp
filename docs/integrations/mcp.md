@@ -30,7 +30,7 @@ From the checkout root in Windows PowerShell:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-mcp.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements/mcp.txt
 $env:PYTHONPATH = (Resolve-Path .\src).Path
 $Workspace = '<existing SessionStore workspace directory>'
 $ProjectId = '<saved project ID>'
@@ -47,7 +47,7 @@ Generic shell form, from a checkout with an existing saved workspace:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-mcp.txt
+.venv/bin/python -m pip install -r requirements/mcp.txt
 PYTHONPATH="$PWD/src" .venv/bin/python -m integrations.mcp --stdio \
   --workspace '<existing-workspace>' --project '<project-id>' --version v0001
 ```
@@ -246,7 +246,7 @@ temporary artifact pipeline; generated temporary files are removed by PLC Core.
 With the MCP environment active, run from the checkout root:
 
 ```text
-python -m pip install -r requirements-mcp.txt pytest
+python -m pip install -r requirements/mcp.txt pytest
 python -m pytest -q tests/test_mcp.py tests/test_architecture_boundaries.py
 python scripts/mcp_smoke.py
 ```

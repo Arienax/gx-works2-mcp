@@ -7,7 +7,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 
-root = Path(SPECPATH).resolve()
+root = Path(SPECPATH).resolve().parents[1]
 required = (
     "web/dist/index.html", "resources/config.default.json", "resources/pattern_library.json",
     "resources/plc_models.json", "resources/knowledge/fx3u_knowledge.sqlite",

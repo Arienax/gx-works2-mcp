@@ -50,7 +50,7 @@ if ([string]::IsNullOrWhiteSpace($Python)) {
     $Python = Join-Path $repositoryRoot ".venv\Scripts\python.exe"
 }
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
-    throw "Provide -Python with a Python 3.10+ environment containing requirements-web.txt and PyInstaller."
+    throw "Provide -Python with a Python 3.10+ environment containing requirements/web.txt and PyInstaller."
 }
 & $Python -c "import sys; assert sys.version_info >= (3, 10); import PyInstaller, fastapi, uvicorn, openai, numpy; import pythoncom, pywinauto"
 if ($LASTEXITCODE -ne 0) { throw "Web packaging dependencies are missing from the selected environment." }
@@ -114,7 +114,8 @@ try {
     $env:GX_WEB_PACKAGE_ALLOW_WITHOUT_GATEWAY = $(if ($AllowWithoutGateway) { "1" } else { "0" })
     Push-Location $repositoryRoot
     try {
-        & $Python -m PyInstaller --noconfirm --distpath $distRoot --workpath $buildRoot web.spec
+        $spec = Join-Path $repositoryRoot "packaging\pyinstaller\web.spec"
+        & $Python -m PyInstaller --noconfirm --distpath $distRoot --workpath $buildRoot $spec
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller Web package build failed." }
     } finally {
         Pop-Location

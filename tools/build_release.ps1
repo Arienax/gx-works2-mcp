@@ -27,7 +27,7 @@ try {
         --clean `
         --workpath $workPath `
         --distpath $distPath `
-        (Join-Path $projectRoot "main.spec")
+        (Join-Path $projectRoot "packaging\pyinstaller\desktop.spec")
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code: $LASTEXITCODE"
     }
