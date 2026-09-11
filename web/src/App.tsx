@@ -145,6 +145,7 @@ export default function App() {
   const openedDrafts = useRef(new Set<string>());
   const activeProjectRef = useRef(pid);
   const projectEpoch = useRef(0);
+  const composerProjectRef = useRef("");
   useEffect(() => {
     projectEpoch.current += 1;
     previewEpoch.current += 1;
@@ -286,6 +287,12 @@ export default function App() {
       .then((value) => {
         if (stopped) return;
         setProject(value);
+        if (composerProjectRef.current !== value.id) {
+          composerProjectRef.current = value.id;
+          setIntent(value.confirmed_spec && (value.versions?.length || 0) > 0
+            ? "generation"
+            : "analysis");
+        }
         if (!value.versions?.length && value.target_mode === "fbd") setTab("fbd");
         const binding = value.id + ":" + (value.confirmed_spec_hash || "");
         if (specBinding.current !== binding) {
@@ -418,7 +425,7 @@ export default function App() {
               }
             })
             .catch(() => {});
-        setRefresh((n) => n + 1);
+        void reloadProjectSilently(value.project_id);
       }
     };
     return () => {
@@ -547,6 +554,24 @@ export default function App() {
     setTab("ladder");
   }
 
+  async function reloadProjectSilently(targetPid = pid) {
+    const epoch = projectEpoch.current;
+    if (!targetPid || activeProjectRef.current !== targetPid) return;
+    const fresh = await api<Project>(`/projects/${targetPid}`);
+    if (epoch !== projectEpoch.current ||
+        activeProjectRef.current !== targetPid || fresh.id !== targetPid) return;
+    setProject(fresh);
+    setProjects((old) => old.map((item) => item.id === fresh.id ? fresh : item));
+    setVid((old) => fresh.versions?.some((item) => item.id === old)
+      ? old
+      : fresh.active_version_id || fresh.versions?.[0]?.id || "");
+    const binding = fresh.id + ":" + (fresh.confirmed_spec_hash || "");
+    if (!specDirty.current && specBinding.current !== binding) {
+      specBinding.current = binding;
+      setSpec((fresh.confirmed_spec as Spec) || null);
+    }
+  }
+
   async function refreshDrawing() {
     const epoch = projectEpoch.current;
     setRefreshingDrawing(true);
@@ -556,10 +581,10 @@ export default function App() {
       else if (diagnosticJobId) await openGenerationResult(theme, true);
       else if (version?.target_mode === "ladder") await redrawVersion();
       else if (generationResult.id) await openGenerationResult(theme, true);
-      else { setOutputRetry((n) => n + 1); refreshAll(); return; }
+      else { setOutputRetry((n) => n + 1); void reloadProjectSilently(pid); return; }
       if (epoch === projectEpoch.current) {
         setOutputRetry((n) => n + 1);
-        refreshAll();
+        void reloadProjectSilently(pid);
         setNotice(t("预览已刷新，未调用模型或修改程序。"));
       }
     } finally {
@@ -572,7 +597,6 @@ export default function App() {
     extra: Record<string, unknown> = {},
   ) {
     if (!project || project.id !== pid) return;
-    if (kind === "generation" && !canGenerate) return;
     const epoch = projectEpoch.current;
     const job = await api<Job>("/jobs", "POST", {
       kind,
@@ -593,10 +617,13 @@ export default function App() {
     setJobs((old) => [job, ...old]);
     setPanel("agent");
     setAttachments([]);
-    refreshAll();
+    if (kind === "generation") setText("");
   }
   async function saveSpec(value: Spec) {
     const epoch = projectEpoch.current;
+    const generateAfterSave = currentJob?.kind === "analysis" &&
+      currentJob.status === "completed" && !!analysisOutput?.spec_draft &&
+      jobId === currentJob.id;
     const result = await api<{ valid: boolean; spec?: Spec; hash?: string; issues?: { errors?: { path: string; message: string }[] } }>(
       `/projects/${pid}/spec`,
       "PUT",
@@ -625,7 +652,8 @@ export default function App() {
     setNotice(t("规格已确认"));
     setIntent("generation");
     setPanel("agent");
-    refreshAll();
+    if (generateAfterSave) await submitJob("generation");
+    else void reloadProjectSilently(pid);
   }
   async function showProposal(value: Proposal, previewTheme = theme) {
     if (value.action === "accept_local" && value.status === "accepted" && typeof value.result?.version_id === "string") {
@@ -680,7 +708,7 @@ export default function App() {
     setSelectedProposal(null);
     setPreview(null);
     setNotice(t("操作完成"));
-    refreshAll();
+    await reloadProjectSilently(pid);
   }
   async function proposeExecution(
     action: string,
@@ -1017,7 +1045,7 @@ export default function App() {
             })}>{t("转换为 FBD")}</Button>}
             {version && vid !== project?.active_version_id && <Button disabled={!canWrite} onClick={() => void guarded(async () => {
               await api(`/projects/${pid}/active-version`, "POST", {version_id:vid,expected_active_version_id:project?.active_version_id});
-              refreshAll();
+              await reloadProjectSilently(pid);
             })}>{t("设为当前版本")}</Button>}
           </>}/>
 
@@ -1481,7 +1509,7 @@ export default function App() {
                   )}
                   <GenerationResult result={generationResult} busy={busy || loading}
                     onOpen={() => void guarded(() => openGenerationResult())}
-                    onRetry={() => { setOutputRetry((n) => n + 1); refreshAll(); }}
+                    onRetry={() => { setOutputRetry((n) => n + 1); void reloadProjectSilently(pid); }}
                     onSpec={() => setPanel("spec")} t={t} />
                   <JobFailure job={currentJob} t={t} />
                   {!!analysisOutput?.spec_draft && (
@@ -1774,7 +1802,7 @@ export default function App() {
               onClick={() =>
                 void guarded(async () => {
                   await api(`/jobs/${jobId}/cancel`, "POST");
-                  refreshAll();
+                  void reloadProjectSilently(pid);
                 })
               }
             >
