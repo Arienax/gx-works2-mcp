@@ -53,6 +53,9 @@ jobs:
               if not header or header.group(1) != header.group(2):
                   raise SystemExit('Unsupported patch header')
               path = header.group(1)
+              if path == '.github/workflows/generation-fast-path.yml':
+                  print('defer workflow to connector:', path)
+                  continue
               index = re.search(r'(?m)^index ([0-9a-f]+)\.\.([0-9a-f]+)', section)
               old = index.group(1) if index else None
               new = index.group(2) if index else None
@@ -84,7 +87,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Fast-path architecture tests failed.' }
       - name: Commit real source and remove bootstrap inputs
         run: |
-          git rm -r --ignore-unmatch build_inputs/generation_fast_path .github/workflows/bootstrap-generation-fast-path.yml
+          git rm -r --ignore-unmatch build_inputs/generation_fast_path
           Remove-Item generation-fast-path.patch,generation-fast-path.filtered.patch -ErrorAction SilentlyContinue
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
