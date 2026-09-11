@@ -46,6 +46,10 @@ class JobCreate(Command):
     deep: bool = True
 
 
+class GenerationRepair(Command):
+    request_id: str = Field(min_length=1, max_length=128)
+
+
 class ProposalDecision(Command):
     decision: Literal["accept", "reject"]
 

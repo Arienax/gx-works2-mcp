@@ -68,6 +68,7 @@ class GenerationDependencies:
     generate_json: Optional[Callable] = None
     provider: object = None
     check_cancelled: Optional[Callable] = None
+    preserve_rejected_candidate: bool = False
 
 
 
@@ -159,19 +160,29 @@ class GenerationWorkflow:
             streaming_succeeded = False
             is_edit_mode = self.target_mode == "ladder" and self.previous_json is not None
             model_user_input = self.user_input
-            if is_edit_mode and not self.repair_mode:
-                # This is a model instruction, not an application-side gate.
-                # The parser deliberately continues to accept both partial and
-                # full JSON so an imperfect model choice never becomes another
-                # hard-validation failure or hidden retry loop.
-                model_user_input = (
-                    '这是对系统提供的 Current version JSON 的修改请求。除非用户明确要求整体重写，'
-                    '优先返回 mode="partial"：device_comments 只列新增或修改项，rungs 只列修改或新增的完整梯级，'
-                    'delete_rung_ids 只列需要删除的梯级；不要重复输出未修改梯级。'
-                    '如果你仍返回完整 JSON，应用也会正常接受，不需要为了格式选择重新生成。\n\n'
-                    '用户修改要求：\n'
-                    + self.user_input
+            if self.target_mode == "ladder" and not self.repair_mode:
+                output_discipline = (
+                    '输出协议纪律：只返回协议允许的 JSON 字段，不要输出解释性正文。'
+                    'debug_note 是可选字段，默认省略；不要用 debug_note 记录推理、修改原因或长说明。'
+                    '已有 device_comments 无必要不要改写。label、debug_note、device_comment 单条文本目标不超过48字符，'
+                    '硬上限64字符；返回前自行检查字段名和文本长度。\n\n'
                 )
+                if is_edit_mode:
+                    # This is a model instruction, not an application-side gate.
+                    # The parser deliberately continues to accept both partial and
+                    # full JSON so an imperfect model choice never becomes another
+                    # hard-validation failure or hidden retry loop.
+                    model_user_input = (
+                        output_discipline
+                        + '这是对系统提供的 Current version JSON 的修改请求。除非用户明确要求整体重写，'
+                        '优先返回 mode="partial"：device_comments 只列确实需要修改的注释，rungs 只列修改或新增的完整梯级，'
+                        'delete_rung_ids 只列需要删除的梯级；不要重复输出未修改梯级。'
+                        '如果你仍返回完整 JSON，应用也会正常接受，不需要为了格式选择重新生成。\n\n'
+                        '用户修改要求：\n'
+                        + self.user_input
+                    )
+                else:
+                    model_user_input = output_discipline + '用户要求：\n' + self.user_input
             try:
                 stream_model_response = self.dependencies.stream_response or api.stream_model_response
 
@@ -325,14 +336,26 @@ class GenerationWorkflow:
                     validate_st_json(parsed)
                 return parsed
 
+            def persist_repair_candidate():
+                # Private staging only: only the operator Workbench opts into this.
+                # Low-level workflows and explicit repair tools retain zero-artifact failure semantics.
+                if not self.dependencies.preserve_rejected_candidate:
+                    return
+                if self.target_mode != "ladder" or not isinstance(json_str, str):
+                    return
+                if not json_str.strip() or len(json_str) > 512000:
+                    return
+                (self.output_dir / "repair_candidate.json").write_text(json_str, encoding="utf-8")
+
             validation_errors = (PLCJsonValidationError, PLCIRValidationError, json.JSONDecodeError)
             try:
                 parsed_json = parse_candidate(json_str)
             except validation_errors as error:
-                # No hidden semantic re-generation loop. The diagnostics layer
-                # records the exact parse/shape failure for the operator.
+                # No hidden semantic re-generation loop. Preserve the rejected
+                # candidate privately so an operator can explicitly request one repair.
+                persist_repair_candidate()
                 raise GenerationValidationError(
-                    [error], attempts=0, language=self.response_language,
+                    [error], attempts=0, max_attempts=0, language=self.response_language,
                     stop_reason="final_validation",
                 ) from error
 
@@ -463,8 +486,12 @@ class GenerationWorkflow:
         except (GenerationError, JobCancelled):
             raise
         except (PLCJsonValidationError, PLCIRValidationError) as error:
+            try:
+                persist_repair_candidate()
+            except (NameError, OSError):
+                pass
             raise GenerationValidationError(
-                [error], attempts=0, language=self.response_language,
+                [error], attempts=0, max_attempts=0, language=self.response_language,
                 stop_reason="final_validation",
             ) from error
         except Exception as error:

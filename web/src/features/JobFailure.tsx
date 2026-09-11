@@ -1,4 +1,5 @@
 import type { Job } from "../api/client";
+import { Button } from "../components/ui";
 
 const reasons: Record<string, string> = {
   latin_prose: "回复含有不符合所选语言的英文说明",
@@ -10,7 +11,8 @@ const reasons: Record<string, string> = {
   invalid_prose_field: "说明字段格式错误",
   invalid_code_field: "程序字段格式错误",
   invalid_shared_input: "公共串联输入中不能包含并联块；请在分支输入中表达并联逻辑。",
-  invalid_ladder_structure: "梯形图结构、指令或扫描语义未通过检查。",
+  invalid_ladder_structure: "梯形图结构或指令编码不符合协议。",
+  field_too_long: "文本字段超过协议长度限制；请缩短或省略该说明。",
   repair_base_invalid: "缺少可合并的完整候选，修复必须返回完整程序。",
   repair_identity_invalid: "梯级编号重复或无效，无法安全合并修复。",
   repair_shape_invalid: "修复响应的 JSON 结构不符合协议。",
@@ -32,12 +34,11 @@ const errorMessages: Record<string, string> = {
 function FailureMessage({ job, t }: { job: Job; t: (key: string) => string }) {
   if (!job.error_code) return null;
   if (job.error_code === "generation_validation_failed") return <div className="job-failure" role="alert">
-    <p className="error-text">{t("梯形图候选未通过硬校验，未接受任何程序。")}</p>
-    <p>{t("已执行结构修复")} {job.error_details?.attempt_count ?? 0}/{job.error_details?.max_attempts ?? 3}</p>
+    <p className="error-text">{t("梯形图候选结构不符合协议，未接受任何程序。")}</p>
     {job.error_details?.violations?.map((violation, i) => <p key={i}>
       <code>{violation.path}</code><br /><span>{t(reasons[violation.reason] || "回复内容不符合要求")}</span>
     </p>)}
-    <p className="muted">{t("确认规格仍然保留。请根据以上原因重试生成；不要重新建立工程。")}</p>
+    <p className="muted">{t("系统没有自动再次调用模型。可由你确认后仅修复当前候选的结构问题。")}</p>
   </div>;
   if (job.error_code !== "response_rejected") return <p className="error-text">{t(errorMessages[job.error_code] || job.error_code)}</p>;
   return <div className="job-failure" role="alert">
@@ -50,11 +51,17 @@ function FailureMessage({ job, t }: { job: Job; t: (key: string) => string }) {
   </div>;
 }
 
-
-export function JobFailure({ job, t }: { job: Job; t: (key: string) => string }) {
+export function JobFailure({ job, busy, onRepair, t }: {
+  job: Job;
+  busy?: boolean;
+  onRepair?: () => void;
+  t: (key: string) => string;
+}) {
   if (!job.error_code) return null;
+  const repairable = job.kind === "generation" && job.error_code === "generation_validation_failed" && !!onRepair;
   return <section>
     <FailureMessage job={job} t={t} />
+    {repairable && <Button disabled={busy} onClick={onRepair}>{t("让 AI 修复")}</Button>}
     <div className="job-diagnostic-export">
       <a className="button secondary" href={`/api/jobs/${encodeURIComponent(job.id)}/diagnostics`} download>
         {t("下载错误诊断日志")}

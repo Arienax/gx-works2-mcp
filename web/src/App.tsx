@@ -637,6 +637,17 @@ export default function App() {
     setAttachments([]);
     if (kind === "generation") setText("");
   }
+  async function repairFailedGeneration(job: Job) {
+    if (job.kind !== "generation" || job.error_code !== "generation_validation_failed") return;
+    if (!window.confirm(t("将调用模型一次，仅修复当前候选的结构/协议错误，不重新分析需求。继续吗？"))) return;
+    const repaired = await api<Job>(`/jobs/${encodeURIComponent(job.id)}/repair`, "POST", { request_id: key() });
+    if (activeProjectRef.current !== pid) return;
+    setEvents([]);
+    setJobId(repaired.id);
+    setJobs((old) => [repaired, ...old.filter((item) => item.id !== repaired.id)]);
+    setPanel("agent");
+  }
+
   async function saveSpec(value: Spec) {
     const epoch = projectEpoch.current;
     const generateAfterSave = currentJob?.kind === "analysis" &&
@@ -1529,7 +1540,8 @@ export default function App() {
                     onOpen={() => void guarded(() => openGenerationResult())}
                     onRetry={() => { setOutputRetry((n) => n + 1); void reloadProjectSilently(pid); }}
                     onSpec={() => setPanel("spec")} t={t} />
-                  <JobFailure job={currentJob} t={t} />
+                  <JobFailure job={currentJob} busy={!canWrite}
+                    onRepair={() => void guarded(() => repairFailedGeneration(currentJob))} t={t} />
                   {!!analysisOutput?.spec_draft && (
                     <div>
                       <Button
