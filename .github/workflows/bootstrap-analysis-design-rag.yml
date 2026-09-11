@@ -56,7 +56,7 @@ jobs:
         run: python tools/build_dense_embeddings.py
       - name: Verify retrieval lanes
         run: |
-          python - <<'PY'
+          @'
           import knowledge_retriever
           q = 'FX3U 三个工位依次执行，包含多阶段顺序和延时'
           design = knowledge_retriever.retrieve_design_knowledge(q, plc_model='FX3U', task_type='analysis', top_k=2, char_budget=2400)
@@ -66,7 +66,7 @@ jobs:
           assert generation == [], 'curated design knowledge leaked into generation'
           merged = knowledge_retriever.build_knowledge_context(q, plc_model='FX3U', task_type='analysis', top_k=4, char_budget=7000)
           assert 'curated_control_design' in merged or 'CONTROL ARCHITECTURE' in merged
-          PY
+          '@ | python
       - name: Compile and test prompt/RAG boundaries
         run: |
           python -m compileall -q src tests tools/import_design_patterns.py
