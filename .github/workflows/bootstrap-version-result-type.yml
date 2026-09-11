@@ -1,0 +1,46 @@
+name: Bootstrap Typed Generated Version Result
+
+on:
+  push:
+    branches: [refactor/generation-fast-path]
+    paths:
+      - '.github/workflows/bootstrap-version-result-type.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply typed event result extraction
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          path = Path('web/src/App.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = '        const savedVersionId = value.event_type === "completed" &&\n          typeof value.payload?.result?.version_id === "string"\n            ? String(value.payload.result.version_id)\n            : "";'
+          new = '        const eventResult = value.payload?.result;\n        const savedVersionId = value.event_type === "completed" &&\n          !!eventResult && typeof eventResult === "object" && !Array.isArray(eventResult) &&\n          typeof (eventResult as Record<string, Json>).version_id === "string"\n            ? String((eventResult as Record<string, Json>).version_id)\n            : "";'
+          if text.count(old) != 1:
+              raise SystemExit(f'event result preimage mismatch: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='')
+          '@ | python
+          if ($LASTEXITCODE -ne 0) { throw 'Type narrowing replacement failed.' }
+      - name: Commit source fix
+        shell: pwsh
+        run: |
+          git config user.name 'Arienax'
+          git config user.email '1307420856@qq.com'
+          git add web/src/App.tsx
+          git diff --cached --check
+          git commit -m 'fix(web): type generated-version event result safely'
+          git push origin HEAD:refactor/generation-fast-path
