@@ -9,6 +9,7 @@ on:
       - 'scripts/_bootstrap_analysis_design_rag_v2.py'
       - 'scripts/_bootstrap_analysis_design_rag_v3.py'
       - 'scripts/_bootstrap_analysis_design_rag_v4.py'
+      - 'scripts/_bootstrap_analysis_design_rag_v5.py'
 
 permissions:
   contents: write
@@ -50,31 +51,7 @@ jobs:
           python scripts/_bootstrap_analysis_design_rag_v2.py
           python scripts/_bootstrap_analysis_design_rag_v3.py
           python scripts/_bootstrap_analysis_design_rag_v4.py
-      - name: Trace analysis knowledge wrapper contract
-        run: |
-          @'
-          import sys
-          import api
-          import knowledge_retriever
-          from prompt_context_policy import context_policy_scope
-          def fake(*args, **kwargs):
-              print('FAKE_CONTEXT_CALLED', repr(args), repr(kwargs))
-              return '# retrieved'
-          knowledge_retriever.build_knowledge_context = fake
-          code = api._build_knowledge_context.__code__
-          def trace(frame, event, arg):
-              if frame.f_code is code and event == 'exception':
-                  print('TRACE_EXCEPTION', type(arg[1]).__name__, repr(arg[1]))
-              return trace
-          sys.settrace(trace)
-          try:
-              with context_policy_scope('adaptive'):
-                  result = api._build_knowledge_context('普通三工位顺序控制', plc_model='FX3U', task_type='analysis')
-          finally:
-              sys.settrace(None)
-          print('WRAPPER_RESULT', repr(result))
-          assert '# retrieved' in result
-          '@ | python
+          python scripts/_bootstrap_analysis_design_rag_v5.py
       - name: Import curated design knowledge
         run: python tools/import_design_patterns.py
       - name: Rebuild local dense index
@@ -135,6 +112,7 @@ jobs:
             scripts/_bootstrap_analysis_design_rag_v2.py `
             scripts/_bootstrap_analysis_design_rag_v3.py `
             scripts/_bootstrap_analysis_design_rag_v4.py `
+            scripts/_bootstrap_analysis_design_rag_v5.py `
             .github/workflows/bootstrap-analysis-design-rag.yml
           git config user.name 'Arienax'
           git config user.email '1307420856@qq.com'
