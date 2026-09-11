@@ -1387,13 +1387,21 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
         if isinstance(values, dict):
             entries = list(values.items())
         elif isinstance(values, list):
+            if is_device_category:
+                add_diagnostic(
+                    "io_labels_required",
+                    "suggested_io.%s" % category_text,
+                    str(tr("普通 I/O 类别必须使用地址到非空用途说明的字典；仅地址列表已忽略。")),
+                    values,
+                )
+                continue
             entries = [(value, "") for value in values]
         else:
             metadata[category_text] = values
             add_diagnostic(
                 "invalid_io_container",
                 "suggested_io.%s" % category_text,
-                str(tr("I/O 类别必须是地址字典或地址列表，原值已移入 hardware_config。")),
+                str(tr("I/O 类别必须是地址字典；特殊软元件类别也可使用地址列表，原值已移入 hardware_config。")),
                 values,
             )
             continue
@@ -1445,6 +1453,13 @@ def _normalize_analysis_result(result, plc_model="FX3U", user_text=""):
                 label = json.dumps(label, ensure_ascii=False, separators=(",", ":"))
             else:
                 label = str(label or "").strip()
+            if is_device_category and not label:
+                add_diagnostic(
+                    "missing_io_label",
+                    path,
+                    str(tr("普通 I/O 地址缺少用途说明，已忽略该项。")),
+                )
+                continue
             if actual_kind == "SM" or (special_relays and actual_kind == "M"):
                 target_category = "special_relays"
             elif actual_kind == "SD" or (special_registers and actual_kind == "D"):
@@ -1611,6 +1626,9 @@ control_type 从 启停、顺序、定位、计数、模拟量、通讯、PID �
 }
 # suggested_io 硬约束
 - 只允许普通类别 X、Y、M、D、T、C、S，以及 special_relays、special_registers；FX5U 的 SM 地址归入 special_relays，SD 地址归入 special_registers。
+- 普通类别 X/Y/M/D/T/C/S 必须使用 JSON 对象：键为真实软元件地址，值为基于当前需求的简短非空用途说明；不得只返回地址数组。
+- 普通类别中的每个地址都必须有非空说明。若用途无法从当前需求确定，就不要把该地址写入 suggested_io，而应在 assumptions 或 missing_info 中表达不确定性。
+- special_relays / special_registers 可以使用地址数组或“地址到说明”的对象；系统软元件的固定说明允许由程序补全。
 - 类别中的键必须是该 PLC 型号下真实、语法合法且前缀一致的软元件地址。
 - CHANNEL、ADDRESS、NOTE、ANALOG_OUTPUT、模块名、通道、量程、接线和频率档位都不是 I/O 类别或地址；必须放入 hardware_config 或 assumptions。
 - 不确定的地址不得写入 suggested_io。把不确定性写入 assumptions；不要因此生成硬件必填项。
