@@ -73,6 +73,32 @@ class NullablePublicObject(RootModel[JsonObject | None]):
         return _require_public(value)
 
 
+class MCPIntegrationStatus(PublicResource):
+    service_url: str
+    project_id: str
+    bound_project_id: str | None
+    credential_ready: bool
+    launcher_ready: bool
+    codex_configured: bool
+    codex_cli_available: bool
+    codex_command: str | None
+    client_observed: bool
+    last_tool: str | None
+    last_call_at: str | None
+    generation_context_observed: bool
+    candidate_proposal_id: str | None
+
+
+class MCPIntegrationResult(PublicResource):
+    status: Literal["connected", "failed"]
+    project_id: str
+    message: str
+    service_url: str | None = None
+    tool_count: int | None = Field(default=None, ge=0)
+    codex_connected: bool | None = None
+    replaced_existing: bool | None = None
+
+
 class Artifact(PublicResource):
     id: str
     available: bool

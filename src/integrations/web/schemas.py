@@ -34,6 +34,11 @@ class SpecUpdate(Command):
     expected_hash: str | None
 
 
+class ChangeScope(Command):
+    network_ids: list[str] | None = Field(default=None, min_length=1, max_length=4096)
+    addresses: list[str] | None = Field(default=None, min_length=1, max_length=4096)
+
+
 class JobCreate(Command):
     kind: Literal["analysis", "generation", "agent", "review", "test_plan", "debug_plan", "gx_read", "gx_inspect"]
     project_id: str
@@ -44,6 +49,7 @@ class JobCreate(Command):
     attachment_ids: list[str] = Field(default_factory=list, max_length=12)
     run_id: str | None = None
     deep: bool = True
+    change_scope: ChangeScope | None = None
 
 
 class GenerationRepair(Command):
@@ -68,6 +74,7 @@ class AgentCall(Command):
     name: str = Field(max_length=64)
     arguments: dict[str, Any] = Field(default_factory=dict)
     call_id: str = Field(min_length=1, max_length=128)
+    change_scope: ChangeScope | None = None
 
 
 class ModelProfileUpdate(Command):
@@ -136,3 +143,7 @@ class SFCStep(Command):
 
 class SFCInput(Command):
     steps: list[SFCStep] = Field(min_length=1, max_length=100)
+
+
+class MCPIntegrationCommand(Command):
+    project_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")

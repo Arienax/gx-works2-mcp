@@ -3,5 +3,7 @@ fastapi==0.141.1
 uvicorn==0.52.4
 numpy==2.3.2
 openai==2.43.0
+# The Web release now ships the stdio MCP launcher beside the workbench.
+mcp==2.1.1
 pywinauto==0.6.9; sys_platform == "win32"
 pywin32>=310; sys_platform == "win32"

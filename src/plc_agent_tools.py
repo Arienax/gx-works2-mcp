@@ -282,19 +282,52 @@ def _device_summary(program_ir: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def _get_generation_context(
-    context: ToolContext, _arguments: Mapping[str, Any]
+    context: ToolContext, arguments: Mapping[str, Any]
 ) -> Dict[str, Any]:
-    from plc_generation_contract import generation_output_contract, generation_specification
+    from plc_generation_contract import generation_output_contract
+    from plc_generation_context import (
+        _build_knowledge_context, build_generation_instructions, generation_user_input,
+        public_generation_ladder, public_generation_specification, public_generation_value,
+    )
+    from prompt_context_policy import context_policy_scope
 
     confirmed_spec = _confirmed_spec(context)
+    public_spec = public_generation_specification(confirmed_spec)
+    source = context.ladder
+    if isinstance(context.program_ir, Mapping):
+        from plc_ir import ir_to_ladder
+        source = ir_to_ladder(context.program_ir)
+    current_ladder = public_generation_ladder(source)
+    user_requirement = public_generation_value(str(arguments.get("user_requirement") or ""))
+    target_mode = str(context.project.get("target_mode") or "ladder")
+    is_edit_mode = target_mode == "ladder" and current_ladder is not None
+    model_request = generation_user_input(
+        user_requirement, is_edit_mode=is_edit_mode, target_mode=target_mode,
+    )
+    with context_policy_scope():
+        instructions = build_generation_instructions(
+            model_request,
+            plc_model=context.plc_model,
+            target_mode=target_mode,
+            is_edit_mode=is_edit_mode,
+            confirmed_context=public_spec,
+            current_version_json=current_ladder,
+            # Clean retrieved text before assembly; generic path matching must
+            # never rewrite application-owned schema patterns in the prompt.
+            knowledge_builder=lambda *args, **kwargs: public_generation_value(
+                _build_knowledge_context(*args, **kwargs)),
+        )
     return {
         "project_id": context.project_id,
         "plc_model": context.plc_model,
-        "target_mode": str(context.project.get("target_mode") or "ladder"),
+        "target_mode": target_mode,
         "workflow_mode": str(context.project.get("workflow_mode") or "generate"),
         "has_confirmed_spec": isinstance(confirmed_spec, Mapping),
-        "confirmed_spec": generation_specification(confirmed_spec),
-        "output_contract": generation_output_contract(),
+        "confirmed_spec": public_spec,
+        "output_contract": generation_output_contract(allow_partial=is_edit_mode),
+        "current_version_id": context.version_id or None,
+        "generation_instructions": instructions,
+        "generation_request": model_request,
     }
 
 
@@ -311,10 +344,11 @@ def _create_program_candidate(
     candidate = core.create_program_candidate(
         arguments["ladder"],
         plc_model=context.plc_model,
-        program_name=arguments.get("program_name", "MAIN"),
+        program_name=arguments.get("program_name", (context.program_ir or {}).get("program_name", "MAIN")),
         confirmed_spec=confirmed_spec,
+        previous_program=context.program_ir,
     )
-    compiled = core.compile_project(candidate["candidate_ir"])
+    compiled = core.compile_project(candidate["candidate_ir"], validation_profile=candidate["validation_profile"])
     action = {
         "type": "accept_generated_program",
         "project_id": context.project_id,
@@ -332,14 +366,28 @@ def _create_program_candidate(
         "artifact_hashes": copy.deepcopy(compiled.get("hashes") or {}),
         "_candidate_ir": copy.deepcopy(candidate["candidate_ir"]),
         "_confirmed_spec": confirmed_spec,
+        "_validation_profile": candidate["validation_profile"],
+        "normalization": copy.deepcopy(candidate["normalization"]),
     }
+    if context.program_ir is not None:
+        action.update(base_version_id=context.version_id, base_ir_sha256=canonical_sha256(context.program_ir))
     return {
         "requires_confirmation": True,
-        "message": "新程序候选已通过确定性校验和临时编译，等待工程确认；尚未保存版本或导入 GX Works2。",
+        "message": "程序候选已通过结构检查和临时编译，等待工程确认；行为与原生验证尚未执行。",
         "candidate_id": candidate["candidate_id"],
         "revision": candidate["revision"],
         "summary": copy.deepcopy(candidate["summary"]),
         "diagnostics": copy.deepcopy(candidate["diagnostics"]),
+        "validation_profile": candidate["validation_profile"],
+        "normalization": copy.deepcopy(candidate["normalization"]),
+        "verification": {
+            "structural_checks_passed": True,
+            "deterministic_checks_passed": True,
+            "behavior_verified": False,
+            "native_verified": False,
+            "scope": "API structural acceptance, IR consistency and temporary artifact compilation only. Static findings are diagnostics. "
+                     "Input sequences, timing and requirement coverage still need independent verification.",
+        },
         "pending_action": action,
     }
 
@@ -654,7 +702,6 @@ def _request_gxworks2_import(
 
 
 def build_default_tool_registry() -> ToolRegistry:
-    from plc_generation_contract import ladder_v1_schema
 
     registry = ToolRegistry()
     registry.register(
@@ -668,15 +715,24 @@ def build_default_tool_registry() -> ToolRegistry:
     registry.register(
         ToolDefinition(
             "get_generation_context",
-            "读取当前项目的生成约束、确认规格和 ladder_v1 输出协议；无程序版本时也可用，不返回路径或模型配置。",
-            _EMPTY_OBJECT_SCHEMA,
+            "读取与内置 API 共用的生成提示、当前程序、确认规格、PLC 型号和本地手册上下文；可传本次需求改善检索。无版本时也可用，不调用模型，不返回路径或模型配置。",
+            {
+                "type": "object",
+                "properties": {
+                    "user_requirement": {
+                        "type": "string", "maxLength": 24000,
+                        "description": "本次生成或修改需求；省略时仍返回当前工程上下文。",
+                    },
+                },
+                "additionalProperties": False,
+            },
             _get_generation_context,
         )
     )
     registry.register(
         ToolDefinition(
             "create_program_candidate",
-            "提交自行设计的 ladder_v1 新程序，由 PLC Core 校验、构建 IR 并临时编译，返回待工程确认的候选；不调用模型、不保存版本或导入 GX Works2。",
+            "提交完整或局部 ladder JSON，复用 API 的兼容整理、结构检查和临时编译，返回待确认候选；不再次调用模型或导入 GX Works2。",
             {
                 "type": "object",
                 "properties": {
@@ -684,7 +740,10 @@ def build_default_tool_registry() -> ToolRegistry:
                         "type": "string", "default": "MAIN",
                         "minLength": 1, "maxLength": 64,
                     },
-                    "ladder": ladder_v1_schema(),
+                    "ladder": {
+                        "type": "object",
+                        "description": "Full or partial ladder JSON from get_generation_context; the shared API parser validates and normalizes compatible encodings.",
+                    },
                 },
                 "required": ["ladder"],
                 "additionalProperties": False,

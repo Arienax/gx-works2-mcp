@@ -1,3 +1,4 @@
+import { ConditionNormalization } from "./features/ConditionNormalization";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import {
@@ -8,7 +9,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Circle,
   CircuitBoard,
   Code2,
   FileCheck2,
@@ -16,10 +16,7 @@ import {
   FolderOpen,
   GitBranch,
   History,
-  Layers,
   LoaderCircle,
-  Maximize2,
-  Minus,
   Moon,
   PanelLeftClose,
   Paperclip,
@@ -59,6 +56,11 @@ import type { ApprovalSettings } from "./features/ApprovalSettings";
 import { ProjectToolbar, artifactLabel } from "./features/ProjectToolbar";
 import { FBDPanel, FBDImport, emptyFBD } from "./features/FBDPanel";
 import type { FBDModel } from "./features/FBDPanel";
+import { ProgramExplorer, IssueCards } from "./features/ProgramExplorer";
+import type { IssueContext } from "./features/ProgramExplorer";
+import { SimulationWorkbench } from "./features/SimulationWorkbench";
+import { FirstProjectGuide } from "./features/FirstProjectGuide";
+import { DeliverySummary } from "./features/DeliverySummary";
 
 let bootstrapToken =
   new URLSearchParams(location.hash.slice(1)).get("token") || "";
@@ -105,12 +107,16 @@ export default function App() {
     Json
   > | null>(null);
   const [program, setProgram] = useState<Record<string, Json> | null>(null),
-    [diagnostics, setDiagnostics] = useState<Json>(null),
     [report, setReport] = useState<Json>(null);
   const [network, setNetwork] = useState<Record<string, Json> | null>(null),
     [st, setSt] = useState("");
-  const [zoom, setZoom] = useState(1),
-    [rightWidth, setRightWidth] = useState(370);
+  const [rightWidth, setRightWidth] = useState(370);
+  const [jumpAddress, setJumpAddress] = useState("");
+  const [jumpVersion, setJumpVersion] = useState("");
+  const [issueContext, setIssueContext] = useState<IssueContext & {versionId:string}>();
+  const [scopeEnabled, setScopeEnabled] = useState(false);
+  const [scopeNetworks, setScopeNetworks] = useState("");
+  const [scopeAddresses, setScopeAddresses] = useState("");
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     localStorage.getItem("gx.theme") === "light" ? "light" : "dark",
   );
@@ -139,7 +145,6 @@ export default function App() {
   const [outputRetry, setOutputRetry] = useState(0);
   const [versionDrawing, setVersionDrawing] = useState<{ key: string; svg: string } | null>(null);
   const [refreshingDrawing, setRefreshingDrawing] = useState(false);
-  const [svgFailed, setSvgFailed] = useState(false);
   const specBinding = useRef("");
   const specDirty = useRef(false);
   const openedDrafts = useRef(new Set<string>());
@@ -171,15 +176,24 @@ export default function App() {
     setNetwork(null);
   }, [pid]);
   const version = project?.versions?.find((v) => v.id === vid);
+  const hasSavedVersions = project?.id === pid &&
+    ((project.version_count || 0) > 0 || !!project.versions?.length);
+  // Shape validation can remain candidate_ready after its local version is saved.
+  const displayedVersionStatus = version?.validation?.status === "candidate_ready"
+    ? "saved" : version?.validation?.status ||
+      (version?.lifecycle_status === "accepted" ? "saved" : version?.target_mode);
   const currentJob = jobs.find((j) => j.id === jobId && j.project_id === pid);
   const generationResult = useGenerationResult(currentJob, outputRetry);
   const resultKey = generationResult.id ? `${pid}:${generationResult.id}` : "";
+  const generationSaved = !!generationResult.versionId || proposals.some((proposal) =>
+    proposal.id === generationResult.proposalId && proposal.action === "accept_local" &&
+    proposal.status === "accepted");
   const displayedJobStatus = currentJob?.kind === "execution" && currentJob.status === "completed" &&
     ["failed", "interrupted", "conflict"].includes(String(currentJob.result?.status || ""))
     ? "failed"
     : currentJob?.kind === "generation" && currentJob.status === "completed"
       ? generationResult.blocked ? "contract_mismatch"
-        : generationResult.versionId ? "saved"
+        : generationSaved ? "saved"
         : generationResult.proposalId ? "candidate_ready"
         : generationResult.loading ? "loading_result" : "result_unavailable"
       : currentJob?.status;
@@ -317,28 +331,26 @@ export default function App() {
     };
   }, [pid, session, refresh]);
   useEffect(() => {
+    setScopeEnabled(false);
+    setScopeNetworks("");
+    setScopeAddresses("");
+    setNetwork(old => old?.version_id === vid ? old : null);
+    setIssueContext(old => old?.versionId === vid ? old : undefined);
+    setReport(null);
+  }, [pid, vid]);
+  useEffect(() => {
     if (!pid || !vid || !session) {
       setProgram(null);
       setSt("");
       return;
     }
     let stopped = false;
-    setNetwork(null);
-    setDiagnostics(null);
-    setReport(null);
     const path = `/projects/${pid}/versions/${vid}`;
     api<Record<string, Json>>(path + "/program")
       .then((v) => {
         if (!stopped) setProgram(v);
       })
       .catch((e) => setError(e.message));
-    api<Json>(path + "/diagnostics")
-      .then((v) => {
-        if (!stopped) setDiagnostics(v);
-      })
-      .catch(() => {
-        if (!stopped) setDiagnostics(null);
-      });
     const artifact = version?.artifacts?.find(
       (a) => ["st_from_ir", "st"].includes(a.id) && a.available,
     );
@@ -593,7 +605,6 @@ export default function App() {
   async function refreshDrawing() {
     const epoch = projectEpoch.current;
     setRefreshingDrawing(true);
-    setSvgFailed(false);
     try {
       if (selectedProposal) await showProposal(selectedProposal);
       else if (diagnosticJobId) await openGenerationResult(theme, true);
@@ -626,6 +637,10 @@ export default function App() {
         : text,
       response_language: locale,
       attachment_ids: attachments.map((a) => a.attachment_id),
+      ...(["generation", "agent", "gx_read"].includes(kind) && scopeEnabled ? {change_scope: {
+        ...(scopeNetworks.trim() ? {network_ids: scopeNetworks.trim().split(/[\s,，]+/)} : {}),
+        ...(scopeAddresses.trim() ? {addresses: scopeAddresses.trim().toUpperCase().split(/[\s,，]+/)} : {}),
+      }} : {}),
       ...extra,
     });
     if (activeProjectRef.current !== pid || epoch !== projectEpoch.current)
@@ -816,7 +831,6 @@ export default function App() {
     : !preview && version?.artifacts?.find((a) => a.id === "svg" && a.available)
       ? artifactUrl(pid, vid, "svg") + `?theme=${theme}`
       : "";
-  useEffect(() => { setSvgFailed(false); }, [svg]);
   const status = (value?: string | null) => (
     <Badge tone={statusTone(value || "unknown")}>
       {statusText(locale, value || "unknown")}
@@ -1055,7 +1069,7 @@ export default function App() {
               )}
             </span>
           </div>
-          {version && status(version.validation?.status || version.target_mode)}
+          {version && status(displayedVersionStatus)}
         </div>
         <ProjectToolbar pid={pid} vid={vid} artifacts={version?.artifacts || []}
           exportable={!!version && !preview} canRead={canWrite && !!pid && version?.target_mode !== "fbd"}
@@ -1087,12 +1101,13 @@ export default function App() {
               ["diagnostics", t("诊断"), <ShieldCheck size={15} />],
               ["reports", t("检查报告"), <FileCheck2 size={15} />],
               ["simulation", t("仿真记录"), <Activity size={15} />],
+              ["delivery", t("工程交付摘要"), <FileCheck2 size={15} />],
             ] as [string, string, ReactNode][]
           ).map(([id, title, icon]) => (
             <button
               key={id}
               className={tab === id ? "active" : ""}
-              onClick={() => setTab(id)}
+              onClick={() => {setTab(id); if (["diagnostics","reports","simulation","delivery"].includes(id)) {previewEpoch.current += 1;setPreview(null);setSelectedProposal(null);setDiagnosticJobId("");}}}
             >
               {icon}
               {title}
@@ -1155,7 +1170,7 @@ export default function App() {
           ) : tab === "fbd" ? (
             <div className="empty-state"><GitBranch size={38}/><h2>{t("结构化梯形图/FBD")}</h2><p>{t("导入 GXW 工程，或将当前梯形图转换为 FBD。也可以新建 FBD 工程直接生成。")}</p></div>
           ) : !version && !preview ? (
-            <div className="empty-state">
+            generationResult.id ? (<div className="empty-state">
               <Workflow size={44} />
               <h2>{t(generationResult.id
                 ? generationResult.blocked ? "候选与确认方案冲突"
@@ -1170,86 +1185,17 @@ export default function App() {
               <Badge>
                 {project.plc_model} · {project.target_mode.toUpperCase()}
               </Badge>
-            </div>
+            </div>) : (<FirstProjectGuide t={t} hasSpec={!!project.confirmed_spec} disabled={!canWrite || jobs.some(activeJob)}
+              onExample={value=>{setText(value);setIntent("analysis");setPanel("agent");}}
+              onSpec={()=>setPanel("spec")} onGenerate={()=>void guarded(()=>submitJob("generation"))} />)
+          ) : tab === "delivery" ? (
+            <DeliverySummary key={`${pid}:${vid}`} pid={pid} vid={vid} t={t} refreshKey={refresh} readOnly={!canWrite}/>
           ) : tab === "ladder" ? (
-            <div className="canvas-shell">
-              {svgFailed && <p className="error-text" role="alert">{t("梯形图加载失败，请点击“刷新结果 / 重绘梯形图”。")}</p>}
-              <div className="canvas-toolbar">
-                <span>
-                  <Layers size={14} />
-                  MAIN{" "}
-                  <span className="canvas-caption">
-                    {networks.length ? `${networks.length} ${t("网络")}` : ""}
-                  </span>
-                </span>
-                <div>
-                  <button
-                    aria-label={t("缩小")}
-                    onClick={() => setZoom((v) => Math.max(0.25, v - 0.1))}
-                  >
-                    <Minus size={15} />
-                  </button>
-                  <button className="mono" onClick={() => setZoom(1)}>
-                    {Math.round(zoom * 100)}%
-                  </button>
-                  <button
-                    aria-label={t("放大")}
-                    onClick={() => setZoom((v) => Math.min(3, v + 0.1))}
-                  >
-                    <Plus size={15} />
-                  </button>
-                  <button aria-label={t("适应画布")} onClick={() => setZoom(1)}>
-                    <Maximize2 size={15} />
-                  </button>
-                  <button
-                    aria-label={t(
-                      theme === "dark" ? "切换浅色主题" : "切换深色主题",
-                    )}
-                    disabled={busy}
-                    onClick={toggleTheme}
-                  >
-                    {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-                  </button>
-                </div>
-              </div>
-              <div className="canvas-scroll">
-                {svg ? (
-                  <img
-                    className="ladder-artifact"
-                    alt={t("梯形图")}
-                    src={svg}
-                    onLoad={() => setSvgFailed(false)}
-                    onError={() => setSvgFailed(true)}
-                    style={{ width: `${zoom * 100}%`, maxWidth: "none" }}
-                  />
-                ) : (
-                  <div className="empty-state">
-                    <FileCode2 size={32} />
-                    <p>{t("此版本没有该产物")}</p>
-                    {preview?.st && (
-                      <Button onClick={() => setTab("st")}>ST</Button>
-                    )}
-                  </div>
-                )}
-              </div>
-              {networks.length > 0 && (
-                <div className="network-strip">
-                  {networks.map((n, i) => (
-                    <button
-                      key={String(n.id || i)}
-                      className={n === network ? "active" : ""}
-                      onClick={() => {
-                        setNetwork(n);
-                        setPanel("inspector");
-                      }}
-                    >
-                      <Circle size={8} />
-                      {String(n.id || `N${i + 1}`)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ProgramExplorer key={`${pid}:${vid}:${selectedProposal?.id || diagnosticJobId || "version"}`} pid={pid} vid={vid} proposalId={preview ? selectedProposal?.id : undefined}
+              jobId={preview && diagnosticJobId ? diagnosticJobId : undefined} refreshKey={versionDrawing}
+              changeSummary={preview ? selectedProposal?.summary : proposals.find(p=>p.action === "accept_local" && p.status === "accepted" && p.result?.version_id === vid)?.summary}
+              theme={theme} selectedNetwork={String(network?.id || "")} initialAddress={jumpVersion === vid ? jumpAddress : ""} t={t}
+              onNetwork={id => setNetwork({...networks.find(n => n.id === id), id, version_id:vid})} />
           ) : tab === "st" ? (
             <div className="code-view">
               <header>
@@ -1289,7 +1235,9 @@ export default function App() {
                   {t("本地检查")}
                 </Button>
               </div>
-              <DataView value={diagnostics} />
+              <IssueCards pid={pid} vid={vid} readOnly={!canWrite || !operations.simulation} t={t} refreshKey={refresh}
+                onNetwork={(id,address)=>{setNetwork({...networks.find(n=>n.id===id),id,version_id:vid});setJumpAddress(address||"");setJumpVersion(vid);setTab("ladder");}}
+                onTest={issue=>{setIssueContext({...issue,versionId:vid});setTab("simulation");}}/>
             </div>
           ) : tab === "reports" ? (
             <div className="document-view">
@@ -1344,60 +1292,10 @@ export default function App() {
                   {t("生成测试方案")}
                 </Button>
               </div>
-              <p className="muted">{t("实际仿真结果以保存的证据为准。")}</p>
-              {version?.simulator_test_plans?.map((p, i) => (
-                <div className="report-item" key={i}>
-                  <FileCheck2 size={18} />
-                  <span>{String(p.name || p.suite_name || p.plan_id)}</span>
-                  <Button
-                    disabled={!canWrite}
-                    onClick={() =>
-                      void guarded(() =>
-                        proposeExecution("simulation", String(p.plan_id)),
-                      )
-                    }
-                  >
-                    <Play size={14} />
-                    {t("运行指定方案")}
-                  </Button>
-                </div>
-              ))}
-              {version?.simulator_runs?.length ? (
-                version.simulator_runs.map((r, i) => (
-                  <div className="report-item" key={i}>
-                    <Activity size={20} />
-                    <button
-                      className="text-button"
-                      onClick={() =>
-                        void guarded(async () => {
-                          setReport(
-                            await api(
-                              `/projects/${pid}/versions/${vid}/runs/${r.run_id}`,
-                            ),
-                          );
-                          setModal("report");
-                        })
-                      }
-                    >
-                      {String(r.suite_name || r.run_id)}
-                    </button>
-                    <span className="spacer" />
-                    {status(String(r.status))}
-                    <Button
-                      disabled={!canWrite}
-                      onClick={() =>
-                        void guarded(() =>
-                          submitJob("debug_plan", { run_id: r.run_id }),
-                        )
-                      }
-                    >
-                      {t("准备调试方案")}
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <div className="panel-empty">{t("没有仿真记录")}</div>
-              )}
+              {version?.target_mode === "ladder" ? <SimulationWorkbench key={`${pid}:${vid}`} pid={pid} vid={vid} readOnly={!canWrite || !operations.simulation}
+                t={t} refreshKey={`${refresh}:${jobs.filter(job => !activeJob(job)).map(job => `${job.id}:${job.status}`).join("|")}`} onSaved={refreshAll} issueContext={issueContext} initialPlanId={issueContext?.planId}
+                onExecute={planId=>guarded(()=>proposeExecution("simulation",planId))}
+                onDebug={runId=>guarded(()=>submitJob("debug_plan",{run_id:runId}))}/> : <p>{t("此程序形式尚未接通仿真。")}</p>}
             </div>
           )}
         </div>
@@ -1472,7 +1370,7 @@ export default function App() {
                   <CircuitBoard size={22} />
                 </span>
                 <h2>{t("工程工作台")}</h2>
-                <p>{t("描述控制需求，确认规格后生成第一个程序。")}</p>
+                <p>{t(hasSavedVersions ? "描述希望修改的行为，或查看当前程序与验证结果。" : "描述控制需求，确认规格后生成第一个程序。")}</p>
                 <div className="context-chips">
                   <Badge>{project?.plc_model || "FX3U"}</Badge>
                   {vid && <Badge>{vid}</Badge>}
@@ -1484,7 +1382,7 @@ export default function App() {
                   )}
                 </div>
               </div>
-              {project?.id === pid && !!project.confirmed_spec && (
+              {project?.id === pid && !hasSavedVersions && !!project.confirmed_spec && (
                 <div className="candidate-diff">
                   <p>{t("规格已确认。下一步生成程序，无需重新输入需求。")}</p>
                   <Button
@@ -1596,6 +1494,14 @@ export default function App() {
                 {t("程序校验通过后自动保存；可在版本历史中查看或回退。")}
               </p>
             </div>
+            {version?.target_mode === "ladder" && <details className="scope-controls" open={scopeEnabled}>
+              <summary>{t("修改范围")}{scopeEnabled ? ` · ${t("局部约束已启用")}` : ` · ${t("整个程序")}`}</summary>
+              <label><input type="checkbox" style={{width:"auto"}} checked={scopeEnabled} onChange={e=>setScopeEnabled(e.target.checked)}/> {t("只允许修改指定范围")}</label>
+              {scopeEnabled && <><label>{t("允许修改的网络")}<input value={scopeNetworks} onChange={e=>setScopeNetworks(e.target.value)} placeholder="N0001, N0002"/></label>
+                <Button disabled={!network} onClick={()=>setScopeNetworks(String(network?.id||""))}>{t("使用选中网络")}</Button>
+                <label>{t("允许涉及的地址")}<input value={scopeAddresses} onChange={e=>setScopeAddresses(e.target.value)} placeholder="X0, Y0, M0"/></label>
+                <small>{t("至少填写一项；同时填写时两项都必须满足。地址范围包含变更网络修改前后的所有读写地址。")}</small></>}
+            </details>}
             <div className="composer">
               <div className="composer-mode">
                 <select
@@ -1702,7 +1608,7 @@ export default function App() {
                     <GitBranch size={15} />
                     <strong>
                       {p.action === "accept_local"
-                        ? t("保存旧草稿")
+                        ? t("保存候选")
                         : p.action}
                     </strong>
                     {status(p.status)}
@@ -1724,6 +1630,8 @@ export default function App() {
                       <DataView value={p.summary.diff} />
                     </details>
                   )}
+                  {!!p.summary?.impact && <div className="candidate-diff"><strong>{t("变更影响")}</strong><DataView value={p.summary.impact}/>
+                    {!!p.summary.change_scope && <><strong>{t("修改范围")}</strong><DataView value={p.summary.change_scope}/></>}</div>}
                   {selectedProposal?.id === p.id && !!preview?.diff && (
                     <DiffView value={preview.diff} t={t} />
                   )}
@@ -1741,6 +1649,7 @@ export default function App() {
                       )}
                     </div>
                   )}
+                  <ConditionNormalization value={p.summary?.normalization} t={t}/>
                   {!!p.summary?.validation && (
                     <DataView value={p.summary.validation} />
                   )}
@@ -1767,7 +1676,7 @@ export default function App() {
                           <Check size={14} />
                           {t(
                             p.action === "accept_local"
-                              ? "保存旧草稿"
+                              ? "保存候选"
                               : "批准执行",
                           )}
                         </Button>
@@ -1957,7 +1866,10 @@ export default function App() {
         onOpenChange={(v) => !v && setModal("")}
         title={t("检查报告详情")}
       >
-        <DataView value={report} />
+        {modal === "report" && report && typeof report === "object" && !Array.isArray(report) && Array.isArray(report.findings) && report.report_id && report.base_version_id ?
+          <IssueCards pid={pid} vid={String(report.base_version_id)} reportId={String(report.report_id)} readOnly={!canWrite} t={t}
+            onNetwork={(id,address)=>{setPreview(null);setSelectedProposal(null);setVid(String(report.base_version_id));setNetwork({id,version_id:String(report.base_version_id)});setJumpAddress(address||"");setJumpVersion(String(report.base_version_id));setTab("ladder");setModal("");}}
+            onTest={issue=>{setPreview(null);setSelectedProposal(null);setVid(String(report.base_version_id));setIssueContext({...issue,versionId:String(report.base_version_id)});setTab("simulation");setModal("");}}/> : <DataView value={report}/>}
       </Modal>
       <Modal
         open={modal === "sfc"}

@@ -149,7 +149,7 @@ def test_deepseek_legacy_config_selects_matching_official_profile(
     assert bool(profile["capabilities"].get("multimodal")) is multimodal
 
 
-def test_existing_profile_config_adds_new_builtins_without_touching_custom(
+def test_existing_profile_config_keeps_user_list_without_adding_builtins(
     monkeypatch, tmp_path
 ):
     _credential_fakes(monkeypatch)
@@ -176,7 +176,7 @@ def test_existing_profile_config_adds_new_builtins_without_touching_custom(
     )
     profile_ids = [item["id"] for item in migrated["modelProfiles"]]
 
-    assert set(config_manager.BUILTIN_MODEL_PROFILE_IDS).issubset(profile_ids)
+    assert profile_ids == [config_manager.DEFAULT_MODEL_PROFILES[0]["id"], "custom-1"]
     assert config_manager.get_model_profile(migrated)["model"] == "company-model"
     assert profile_ids.count("custom-1") == 1
 
@@ -231,7 +231,9 @@ def test_profile_credentials_are_isolated_and_never_fall_back_to_legacy(monkeypa
 def test_save_config_rejects_missing_or_invalid_active_profile(monkeypatch, tmp_path):
     path = tmp_path / "config.json"
     monkeypatch.setattr(config_manager, "get_config_path", lambda: str(path))
-    with pytest.raises(ValueError, match="至少包含一个"):
+    with pytest.raises(ValueError, match="必须是数组"):
+        config_manager.save_config({"activeModelProfileId": "none"})
+    with pytest.raises(ValueError, match="未指向有效"):
         config_manager.save_config({"activeModelProfileId": "none", "modelProfiles": []})
     with pytest.raises(ValueError, match="未指向有效"):
         config_manager.save_config(

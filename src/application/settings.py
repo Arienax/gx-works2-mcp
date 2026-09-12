@@ -10,6 +10,9 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+# Public service error shared with desktop/CLI model selection.
+from config_manager import ModelConfigurationRequiredError
+
 
 _SETTINGS_LOCK = threading.RLock()
 _PROFILE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
@@ -76,7 +79,7 @@ def _profile_id(value):
 class SettingsService:
     def read_config(self):
         # Reuse the desktop normalizers without its file/credential migration.
-        from config_manager import get_config_path, _normalize_profiles, _profile_from_legacy, _default_profiles
+        from config_manager import get_config_path, _normalize_profile_selection
         from resource_paths import resource_path
         from i18n import normalize_language
         path = Path(get_config_path())
@@ -84,16 +87,7 @@ class SettingsService:
             path = resource_path("config.default.json")
         config = json.loads(path.read_text(encoding="utf-8"))
         config["language"] = normalize_language(config.get("language"))
-        profiles = config.get("modelProfiles")
-        if not isinstance(profiles, list) or not profiles:
-            config["activeModelProfileId"], config["modelProfiles"] = _profile_from_legacy(config)
-        else:
-            config["modelProfiles"] = _normalize_profiles(profiles)
-            ids = {item["id"] for item in config["modelProfiles"]}
-            config["modelProfiles"].extend(p for p in _default_profiles() if p["id"] not in ids)
-            if config.get("activeModelProfileId") not in ids:
-                config["activeModelProfileId"] = config["modelProfiles"][0]["id"]
-        return config
+        return _normalize_profile_selection(config)
 
     @staticmethod
     def _legacy_credential(config):
@@ -116,7 +110,7 @@ class SettingsService:
         return key
 
     def public_settings(self):
-        from config_manager import get_model_profile, BUILTIN_MODEL_PROFILE_IDS
+        from config_manager import get_model_profile
         with _SETTINGS_LOCK:
             config = self.read_config()
             profiles = []
@@ -126,7 +120,7 @@ class SettingsService:
                     "id": profile["id"], "name": profile["name"], "model": profile["model"],
                     "base_url": _base_url(profile["baseUrl"], strict=False),
                     "configured": bool(self._key(config, profile)),
-                    "deletable": profile["id"] not in BUILTIN_MODEL_PROFILE_IDS,
+                    "deletable": True,
                     "capabilities": {key: value for key, value in profile["capabilities"].items()
                                      if not _sensitive(key) and isinstance(value, bool)},
                     "generation_defaults": _safe_options(profile["generationDefaults"]),
@@ -215,23 +209,23 @@ class SettingsService:
             self._apply_profile(profile, values)
             profile = _normalize_profile(profile)
             config["modelProfiles"].append(profile)
+            if not config.get("activeModelProfileId"):
+                config["activeModelProfileId"] = profile_id
             if api_key is not None:
                 write_api_key(api_key, profile["credentialTarget"])
             self._save(config, legacy)
             return self.public_settings()
 
     def delete_profile(self, profile_id):
-        from config_manager import get_model_profile, BUILTIN_MODEL_PROFILE_IDS
+        from config_manager import get_model_profile
         from credential_store import delete_api_key
         with _SETTINGS_LOCK:
             config = self.read_config()
             legacy = self._legacy_credential(config)
             profile = get_model_profile(config, _profile_id(profile_id))
-            if profile_id in BUILTIN_MODEL_PROFILE_IDS or len(config["modelProfiles"]) <= 1:
-                raise ValueError("Built-in profiles cannot be deleted")
             config["modelProfiles"] = [p for p in config["modelProfiles"] if p["id"] != profile_id]
             if config["activeModelProfileId"] == profile_id:
-                config["activeModelProfileId"] = config["modelProfiles"][0]["id"]
+                config["activeModelProfileId"] = config["modelProfiles"][0]["id"] if config["modelProfiles"] else ""
             self._save(config, legacy, skip_legacy=(profile_id,))
             delete_api_key(profile["credentialTarget"])
             return self.public_settings()
@@ -254,7 +248,8 @@ class SettingsService:
 
     def test_connection(self, profile_id, *, profile=None, api_key=None):
         from config_manager import get_model_profile
-        from model_provider import test_model_profile
+        from model_provider import create_provider, test_model_profile
+        from application.model_detection import inspect_openai_compatible
         with _SETTINGS_LOCK:
             config = self.read_config()
             selected = get_model_profile(config, _profile_id(profile_id))
@@ -263,10 +258,31 @@ class SettingsService:
             key = api_key if api_key is not None else self._key(config, selected)
             if not str(key or "").strip():
                 return {"status": "failed", "message": "请先配置 API Key。", "error_code": "missing_key"}
+            frozen = copy.deepcopy(selected)
         try:
-            # Shared desktop probe uses /models with timeout=15 and max_retries=0.
-            message = test_model_profile(copy.deepcopy(selected), key)
-            return {"status": "connected", "message": message}
+            # Preserve the existing connection-test behavior and error mapping.
+            message = test_model_profile(copy.deepcopy(frozen), key)
+            try:
+                provider = create_provider(frozen, key)
+                inspection = inspect_openai_compatible(
+                    provider,
+                    str(frozen.get("model") or ""),
+                    frozen.get("capabilities") or {},
+                )
+            except Exception:
+                # Some compatible services expose a usable selected model but do
+                # not support model listing or one of the optional probes.
+                return {"status": "connected", "message": message}
+            return {
+                "status": "connected",
+                # Keep the public response contract stable for one release.
+                # The Web client recognizes this JSON payload and falls back to
+                # ordinary text for older/non-discoverable backends.
+                "message": json.dumps({
+                    "kind": "model_discovery_v1",
+                    **inspection,
+                }, ensure_ascii=False),
+            }
         except Exception as error:
             code = getattr(error, "code", "provider_error")
             if code not in ("authentication", "rate_limit", "timeout", "invalid_request", "unavailable"):

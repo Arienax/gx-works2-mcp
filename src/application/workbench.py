@@ -7,6 +7,7 @@ import hashlib
 import json
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from application.projects import ProjectService, contained, public, record_id
@@ -14,6 +15,7 @@ from application.settings import SettingsService
 from application.workspace import WorkspaceWriterLock, ConflictError, atomic_json, canonical_hash, read_json
 from tool_messages import ToolCall
 from tool_runtime import public_tool_result_data
+from plc_change_scope import ChangeScopeError
 from prompt_context_policy import ContextAudit, context_policy_scope, resolve_context_policy
 
 
@@ -29,6 +31,7 @@ class WorkbenchService:
         self.jobs = None
         self.proposals = None
         self.execution = None
+        self._mcp_activity = {}
         from application.approval import ApprovalPolicy
         self.approval = ApprovalPolicy(self.state_dir)
         from application.fbd import FBDService
@@ -50,6 +53,8 @@ class WorkbenchService:
 
     def close(self):
         # Keep ownership until outstanding workers reach completion/checkpoints.
+        if getattr(self, "hardware", None):
+            self.hardware.close()
         if self.jobs:
             self.jobs.shutdown(wait=True)
         if self.execution:
@@ -345,6 +350,7 @@ class WorkbenchService:
             "text": repair_text,
             "response_language": language,
             "attachment_ids": [],
+            "change_scope": snapshot.get("change_scope"),
         })
 
     def submit(self, command):
@@ -369,9 +375,11 @@ class WorkbenchService:
         project_id = command["project_id"]
         with self.lock.thread_lock:
             context = self.projects.tool_context(project_id, command.get("version_id"))
+            scope = self._command_scope(command, context)
             project = dict(context.project)
             snapshot = {**copy.deepcopy(command), "project": project, "version": context.version,
-                        "version_id": context.version_id or None, "program_ir": context.program_ir}
+                        "version_id": context.version_id or None, "program_ir": context.program_ir,
+                        "change_scope": scope}
             if context.version and context.version.get("target_mode") == "fbd":
                 raw = self.projects.artifact(project_id, context.version_id, "gxw").read_bytes()
                 snapshot["fbd_baseline"] = base64.b64encode(raw).decode("ascii")
@@ -390,7 +398,11 @@ class WorkbenchService:
 
         def worker(ctx):
             if command["kind"] in ("gx_read", "gx_inspect"):
-                return self._read_gx(ctx, snapshot)
+                try:
+                    return self._read_gx(ctx, snapshot)
+                except ChangeScopeError as error:
+                    ctx.emit("progress", {"message": str(error), "code": "change_scope_violation"})
+                    raise
             from api import provider_scope
             from i18n import language_context
             from model_provider import response_policy_scope
@@ -405,6 +417,9 @@ class WorkbenchService:
                     enforce_language=False, on_progress=model_progress, on_preview=model_progress.preview):
                 try:
                     result = self._run_job(model_context, snapshot, context, images, provider)
+                except ChangeScopeError as error:
+                    ctx.emit("progress", {"message": str(error), "code": "change_scope_violation"})
+                    raise
                 finally:
                     model_context.flush()
             return result
@@ -420,7 +435,8 @@ class WorkbenchService:
             output = public(result)
             if result.get("_candidate_ir"):
                 candidate = self._with_candidate_diff(snapshot["project_id"], snapshot["version_id"],
-                    {"_candidate_ir": result["_candidate_ir"], "_confirmed_spec": result.get("_confirmed_spec"), "target_mode": "ladder"})
+                    {"_candidate_ir": result["_candidate_ir"], "_confirmed_spec": result.get("_confirmed_spec"),
+                     "target_mode": "ladder", "change_scope": snapshot.get("change_scope")})
                 proposal = self.proposals.create("accept_local", snapshot["project_id"],
                     candidate,
                     public_summary={"summary": "从 GX Works2 读取的程序", "diff": self._diff_summary(candidate["_preview_diff"])},
@@ -436,6 +452,8 @@ class WorkbenchService:
         project, version = snapshot["project"], snapshot.get("version")
         language = snapshot["response_language"]
         output = None
+        from plc_change_scope import scope_instruction
+        scoped_text = text + scope_instruction(snapshot.get("change_scope"))
         if kind == "analysis":
             from api import analyze_requirement_streaming
             from confirmed_spec import build_review_draft
@@ -460,10 +478,11 @@ class WorkbenchService:
                 metadata["artifacts"] = {k: v["path"] for k, v in fbd_payload["artifacts"].items()}
             else:
                 program = snapshot.get("program_ir")
-                request = GenerationRequest(user_input=text, effort=project.get("effort"), target_mode=project["target_mode"],
+                request = GenerationRequest(user_input=scoped_text, effort=project.get("effort"), target_mode=project["target_mode"],
                     previous_json=ir_to_ladder(program) if program else None, previous_ir=program,
                     confirmed_context=project.get("confirmed_spec"), conversation_history=project.get("messages", []),
-                    plc_model=project.get("plc_model", "FX3U"), revision=(program or {}).get("revision", 0) + 1,
+                    plc_model=project.get("plc_model", "FX3U"), program_name=(program or {}).get("program_name", "MAIN"),
+                    revision=(program or {}).get("revision", 0) + 1,
                     requirement_text=text, image_attachments=images, model_name=snapshot.get("model", {}).get("model"), response_language=language)
                 metadata = GenerationWorkflow(request, out_dir, ctx.emit, GenerationDependencies(
                     provider=provider, check_cancelled=ctx.checkpoint, preserve_rejected_candidate=True
@@ -472,7 +491,9 @@ class WorkbenchService:
             output = {"generation": metadata}
             payload = {"project_id": project_id, "target_mode": metadata["target_mode"],
                        "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec"),
-                       "_validation_profile": metadata.get("validation_profile", "strict")}
+                       "_validation_profile": metadata.get("validation_profile", "strict"),
+                       "normalization": metadata.get("normalization"),
+                       "change_scope": snapshot.get("change_scope")}
             if metadata["target_mode"] == "ladder":
                 payload["_candidate_ir"] = json.loads((out_dir / metadata["artifacts"]["ir"]).read_text(encoding="utf-8"))
             else:
@@ -483,7 +504,7 @@ class WorkbenchService:
                 self._check_snapshot(snapshot)
                 payload = self._with_candidate_diff(project_id, (version or {}).get("id"), payload)
                 proposal = self.proposals.create("accept_local", project_id, payload,
-                    public_summary={"summary": text[:500], "validation": metadata["validation"], "diff": self._diff_summary(payload["_preview_diff"])},
+                    public_summary={"summary": text[:500], "validation": metadata["validation"], "normalization": metadata.get("normalization"), "diff": self._diff_summary(payload["_preview_diff"])},
                     base_version_id=(version or {}).get("id"), request_id=ctx.job_id)
                 ctx.checkpoint()
                 proposal = self._save_local_proposal(proposal)
@@ -492,7 +513,7 @@ class WorkbenchService:
                 "message": "程序已根据确认规格生成并自动保存；可选 Review、仿真或 GX 验证。"})
         elif kind == "agent":
             from plc_agent import run_tool_agent
-            result = run_tool_agent(text, context=context, runtime=self.projects.runtime, provider=provider,
+            result = run_tool_agent(scoped_text, context=context, runtime=self.projects.runtime, provider=provider,
                 conversation_history=project.get("messages", []), response_language=language,
                 on_progress=lambda m: ctx.emit("progress", {"message": m}),
                 on_reasoning_chunk=lambda t: ctx.emit("reasoning", {"text": t}),
@@ -500,7 +521,8 @@ class WorkbenchService:
             ctx.checkpoint()
             with self.lock.thread_lock:
                 self._check_snapshot(snapshot)
-                proposals = [self._pending_proposal(p, f"{ctx.job_id}_{i}", base_version_id=snapshot.get("version_id"), consent=snapshot["approval_consent"], direct_request=True)
+                proposals = [self._pending_proposal(p, f"{ctx.job_id}_{i}", base_version_id=snapshot.get("version_id"),
+                    consent=snapshot["approval_consent"], direct_request=True, change_scope=snapshot.get("change_scope"))
                              for i, p in enumerate(result.pending_actions)]
                 self.store.add_message(project_id, "assistant", result.content, kind="agent")
             output = {"content": result.content, "audit": result.audit, "proposal_ids": [p["id"] for p in proposals]}
@@ -539,13 +561,16 @@ class WorkbenchService:
         common.update(before_save=before_save, write_lock=self.lock.thread_lock)
         if snapshot["kind"] == "test_plan":
             plan = SimulatorTestPlanWorkflow(ctx.job_id, self.store, project_id, version_id, **common).run()
+            plan_id = plan["binding"]["plan_id"]
         else:
             store = _SnapshotStore(self.store, snapshot)
             plan = EvidenceDebugPlanWorkflow(ctx.job_id, store, project_id, version_id, snapshot["run_id"],
                 saved_run=snapshot["saved_run"], **common).run()
-        return {"plan_id": plan["plan_id"], "plan": plan}
+            plan_id = plan["plan_id"]
+        return {"plan_id": plan_id, "plan": plan}
 
-    def _pending_proposal(self, pending, request_id, *, base_version_id=None, consent=None, direct_request=False):
+    def _pending_proposal(self, pending, request_id, *, base_version_id=None, consent=None, direct_request=False,
+                          change_scope=None):
         kind = pending.get("type")
         if kind in ("accept_candidate_patch", "accept_generated_program"):
             action = "accept_local"
@@ -554,9 +579,12 @@ class WorkbenchService:
         else:
             raise ValueError("Unsupported pending engineering action")
         base_id = pending.get("base_version_id") or pending.get("version_id") or base_version_id
+        if change_scope is not None and base_id != base_version_id:
+            raise ConflictError("局部修改候选必须使用已选择的基线版本。")
+        pending = {**pending, "change_scope": change_scope}
         payload = self._with_candidate_diff(pending["project_id"], base_id, pending) if action == "accept_local" else dict(pending)
         proposal = self.proposals.create(action, pending["project_id"], payload,
-            public_summary={"summary": "Agent 提出的工程操作", "diff": self._diff_summary(payload["_preview_diff"]) if "_preview_diff" in payload else pending.get("diff"), "validation": pending.get("validation")},
+            public_summary={"summary": "Agent 提出的工程操作", "diff": self._diff_summary(payload["_preview_diff"]) if "_preview_diff" in payload else pending.get("diff"), "validation": pending.get("validation"), "normalization": pending.get("normalization")},
             base_version_id=base_id, request_id=request_id)
         if action == "accept_local":
             # Direct UI requests save without a second prompt. Connected API
@@ -568,6 +596,31 @@ class WorkbenchService:
             return proposal
         return self._apply_execution_policy(proposal, consent)
 
+    def mcp_activity(self, project_id):
+        """Report successful client calls seen by this service instance only.
+
+        A launcher check only lists tools and never advances this state. Keep
+        summaries in memory: old receipts must not imply a restarted client has
+        loaded this service. Do not retain arguments, prompts or credentials.
+        """
+        return dict(self._mcp_activity.get(project_id, {
+            "client_observed": False, "last_tool": None, "last_call_at": None,
+            "generation_context_observed": False, "candidate_proposal_id": None,
+        }))
+
+    def _observe_mcp_call(self, command, response):
+        if response.get("is_error"):
+            return
+        project_id, name = command["project_id"], command["name"]
+        current = self.mcp_activity(project_id)
+        current.update(client_observed=True, last_tool=name,
+                       last_call_at=datetime.now(timezone.utc).isoformat())
+        if name == "get_generation_context":
+            current["generation_context_observed"] = True
+        if name in {"create_program_candidate", "patch_program"} and response.get("proposal_id"):
+            current["candidate_proposal_id"] = response["proposal_id"]
+        self._mcp_activity[project_id] = current
+
     def agent_call(self, command):
         self.writable()
         request_key = hashlib.sha256((command["project_id"] + ":" + command["call_id"]).encode()).hexdigest()
@@ -578,22 +631,37 @@ class WorkbenchService:
                 saved = read_json(path)
                 if saved["input_hash"] != digest:
                     raise ConflictError("Agent call ID was already used with other arguments")
+                self._observe_mcp_call(command, saved["response"])
                 return saved["response"]
             context = self.projects.tool_context(command["project_id"], command.get("version_id"))
+            scope = self._command_scope(command, context)
             result = self.projects.runtime.invoke(ToolCall(command["call_id"], command["name"], command.get("arguments", {})), context)
             envelope = public_tool_result_data(result)
             response = {"data": envelope, "content": json.dumps(envelope, ensure_ascii=False), "is_error": result.is_error,
                         "call_id": command["call_id"], "name": command["name"]}
             pending = (result.data.get("data") or {}).get("pending_action")
             if not result.is_error and result.data.get("status") == "confirmation_required" and pending:
-                proposal = self._pending_proposal(pending, request_key, base_version_id=context.version_id or None)
+                proposal = self._pending_proposal(pending, request_key, base_version_id=context.version_id or None,
+                                                  change_scope=scope)
                 response["proposal_id"] = proposal["id"]
                 if (proposal.get("result") or {}).get("version_id"):
                     response["version_id"] = proposal["result"]["version_id"]
                 if proposal.get("execution_job_id"):
                     response["execution_job_id"] = proposal["execution_job_id"]
             atomic_json(path, {"input_hash": digest, "response": response})
+            self._observe_mcp_call(command, response)
             return response
+
+    @staticmethod
+    def _command_scope(command, context):
+        from plc_change_scope import validate_scope_baseline
+        scope = command.get("change_scope")
+        if scope is not None and command.get("kind") not in (None, "generation", "agent", "gx_read"):
+            raise ValueError("修改范围仅适用于生成程序、Agent 和读取程序候选。")
+        mode = (context.version or {}).get("target_mode") or context.project.get("target_mode", "ladder")
+        if command.get("kind") == "generation" and context.project.get("target_mode") != "ladder":
+            mode = context.project["target_mode"]
+        return validate_scope_baseline(scope, context.program_ir, target_mode=mode)
 
     def execution_proposal(self, command):
         self.writable()

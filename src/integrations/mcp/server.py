@@ -18,38 +18,37 @@ from .context_provider import ToolContextProvider
 from .tool_adapter import MCPToolAdapter
 
 
-SERVER_INSTRUCTIONS = (
+WORKFLOW_INSTRUCTIONS = (
+    "When the user asks to use gxworks, the current project is the PLC project bound to this MCP server. "
+    "Read get_current_project; do not scan source files or hand-write CSV/GXW to bypass the engineering tools. "
+    "For generation or normal edits call get_generation_context with user_requirement containing the user's request. "
+    "Use its generation_instructions, generation_request, confirmed specification and current program: "
+    "these are the same engineering context, output guidance and local RAG used by the built-in API. "
+    "Use search_plc_manual for remaining uncertain model or instruction facts. "
+    "Design the ladder yourself and submit one full or partial response with create_program_candidate. "
+    "The server uses the API compatibility normalization, structural acceptance and artifact generation, "
+    "without a second model call or an automatic semantic repair loop. "
+    "If a submission fails, report the returned error; do not start an automatic repeated-submission loop. "
+    "Use read_network and patch_program for explicit scoped Debug patches. "
+    "Report only actual tool results: structural acceptance is distinct from behavior, simulation and native validation. "
+    "Never generate canonical IR or override server-owned project, profile, revision or approval fields. "
+)
+
+
+SERVER_INSTRUCTIONS = WORKFLOW_INSTRUCTIONS + (
     "GXWorks tools inspect the configured saved PLC project through ToolRuntime. "
-    "For a new ladder program, first call get_generation_context (works without a version). "
-    "Design the logic yourself from the user's request and the project's confirmed specification, "
-    "including its selected approach, generation contract, canonical I/O and hardware constraints. "
-    "If instructions, special devices or PLC model facts are uncertain, call search_plc_manual. "
-    "Generate only ladder_v1 JSON (device_comments and rungs) using output_contract; "
-    "never generate canonical IR, derived fields or overrides for server-owned context. "
-    "Submit it with create_program_candidate. The server performs deterministic validation, "
-    "IR construction, static analysis and temporary compilation without calling any model API. "
-    "On validation errors, correct the ladder and retry at most twice (three submissions total); "
-    "stop and report unresolved errors or specification conflicts instead of looping indefinitely. "
-    "For existing program edits use get_current_program_info, then read_network, then patch_program. "
-    "create_program_candidate, patch_program and import_current_program_to_gxworks2 only return "
-    "confirmation_required requests; they do not save a version, change active_version_id or import. "
-    "For a generated candidate that status means validation and temporary compilation succeeded, "
-    "not that the program was saved, imported into GX Works2 or written to a PLC. "
-    "This standalone server has no approval or desktop bridge. "
-    "An MCP client/tool approval is not PLC engineering confirmation. "
-    "Report pending actions as pending and never claim they were executed. "
-    "Never edit workspace or SessionStore files directly to bypass these tools. "
+    "create_program_candidate, patch_program and import_current_program_to_gxworks2 return confirmation_required; "
+    "they do not save a version, change active_version_id or import into GX Works2. "
+    "This standalone server has no approval or desktop bridge. MCP tool approval is not engineering confirmation. "
+    "Report pending actions as pending. Never edit workspace records to bypass these tools. "
     "No physical PLC writes or low-level desktop controls are exposed."
 )
 
-SERVICE_SERVER_INSTRUCTIONS = (
+SERVICE_SERVER_INSTRUCTIONS = WORKFLOW_INSTRUCTIONS + (
     "GXWorks tools use the running local engineering service's shared ToolRuntime. "
-    "Call get_generation_context before create_program_candidate and read_network before patch_program. "
-    "Use the same ladder_v1 contract and deterministic validation as standalone mode. "
-    "The service persists confirmation_required actions as proposals and returns their proposal_id. "
-    "An operator must review and approve each proposal in the Web workbench. "
-    "This MCP agent cannot approve, accept versions, import, run simulation, or grant permissions. "
-    "Report proposals as pending; never claim a proposal was executed. "
+    "The service turns confirmation_required actions into proposals under the operator's existing approval policy. "
+    "Report the actual proposal status: pending proposals need workbench review; only a saved version receipt proves saving. "
+    "This MCP agent cannot approve pending proposals or grant permissions. "
     "Do not edit workspace records or call operator HTTP routes to bypass this boundary. "
     "No physical PLC writes or low-level desktop controls are exposed."
 )

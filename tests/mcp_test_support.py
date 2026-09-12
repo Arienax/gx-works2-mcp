@@ -1,0 +1,30 @@
+"""Subprocess launchers with an empty, in-memory credential store for tests."""
+
+import os
+import sys
+
+
+def isolated_mcp_environment(**overrides):
+    env = dict(os.environ)
+    for name in ("PLC_WEB_AGENT_TOKEN", "GXWORKS_AGENT_SERVICE_URL", "GXWORKS_AGENT_TOKEN_ENV", "ISOLATED_MCP_AGENT_TOKEN"):
+        env.pop(name, None)
+    env.update(overrides)
+    return env
+
+
+def isolated_mcp_command(*args, entry=None):
+    # Stub the low-level store before running the real entry. Tests must not
+    # depend on, inspect, or update the signed-in user's Credential Manager.
+    setup = """import runpy, sys, types
+def forbidden(*args, **kwargs):
+    raise AssertionError('A launcher test cannot write credentials')
+sys.modules['windows_credentials'] = types.SimpleNamespace(
+    read_secret=lambda target: '', write_secret=forbidden, delete_secret=forbidden)
+mode, target, *arguments = sys.argv[1:]
+sys.argv = [target, *arguments]
+if mode == 'module':
+    runpy.run_module(target, run_name='__main__')
+else:
+    runpy.run_path(target, run_name='__main__')
+"""
+    return [sys.executable, "-c", setup, "path" if entry else "module", str(entry or "integrations.mcp"), *args]

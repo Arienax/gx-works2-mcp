@@ -16,6 +16,13 @@ from resource_paths import resource_path
 from i18n import normalize_language
 
 
+class ModelConfigurationRequiredError(ValueError):
+    """No selected model exists; callers can offer the model settings screen."""
+
+    def __init__(self):
+        super().__init__("尚未配置模型，请在模型 API 设置中新建配置。")
+
+
 def get_config_path():
     """获取 config.json 的路径（兼容 PyInstaller 打包）"""
     if getattr(sys, 'frozen', False):
@@ -283,6 +290,25 @@ def _normalize_profiles(profiles):
     return normalized
 
 
+def _normalize_profile_selection(config):
+    """Respect an explicitly saved profile list, including an empty one.
+
+    Defaults seed a missing/legacy schema only. New bundled presets must never
+    override a user's removals when the Web, desktop or CLI reads the file.
+    """
+    profiles = config.get("modelProfiles")
+    if not isinstance(profiles, list):
+        config["activeModelProfileId"], config["modelProfiles"] = _profile_from_legacy(config)
+    else:
+        config["modelProfiles"] = _normalize_profiles(profiles)
+        ids = {item["id"] for item in config["modelProfiles"]}
+        active = str(config.get("activeModelProfileId") or "").strip()
+        config["activeModelProfileId"] = active if active in ids else (
+            config["modelProfiles"][0]["id"] if profiles else ""
+        )
+    return config
+
+
 def _profile_from_legacy(config):
     base_url = str(config.get("base_url") or "https://api.deepseek.com").strip()
     model = str(config.get("default_model") or "deepseek-v4-pro").strip()
@@ -358,38 +384,29 @@ def _migrate_configuration(config_path, config):
 
     original = copy.deepcopy(config)
     config["language"] = normalize_language(config.get("language"))
+    legacy_settings = not isinstance(config.get("modelProfiles"), list) or any(
+        key in config for key in ("api_key", "base_url", "default_model", "request_template")
+    )
+    _normalize_profile_selection(config)
     legacy_key = config.get("api_key", "")
-    stored_key = read_api_key(CREDENTIAL_TARGET)
-    if not stored_key and _is_legacy_api_key(legacy_key):
+    # Once migrated, a global old key must not repopulate a deliberately
+    # cleared/deleted profile or leak into a newly selected provider.
+    migrate_key = legacy_settings and bool(config["modelProfiles"])
+    stored_key = read_api_key(CREDENTIAL_TARGET) if migrate_key else ""
+    if migrate_key and not stored_key and _is_legacy_api_key(legacy_key):
         try:
             write_api_key(legacy_key, CREDENTIAL_TARGET)
             stored_key = legacy_key
         except OSError:
             stored_key = ""
 
-    profiles = config.get("modelProfiles")
-    if not isinstance(profiles, list) or not profiles:
-        active_id, profiles = _profile_from_legacy(config)
-        config["activeModelProfileId"] = active_id
-        config["modelProfiles"] = profiles
-    else:
-        config["modelProfiles"] = _normalize_profiles(profiles)
-        existing_ids = {item["id"] for item in config["modelProfiles"]}
-        for built_in in _default_profiles():
-            if built_in["id"] not in existing_ids:
-                config["modelProfiles"].append(_normalize_profile(built_in))
-        active_id = str(config.get("activeModelProfileId") or "").strip()
-        ids = {item["id"] for item in config["modelProfiles"]}
-        if active_id not in ids:
-            config["activeModelProfileId"] = config["modelProfiles"][0]["id"]
-
-    active = get_model_profile(config)
-    target = active["credentialTarget"]
-    try:
-        if stored_key and not read_api_key(target):
-            write_api_key(stored_key, target)
-    except OSError:
-        pass
+    if migrate_key:
+        target = get_model_profile(config)["credentialTarget"]
+        try:
+            if stored_key and not read_api_key(target):
+                write_api_key(stored_key, target)
+        except OSError:
+            pass
 
     if "api_key" in config and (stored_key or not _is_legacy_api_key(legacy_key)):
         config.pop("api_key", None)
@@ -419,18 +436,21 @@ def save_config(config: dict):
     for key in ("base_url", "default_model", "request_template"):
         sanitized.pop(key, None)
     profiles = sanitized.get("modelProfiles")
-    if not isinstance(profiles, list) or not profiles:
-        raise ValueError("配置必须至少包含一个模型 Profile。")
+    if not isinstance(profiles, list):
+        raise ValueError("模型 Profile 列表必须是数组。")
     sanitized["modelProfiles"] = _normalize_profiles(profiles)
     active = str(sanitized.get("activeModelProfileId") or "").strip()
-    if active not in {item["id"] for item in sanitized["modelProfiles"]}:
+    if (profiles or active) and active not in {item["id"] for item in sanitized["modelProfiles"]}:
         raise ValueError("activeModelProfileId 未指向有效的模型 Profile。")
+    sanitized["activeModelProfileId"] = active
     _write_json_atomic(config_path, sanitized)
 
 
 def get_model_profile(config=None, profile_id=None):
     config = config if config is not None else load_full_config()
     profiles = config.get("modelProfiles") or []
+    if not profiles:
+        raise ModelConfigurationRequiredError()
     selected_id = str(profile_id or config.get("activeModelProfileId") or "")
     for profile in profiles:
         if isinstance(profile, dict) and str(profile.get("id") or "") == selected_id:

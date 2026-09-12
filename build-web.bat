@@ -2,67 +2,29 @@
 setlocal EnableExtensions
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
-title GXWorks Agent - Build Web Frontend
+title GXWorks Agent - Build Web Source Runtime
 
 set "NO_PAUSE="
+set "FRONTEND_ONLY="
+
+:parse_args
+if "%~1"=="" goto :args_done
 if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
+if /I "%~1"=="--frontend-only" set "FRONTEND_ONLY=1"
+shift
+goto :parse_args
 
-where node.exe >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Node.js was not found in PATH.
-    echo Install a current Node.js release, then run build-web.bat again.
-    goto :fail
-)
-where npm.cmd >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] npm.cmd was not found in PATH.
-    goto :fail
-)
-if not exist "web\package-lock.json" (
-    echo [ERROR] Missing web\package-lock.json.
-    goto :fail
-)
+:args_done
+set "PS_ARGS="
+if defined FRONTEND_ONLY set "PS_ARGS=-FrontendOnly"
 
-for /f "delims=" %%V in ('node --version') do set "NODE_VERSION=%%V"
-echo ==============================================
-echo   GXWorks Agent - Web frontend build
-echo ==============================================
-echo [INFO] Node: %NODE_VERSION%
-echo.
-
-pushd web
-
-echo [1/3] Installing locked frontend dependencies ...
-call npm.cmd ci
-if errorlevel 1 goto :build_fail
-
-echo.
-echo [2/3] Regenerating TypeScript API types from web\openapi.json ...
-call npm.cmd run types
-if errorlevel 1 goto :build_fail
-
-echo.
-echo [3/3] Type-checking and building the Vite frontend ...
-call npm.cmd run build
-if errorlevel 1 goto :build_fail
-
-popd
-echo.
-echo [OK] Frontend build completed: web\dist
-if not defined NO_PAUSE pause
-endlocal
-exit /b 0
-
-:build_fail
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build_web_source.ps1" %PS_ARGS%
 set "BUILD_EXIT=%ERRORLEVEL%"
-popd
-echo.
-echo [ERROR] Frontend build failed with exit code %BUILD_EXIT%.
-goto :fail_code
 
-:fail
-set "BUILD_EXIT=1"
-
-:fail_code
+if not "%BUILD_EXIT%"=="0" (
+    echo.
+    echo [ERROR] Web source build failed with exit code %BUILD_EXIT%.
+    echo [INFO] See build-web.log in this directory for details.
+)
 if not defined NO_PAUSE pause
 endlocal & exit /b %BUILD_EXIT%

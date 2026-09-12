@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 
 from confirmed_spec import (
@@ -5,7 +7,7 @@ from confirmed_spec import (
     canonicalize_confirmed_spec,
     validate_spec_draft,
 )
-from hardware_profiles import ensure_hardware_questions, validate_hardware_spec
+from hardware_profiles import ensure_hardware_questions, hardware_requirement_flags, validate_hardware_spec
 from plc_json_validator import PLCJsonValidationError, validate_ladder_full
 
 
@@ -58,6 +60,75 @@ def test_hardware_flags_do_not_trigger_themselves_on_a_second_pass():
     assert not any(first["hardware_requirements"].values())
     assert second["hardware_requirements"] == first["hardware_requirements"]
     assert second["missing_info"] == []
+
+
+@pytest.mark.parametrize("field,values", [
+    ("forbidden_structures", ["vfd_multi_speed", "pulse_positioning"]),
+    ("forbidden_features", ["vfd_multi_speed", "pulse_positioning"]),
+    ("forbidden_opcodes", ["PLSY", "PLSV", "DRVI", "DRVA"]),
+    ("forbidden_instructions", ["PLSY", "PLSV", "DRVI", "DRVA"]),
+])
+def test_forbidden_generation_features_are_not_hardware_requirements(field, values):
+    analysis = {
+        "summary": "Two independent input/output channels",
+        "approaches": [{"generation_contract": {"required_structures": ["direct_logic"], field: values}}],
+        "missing_info": [],
+    }
+    original = copy.deepcopy(analysis)
+    flags = hardware_requirement_flags(analysis, "X0 controls Y0; X1 controls Y1")
+    assert not any(flags.values())
+    assert analysis == original
+
+
+@pytest.mark.parametrize("field,value", [
+    ("required_structures", ["vfd_multi_speed"]),
+    ("any_of_structure_groups", [["vfd_multi_speed", "analog_control"]]),
+])
+def test_positive_drive_contract_still_keeps_control_method_question(field, value):
+    result = ensure_hardware_questions({
+        "summary": "Speed selection",
+        "approaches": [{"generation_contract": {field: value, "forbidden_opcodes": ["PLSY"]}}],
+        "missing_info": [],
+    }, "FX3U", "Select the motor speed")
+    assert result["hardware_requirements"]["vfd"] is True
+    assert result["hardware_requirements"]["pulse"] is False
+    assert result["missing_info"][0]["id"] == "control_method"
+
+
+def test_level_follow_analysis_does_not_invent_required_vfd_question():
+    from api import _normalize_analysis_result
+
+    request = "FX3U，普通梯形图，两路独立电平控制：网络1使用常开X0直接控制Y0，网络2使用常开X1直接控制Y1。无需自锁、定时、计数或额外中间继电器；上电输出随输入。请分析I/O并给出待确认规格。"
+    analysis = {
+        "summary": "X0 常开直接驱动 Y0，X1 常开直接驱动 Y1，输出随输入实时变化。",
+        "approaches": [{
+            "name": "直接逻辑电平跟随",
+            "generation_guide": "X0 常开驱动 Y0；X1 常开驱动 Y1。",
+            "generation_contract": {
+                "required_structures": ["direct_logic"],
+                "required_devices": ["X0", "X1", "Y0", "Y1"],
+                "forbidden_structures": [
+                    "self_hold", "set_reset_latch", "edge_trigger", "bit_state_machine",
+                    "register_state_machine", "state_initialization", "state_comparison",
+                    "state_transition", "hardware_counter", "data_register_counter",
+                    "analog_control", "serial_communication", "pid_control",
+                    "pulse_positioning", "vfd_multi_speed",
+                ],
+            },
+        }],
+        "missing_info": [{"id": "stop_or_inhibit_condition", "question": "是否需要总停止条件？", "required": False}],
+        "suggested_io": {"X": {"X0": "输入1", "X1": "输入2"}, "Y": {"Y0": "输出1", "Y1": "输出2"}},
+        "hardware_config": {"output_type_note": "只做通断电平输出，不涉及高速脉冲"},
+    }
+    original = copy.deepcopy(analysis)
+    normalized = _normalize_analysis_result(analysis, "FX3U", request)
+    assert not normalized["hardware_requirements"]["vfd"]
+    assert [item["id"] for item in normalized["missing_info"]] == ["stop_or_inhibit_condition"]
+    draft = build_review_draft(normalized)
+    assert [item["id"] for item in draft["parameters"]] == ["stop_or_inhibit_condition"]
+    assert validate_spec_draft(draft, "FX3U")["errors"] == []
+    assert "vfd_multi_speed" in draft["selected_approach"]["generation_contract"]["forbidden_structures"]
+    assert analysis == original
 
 
 def test_hardware_flags_survive_review_build_without_the_original_user_text():

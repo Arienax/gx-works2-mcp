@@ -154,7 +154,7 @@ def test_service_stdio_process_needs_no_workspace_or_model_credentials(service_s
 import sys
 class BlockDesktop(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'PyQt6', 'PyQt5', 'qt_compat', 'main', 'api', 'model_provider', 'openai', 'pywinauto', 'gxworks2', 'simulator', 'config_manager', 'credential_store'}:
+        if fullname.split('.')[0] in {'PyQt6', 'PyQt5', 'qt_compat', 'main', 'api', 'model_provider', 'openai', 'pywinauto', 'gxworks2', 'simulator', 'config_manager', 'credential_store', 'windows_credentials'}:
             raise AssertionError('Unexpected execution dependency: ' + fullname)
 sys.meta_path.insert(0, BlockDesktop())
 from integrations.mcp.__main__ import main
@@ -185,13 +185,15 @@ raise SystemExit(main())
 
 
 def test_service_cli_rejects_ambiguous_or_unavailable_configuration(tmp_path):
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "PLC_AI_WORKSPACE_DIR": ""}
+    from mcp_test_support import isolated_mcp_command, isolated_mcp_environment
+
+    env = isolated_mcp_environment(PYTHONPATH=str(ROOT / "src"), PLC_AI_WORKSPACE_DIR="")
     for extra in (
         ["--service-url", "http://localhost:8000"],
         ["--service-token-env", "ISOLATED_MCP_AGENT_TOKEN"],
         ["--service-url", "http://example.org", "--service-token-env", "ISOLATED_MCP_AGENT_TOKEN"],
     ):
-        result = subprocess.run([sys.executable, "-m", "integrations.mcp", "--project", "p1", *extra], cwd=tmp_path, env=env, capture_output=True, timeout=15)
+        result = subprocess.run(isolated_mcp_command("--project", "p1", *extra), cwd=tmp_path, env=env, capture_output=True, timeout=15)
         assert result.returncode == 2
         assert result.stdout == b""
         assert result.stderr

@@ -22,3 +22,20 @@
 .fbd-error {color:#e65e66;padding:8px 18px}
 .fbd-sheet .muted {font-size:12px;line-height:1.7}
 .fbd-import p {line-height:1.7}
+.fbd-issues {padding:8px 18px;font-size:12px;border-bottom:1px solid var(--border);max-height:160px;overflow:auto}
+.fbd-issues ul {padding-left:18px;line-height:1.7}
+.fbd-native {max-width:1100px;width:100%;box-sizing:border-box}
+.fbd-native p {line-height:1.7}
+.fbd-native h3 {margin:16px 0 10px}
+.fbd-native-fields {display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:12px}
+.fbd-native label {display:flex;flex-direction:column;gap:7px}
+.fbd-native input,.fbd-native select {max-width:none}
+.fbd-native textarea {width:100%;box-sizing:border-box;padding:10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;resize:vertical}
+.fbd-native .fbd-attestation {flex-direction:row;align-items:flex-start;line-height:1.6}
+.fbd-native .fbd-attestation input {width:16px;min-width:16px;margin-top:5px}
+.fbd-native-status {padding:10px 12px;background:var(--hover);border-left:3px solid var(--accent)}
+.fbd-native-record {margin:12px 0;padding:14px;border:1px solid var(--border);border-radius:6px}
+.fbd-native-record pre {white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.7}
+.fbd-hash {overflow-wrap:anywhere;font-size:11px}
+.fbd-native-record .button {margin:10px 0 0;display:flex;width:max-content;gap:8px}
+@media (max-width:760px) {.fbd-native-fields {grid-template-columns:1fr}}

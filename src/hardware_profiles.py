@@ -108,13 +108,28 @@ def _analysis_text(analysis, user_text=""):
     return (str(user_text or "") + "\n" + payload).casefold()
 
 
+def _hardware_evidence(value):
+    """Exclude derived flags and explicit prohibitions from feature detection.
+
+    A model can correctly forbid ``vfd_multi_speed``/``PLSY`` in an ordinary
+    relay program. Those contract values constrain generation; they do not
+    establish a drive or pulse-output requirement. Keep required/alternative
+    contract fields and the original analysis unchanged.
+    """
+    if isinstance(value, dict):
+        excluded = {
+            "hardware_requirements", "forbidden_opcodes", "forbidden_devices",
+            "forbidden_structures", "forbidden_instructions", "forbidden_features",
+        }
+        return {key: _hardware_evidence(item) for key, item in value.items() if key not in excluded}
+    if isinstance(value, (list, tuple)):
+        return [_hardware_evidence(item) for item in value]
+    return value
+
+
 def hardware_requirement_flags(analysis, user_text=""):
     """Return deterministic feature flags without consulting the model again."""
-    scan_source = copy.deepcopy(analysis) if isinstance(analysis, dict) else analysis
-    if isinstance(scan_source, dict):
-        # Do not let a previous pass classify itself from keys such as
-        # ``vfd`` and ``pulse`` inside hardware_requirements.
-        scan_source.pop("hardware_requirements", None)
+    scan_source = _hardware_evidence(analysis)
     text = _analysis_text(scan_source, user_text)
     hardware_dependent = any(marker.casefold() in text for marker in _HARDWARE_MARKERS)
     vfd = any(marker.casefold() in text for marker in _VFD_MARKERS)

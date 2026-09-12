@@ -35,11 +35,33 @@ def main(argv=None):
     from .app import create_app
     import uvicorn
     token = os.environ.get("PLC_WEB_OPERATOR_TOKEN") or secrets.token_urlsafe(32)
+    agent_token = os.environ.get("PLC_WEB_AGENT_TOKEN") or secrets.token_urlsafe(32)
     origin = "http://127.0.0.1:" + str(args.port)
     app = create_app(args.workspace, state_dir=args.state_dir, read_only=args.read_only,
-        origin=origin, operator_token=token, agent_token=os.environ.get("PLC_WEB_AGENT_TOKEN"))
+        origin=origin, operator_token=token, agent_token=agent_token)
     login_url = origin + "/#token=" + quote(token, safe="")
     print("Workbench link (keep private): " + login_url, file=sys.stderr)
+
+    credential_published = False
+    try:
+        from integrations.mcp.service_credentials import load_service_binding, save_service_binding
+        previous = load_service_binding() or {}
+        previous_project = previous.get("project_id")
+        known_projects = {str(item.get("id") or "") for item in app.state.service.projects.list_projects()}
+        project_binding = previous_project if previous_project in known_projects else None
+        credential_published = save_service_binding(origin, agent_token, project_binding)
+    except Exception:
+        # Credential publication is convenience only; never prevent the local
+        # engineering service from starting when Windows Credential Manager is
+        # unavailable. Explicit environment configuration remains supported.
+        credential_published = False
+    if credential_published:
+        print("MCP service credential saved locally; MCP clients can connect without copying a token.", file=sys.stderr)
+    elif os.name != "nt":
+        print("MCP automatic credential discovery is Windows-only; use PLC_WEB_AGENT_TOKEN on this platform.", file=sys.stderr)
+    else:
+        print("MCP credential auto-save is unavailable; set PLC_WEB_AGENT_TOKEN explicitly if MCP is needed.", file=sys.stderr)
+
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port, workers=1, access_log=False))
     stopped = threading.Event()
     if args.open_browser:
@@ -48,6 +70,10 @@ def main(argv=None):
         server.run()
     finally:
         stopped.set()
+        # Keep the private local binding in Credential Manager.  Once this Web
+        # process exits its token is harmless because no service accepts it;
+        # the next startup atomically replaces the token/origin and can retain
+        # the previously bound project when it still exists in this workspace.
     return 0 if server.started else 1
 
 

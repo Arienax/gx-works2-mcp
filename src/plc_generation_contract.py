@@ -2,7 +2,7 @@
 
 This describes the generation subset of the historical ladder interchange
 format. It does not lower instructions, infer PLC facts or build canonical IR.
-PLC semantics remain in validate_ladder_full and the existing core pipeline.
+Candidate acceptance belongs to the shared API generation pipeline.
 """
 
 from __future__ import annotations
@@ -93,26 +93,19 @@ def ladder_v1_schema() -> dict:
     }, ["device_comments", "rungs"]))
 
 
-def generation_output_contract() -> dict:
+def generation_output_contract(*, allow_partial=False) -> dict:
+    """Recommended API output schema; acceptance uses the shared API parser.
+
+    Compatible legacy encodings are normalized before structural checks.
+    Engineering instructions come from the shared API context, not a second
+    set of MCP-only semantic rules.
+    """
     return {
         "format": "ladder_v1",
-        "schema": ladder_v1_schema(),
-        "rules": [
-            "Generate only device_comments and rungs, never canonical PLC IR or derived fields.",
-            "Use unique increasing rung_id values; branch_id starts at 1 and y_offset_level at 0.",
-            "Use header_element=null for ordinary logic; shared_inputs are common series conditions.",
-            "parallel_block is allowed only in branch inputs, with one level and no nested parallel_block.",
-            "debug_note is optional: omit it by default and never use it for reasoning or long explanations.",
-            "Keep labels, debug notes and device comments concise: target <=48 characters, hard limit 64.",
-            "Use NO/NC/P/F contacts or COMPARE; RISING/FALLING and BLOCK_INPUT are compatibility aliases.",
-            "Use COIL/PLS/PLF for bit outputs, TIMER for T and COUNTER for C, with a preset value.",
-            "Use APP_INSTR only for a verified, catalogued application opcode and its separate operands.",
-            "Never encode OUT, PLS, PLF, END, condition/branch instructions or free text as APP_INSTR.",
-            "COMPARE uses a prefix operator and two operands; do arithmetic in APP_INSTR first.",
-            "A Y/M COIL may occur only once; combine conditions before the coil.",
-            "Use the context PLC model and confirmed I/O, hardware and selected approach contract; do not override them.",
-            "Consult search_plc_manual for uncertain instructions, special devices or model facts.",
-        ],
+        "schema": ladder_response_schema(allow_partial=allow_partial),
+        "validation_profile": "generation_structural",
+        "acceptance": "One candidate through the shared API normalizer and structural validator. "
+                      "Engineering diagnostics do not trigger automatic retries.",
         "server_owned_fields": [
             "project_id", "plc_model", "revision", "confirmed_spec", "candidate_id",
             "candidate_ir_sha256", "ladder_sha256", "networks", "instructions",

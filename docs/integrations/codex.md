@@ -1,169 +1,201 @@
 # Codex integration
 
-## A. Codex uses GXWorks Agent tools over MCP — implemented
+## Recommended: connect from the Web workbench
 
-```mermaid
-flowchart LR
-    Codex --> Client[MCP client]
-    Client --> Server[GXWorks Agent MCP server]
-    Server --> Runtime[ToolRuntime]
-    Runtime --> Core[PLC Core and existing tool implementations]
-```
+The Windows Web workbench configures a local MCP connection for Codex App on
+the same computer; installing Codex CLI is optional. MCP is the supported
+engineering interface to GXWorks Agent and does not require a client skill.
+Optional client guidance cannot replace the engineering platform, tool calls,
+validation, saved project state or approval.
 
-Install the optional MCP environment and identify your saved workspace/project
-as described in [MCP setup](mcp.md). Codex launches the same standalone server as
-any other MCP client. No Codex-specific PLC implementation or model API key is
-needed by that server.
+1. Start GXWorks Agent Web and open the target project.
+2. Open **Settings → Model → Integrations / MCP**.
+3. Click **连接 Codex**. This binds the selected project and verifies the product
+   launcher, Windows Credential Manager lookup, Agent authentication and tool
+   discovery. It atomically adds or replaces only the `[mcp_servers.gxworks]` table and its
+   nested subtables in Codex `config.toml`. Existing model/provider settings,
+   project trust entries and other MCP servers are preserved. Codex CLI does not
+   need to be in `PATH`. **测试 MCP 连接** runs the service probe independently;
+   it does not write Codex configuration.
+4. After configuration completes, restart Codex App and create a new task to
+   load the connection.
+5. Describe the engineering task in Codex, for example:
 
-Codex supports stdio server configuration in `~/.codex/config.toml` or a trusted
-project's `.codex/config.toml`. Its `command`, `args`, `cwd` and `env` fields control
-the subprocess. See the [official MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+> 用 gxworks 给当前工程生成一个三菱起保停程序：X0 启动，X1 停止，Y0 电机，自锁。
 
-Windows example (replace each `<...>` placeholder; forward slashes avoid TOML
-backslash escapes):
+The client must discover and call the connected `gxworks` tools. The MCP server
+supplies initialization instructions and tool descriptions for that workflow.
+If no tool calls are recorded, check the gxworks MCP connection in Codex and
+explicitly request gxworks tools in a new task. Check the workbench's actual
+client activity to establish that MCP tools ran; a request alone is not evidence.
 
-```toml
-[mcp_servers.gxworks]
-command = "<checkout>/.venv/Scripts/python.exe"
-args = ["-m", "integrations.mcp", "--stdio", "--workspace", "<workspace>", "--project", "<project-id>"]
-cwd = "<checkout>/src"
-startup_timeout_sec = 30
-tool_timeout_sec = 120
-```
+The configuration file is `$CODEX_HOME/config.toml` when `CODEX_HOME` is set,
+otherwise `~/.codex/config.toml`.
 
-Use absolute paths for the actual checkout, Python executable and workspace.
-The example contains no developer-specific path. Setting `cwd` to `src` lets
-Python find both the adapter package and the repository's existing flat modules.
-Append `"--version", "v0001"` to `args` to pin a saved version; otherwise calls
-follow the saved active version. This does not follow unsaved GUI selection.
+The Web process stores the loopback service origin and its separate,
+unprivileged Agent credential in Windows Credential Manager. The MCP launcher
+therefore needs no user-facing `PLC_WEB_AGENT_TOKEN`, `--service-url`, project
+path, `PYTHONPATH` or `python -m integrations.mcp` configuration. The selected
+project binding is also retained across Web restarts when that project still
+exists in the reopened workspace.
 
-Generic configuration, for a compatible host with a copied saved workspace:
-
-```toml
-[mcp_servers.gxworks]
-command = "<checkout>/.venv/bin/python"
-args = ["-m", "integrations.mcp", "--stdio", "--workspace", "<workspace>", "--project", "<project-id>", "--version", "v0001"]
-cwd = "<checkout>/src"
-startup_timeout_sec = 30
-tool_timeout_sec = 120
-```
-
-The generic form is provided for portability; this change was tested on Windows.
-Live GX/Simulator integration remains Windows-specific.
-
-Alternatively, PowerShell can register the command through Codex's CLI:
-
-```powershell
-$Checkout = (Resolve-Path .).Path
-$McpPython = Join-Path $Checkout '.venv\Scripts\python.exe'
-$Source = Join-Path $Checkout 'src'
-$Workspace = '<existing SessionStore workspace directory>'
-$ProjectId = '<saved project ID>'
-codex mcp add gxworks --env "PYTHONPATH=$Source" -- $McpPython -m integrations.mcp --stdio --workspace $Workspace --project $ProjectId
-codex mcp list
-```
-
-Use either the configuration file or CLI registration for this server. This
-repository does not change your Codex configuration automatically. In Codex's
-terminal UI, `/mcp` shows active MCP servers. These commands are documented in
-the [official Codex MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
-
-Try a read-only request:
-
-> Use the gxworks MCP tools to read the current project and program information,
-> then read network N0001 if it exists. Report the saved project and version IDs.
-
-For patches or import requests, `confirmation_required` remains pending. The
-standalone server cannot approve or deliver proposals to the desktop. Codex
-approval of an MCP call does not approve the underlying engineering action.
-See [confirmation semantics](mcp.md#confirmation-and-safety).
-
-### Natural-language ladder generation
-
-Codex can now design the first ladder program for the configured saved project,
-including a project with no program versions. For first generation, omit a
-`--version` argument that would point to a nonexistent version. Codex performs
-the model role itself; GXWorks MCP and PLC Core perform the deterministic
-engineering work. No DeepSeek/OpenAI-compatible ModelProvider or model API key
-is used by the MCP server.
-
-Example user request:
-
-> Use the gxworks MCP tools to create a ladder program for the current project.
-> X0 is Start, X1 is Stop, Y0 drives the motor.
-> Use a seal-in circuit for Y0.
-> Do not edit workspace files directly.
-
-中文示例：
-
-> 使用 gxworks MCP 为当前项目生成一个三菱梯形图：
-> X0 启动，X1 停止，Y0 控制电机，Y0 使用自锁。
-> 先读取生成上下文，不要直接编辑工程文件。
-> 生成后通过 create_program_candidate 提交并校验。
-
-Expected calls:
+The effective normal path is:
 
 ```text
-get_generation_context
-→ optional search_plc_manual
-→ create_program_candidate
+Codex
+  -> gxworks-agent-mcp
+  -> local Web service bridge
+  -> ToolRuntime
+  -> PLC Core
 ```
 
-Codex reads the returned `output_contract`, confirmed specification, selected
-approach, I/O assignments and hardware constraints before designing the program.
-It generates only `device_comments` and `rungs`, in `ladder_v1` JSON, plus an
-optional `program_name` (default `MAIN`). It does not generate full canonical IR.
-Project identity, PLC model, confirmed specification, revision and candidate
-identity/hashes are server-owned. The complete schemas and result fields are
-documented in [initial ladder generation](mcp.md#initial-ladder-generation).
+The launcher is model-independent. Replacing the model inside the Codex harness
+with another Codex-compatible provider does not require a separate GXWorks MCP
+implementation.
 
-PLC Core runs the existing ladder validation, builds canonical IR at revision 1,
-checks the IR and static diagnostics, and compiles artifacts in a temporary
-directory. Validation errors are returned to Codex for correction. Retry at most
-twice after the initial submission, then report unresolved errors or conflicting
-requirements; do not silently replace the project's confirmed choices.
+## Reading connection status
 
-The successful result must be `status = confirmation_required`. A correct report
-is: “候选程序已通过确定性校验和临时编译，等待工程确认；尚未保存或导入。”
-Do not report “程序已经保存”, “程序已经写入 GX Works2” or “PLC 已经被修改”.
-No official project version is created, `active_version_id` remains unchanged,
-and neither GX Works2 import nor a physical PLC write occurs. Codex approval of
-the MCP tool call does not approve the engineering candidate.
+The settings page separates three kinds of evidence:
 
-This standalone interface has no candidate accept/commit tool, retained approval
-queue or desktop confirmation bridge. The candidate ID is an audit identifier,
-not a token that can later be committed through MCP. Saving and desktop approval
-delivery for these generated candidates remain unimplemented. Do not edit
-workspace JSON files to work around this boundary. Existing-program edits
-continue to use `get_current_program_info → read_network → patch_program`.
+- **Connection configuration:** whether the Codex MCP table is present. Its
+  presence does not prove that a running client has loaded the connection.
+- **MCP service check:** the result of a single launcher probe in the current
+  settings session. A passing probe establishes service access and tool
+  discovery at that time, not that the client invoked an engineering tool.
+- **Client tool calls:** successful calls received through the Agent bridge for
+  the selected project by this running Web service. `tools/list` and launcher
+  probes do not count. Until a successful call arrives, the page shows
+  **等待客户端调用**; afterwards it shows **客户端已调用**.
 
-The server process was tested with the official MCP client, including actual
-stdio discovery, read-only invocation and first-generation candidates. The
-configuration examples are checked against the Codex documentation; a live Codex
-session using the saved configuration is not part of the automated test suite.
+Client activity records the last tool name and call time, whether
+`get_generation_context` has succeeded, and the latest proposal ID returned by
+`create_program_candidate` or `patch_program`. It retains no tool arguments,
+prompts or credentials. These summaries are in memory for the current service
+instance and reset when the Web service restarts. The page refreshes them while
+visible. They establish that a client used the service, but do not identify that
+client as Codex App rather than another authorized MCP/Agent client. A proposal
+ID is a reference to inspect, not proof of approval, a saved version, native
+compilation or successful simulation.
 
-## B. GXWorks Agent embeds Codex Harness / App Server — planned
+## What Codex should do after connection
 
-This is the opposite integration direction: the workbench would host a Codex
-agent session through `codex app-server`. It is not implemented by the MCP
-adapter. The [official App Server interface](https://learn.chatgpt.com/docs/app-server)
-includes threads, turns, approval requests and streamed agent events.
-
-A future boundary could be:
+The MCP server's initialization instructions direct Codex to the shared
+engineering tools. It should discover the enabled `gxworks` tools and call
+`get_current_project` to confirm the bound PLC project and model.
+For first generation and ordinary edits, use the same sequence:
 
 ```text
-AgentBackend (future)
-├── BuiltinAgentBackend
-│   ├── ModelProvider
-│   └── ToolRuntime
-└── CodexHarnessBackend
-    ├── Codex App Server
-    └── GXWorks MCP tools → ToolRuntime
+get_current_project
+-> get_generation_context(user_requirement="current request")
+-> client plans the full or partial ladder
+-> search_plc_manual, if specific facts still need evidence
+-> create_program_candidate
 ```
 
-Treat App Server as an agent harness, with explicit ownership of threads/turns,
-approvals, tool execution, filesystem/sandbox events and diffs. Do not squeeze it
-into an OpenAI-compatible ModelProvider if that loses these semantics. A future
-backend must coordinate engineering confirmations with the desktop while keeping
-PLC logic in the shared runtime. No AgentBackend refactor, App Server process,
-thread/event bridge or harness approval implementation is included in Phase 1.
+`get_generation_context` returns the API's shared `generation_instructions`,
+`generation_request`, confirmed engineering specification, selected model and
+current ladder context. It uses the same local RAG policy, budget and retrieval
+fallback as the API. The optional request improves the context; empty arguments
+remain supported. An empty PLC project is valid input, not a request to inspect
+the Codex working directory or hand-write CSV files in the repository.
+
+For an existing program, the shared output guidance prefers `mode="partial"`
+with only changed/new complete rungs, comment updates and explicit deletions;
+a full response remains accepted. Both forms use the same API compatibility
+normalization, structural checks, IR construction and artifact renderer.
+Unambiguous legacy OUT/timer/counter forms are normalized before checking;
+unsupported instructions, invalid addresses and scope escapes still fail.
+The server chooses `generation_structural` and carries it through proposal,
+save and reload, so ordinary generation is not rejected again by a separate
+MCP semantic policy. It does not call another model to reinterpret Codex's work.
+
+Use the selected model and concrete instruction/timer terms with
+`search_plc_manual` for unresolved device ranges, time bases and presets.
+Irrelevant or empty results are not evidence; refine the search and report
+unresolved facts when evidence remains unavailable. A failed candidate returns
+its actual error; there is no automatic repeated-submission repair loop. Explicit Debug work remains a separate
+`get_current_program_info → read_network → patch_program` workflow with its
+existing scoped, strict checks.
+
+The normalization summary records conditions removed or shared and adjacent
+outputs combined, plus reasons for leaving a structure unchanged. It avoids
+moving conditions across state changes or read-after-write dependencies and
+does not merge repeated writes to the same coil into an OR. For edits it is
+limited to submitted/changed networks. The workbench retains the summary with
+the proposal and saved version; structural readiness and this summary do not
+establish that the requested behavior has been tested.
+
+Codex performs the model/planning role. GXWorks MCP and PLC Core perform the
+deterministic engineering work. `create_program_candidate`, `patch_program` and
+GX import requests preserve the existing engineering confirmation boundary. An
+MCP tool approval is not permission to bypass Web proposal/approval semantics.
+
+A `confirmation_required` result means a candidate passed the reported local
+checks and requires handling according to the workbench's approval policy.
+Service-mode calls may also return a saved `version_id` when that policy accepts
+a local proposal; report that version only when the response supplies it.
+Otherwise report the actual `project_id`, `proposal_id`, validation result and
+remaining review steps. Neither a candidate nor a locally saved version proves
+GX Works2 native compilation, simulation, import or physical PLC execution.
+Report those as unverified unless the corresponding operation actually ran and
+returned a result.
+
+## Product launcher
+
+The Windows Web release places `gxworks-agent-mcp.exe` beside
+`GXWorks-Agent-Web.exe`. Source mode uses the same launcher entry internally
+through the source `.venv`; the Web onboarding action writes the correct absolute
+invocation to Codex, so users do not need to know the Python module layout.
+
+A diagnostic connection check is available without starting MCP stdio:
+
+```text
+gxworks-agent-mcp --check
+```
+
+It returns only the local service URL, bound project id and discovered tool count;
+it never prints the Agent credential.
+
+## Advanced / headless
+
+Direct SessionStore mode remains for CI, isolated tests and environments where
+no Web workbench is running:
+
+```text
+gxworks-agent-mcp --standalone --workspace <workspace> --project <project-id>
+```
+
+An explicitly supplied legacy `--workspace` still selects standalone mode for
+backward compatibility. New integrations should use `--standalone` explicitly.
+
+Environment-driven service configuration also remains available for automation:
+`GXWORKS_AGENT_SERVICE_URL` (or `--service-url`) plus the selected
+`--service-token-env`. These are advanced escape hatches, not the normal Windows
+onboarding path.
+
+### Client guidance is independent
+
+The Web connection wizard checks the MCP service and atomically updates the
+Codex MCP configuration. It does not inspect, create, update or delete
+`~/.agents` or user skill files. Existing custom skills remain untouched, and
+missing or inaccessible skill directories do not block connection. Optional
+client guidance is independent of MCP and is not proof of tool access or
+engineering validation. If configuration cannot be written, setup reports a
+failure rather than claiming the connection configuration is complete.
+
+## Confirmation and safety
+
+External agents discover the same allow-listed high-level PLC tools used by the
+built-in Agent. MCP does not expose arbitrary filesystem deletion, mouse or
+keyboard control, physical PLC writes or device-force primitives. Service-mode
+candidates are persisted as proposals for the Web workbench; the Agent
+credential cannot approve those proposals or call operator-only HTTP routes.
+
+## Opposite integration direction: embedding Codex Harness
+
+Hosting `codex app-server` inside GXWorks Agent is a separate integration
+direction. It should remain an Agent backend with explicit ownership of
+threads/turns, approval requests and streamed events rather than being squeezed
+into `ModelProvider`. This onboarding work does not implement that future
+`CodexHarnessBackend` and does not change `ToolRuntime` or the engineering tool
+catalog.

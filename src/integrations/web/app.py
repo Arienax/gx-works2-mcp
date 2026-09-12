@@ -17,11 +17,13 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 
 from application.projects import media_type, public
-from application.workbench import WorkbenchService, sfc_requirement
+from application.workbench import WorkbenchService, sfc_requirement, ChangeScopeError
 from application.fbd import FBDValidationError
 from application.execution import ExecutionUnavailableError
 from application.workspace import ConflictError, WorkspaceBusyError
+from application.settings import ModelConfigurationRequiredError
 from .security import LocalSecurity
+from .mcp_routes import register_mcp_routes
 from . import responses as dto
 from .schemas import (Login, ProjectCreate, ProjectUpdate, ActivateVersion, SpecUpdate,
                       JobCreate, GenerationRepair, ProposalDecision, ExecutionProposal, AgentCall,
@@ -52,6 +54,7 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service, app.state.security = service, security
     app.middleware("http")(security.middleware)
+    register_mcp_routes(app, service, security)
 
     @app.exception_handler(Exception)
     async def internal_error(_request, _error):
@@ -77,9 +80,17 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     async def invalid(_request, _error):
         return JSONResponse({"error": {"code": "invalid_request", "message": "输入或工程状态无效，请检查所选版本及设置。"}}, status_code=400)
 
+    @app.exception_handler(ModelConfigurationRequiredError)
+    async def model_configuration_required(_request, _error):
+        return JSONResponse({"error": {"code": "model_configuration_required", "message": "尚未配置模型，请在模型 API 设置中新建配置。"}}, status_code=400)
+
     @app.exception_handler(FBDValidationError)
     async def invalid_fbd(_request, error):
         return JSONResponse({"error": {"code": "invalid_fbd", "message": public(str(error))}}, status_code=400)
+
+    @app.exception_handler(ChangeScopeError)
+    async def invalid_scope(_request, error):
+        return JSONResponse({"error": {"code": "change_scope_violation", "message": public(str(error))}}, status_code=400)
 
     @app.exception_handler(ConflictError)
     async def conflict(_request, _error):
@@ -362,6 +373,17 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.post("/api/agent/tools/call", response_model=dto.AgentToolResult, response_model_exclude_unset=True)
     def agent_call(command: AgentCall):
         return service.agent_call(command.model_dump())
+
+    from .exploration_routes import register as register_exploration
+    register_exploration(app, service)
+    from .simulation_routes import register as register_simulation
+    register_simulation(app, service)
+    from .native_validation_routes import register as register_native_validation
+    register_native_validation(app, service)
+    from .delivery_routes import register as register_delivery
+    register_delivery(app, service)
+    from .hardware_routes import register as register_hardware
+    register_hardware(app, service)
 
     if static_dir is None:
         import sys

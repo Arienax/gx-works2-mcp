@@ -41,6 +41,16 @@
             "title": "Call Id",
             "type": "string"
           },
+          "change_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "maxLength": 64,
             "title": "Name",
@@ -394,6 +404,45 @@
         "title": "Capabilities",
         "type": "object"
       },
+      "ChangeScope": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 4096,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Addresses"
+          },
+          "network_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 4096,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Ids"
+          }
+        },
+        "title": "ChangeScope",
+        "type": "object"
+      },
       "DeviceCommentChange": {
         "additionalProperties": false,
         "properties": {
@@ -658,7 +707,38 @@
         "title": "FBDDiff",
         "type": "object"
       },
-      "FBDPreview": {
+      "FBDPreview-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "additionalProperties": true,
+            "title": "Model",
+            "type": "object"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "project_id",
+          "model"
+        ],
+        "title": "FBDPreview",
+        "type": "object"
+      },
+      "FBDPreview-Output": {
         "additionalProperties": false,
         "properties": {
           "diff": {
@@ -796,6 +876,117 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HardwareApproval": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          },
+          "logical_station": {
+            "maximum": 1023.0,
+            "minimum": 0.0,
+            "title": "Logical Station",
+            "type": "integer"
+          },
+          "mapping_confirmed": {
+            "const": true,
+            "title": "Mapping Confirmed",
+            "type": "boolean"
+          },
+          "target_label": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Target Label",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "default": 60,
+            "maximum": 300.0,
+            "minimum": 30.0,
+            "title": "Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "logical_station",
+          "target_label",
+          "addresses",
+          "mapping_confirmed"
+        ],
+        "title": "HardwareApproval",
+        "type": "object"
+      },
+      "HardwareProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          },
+          "logical_station": {
+            "maximum": 1023.0,
+            "minimum": 0.0,
+            "title": "Logical Station",
+            "type": "integer"
+          },
+          "target_label": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Target Label",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "default": 60,
+            "maximum": 300.0,
+            "minimum": 30.0,
+            "title": "Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "logical_station",
+          "target_label",
+          "addresses"
+        ],
+        "title": "HardwareProposal",
+        "type": "object"
+      },
+      "HardwareRead": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Addresses",
+            "type": "array"
+          },
+          "request_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "addresses"
+        ],
+        "title": "HardwareRead",
         "type": "object"
       },
       "Health": {
@@ -941,6 +1132,16 @@
             "maxItems": 12,
             "title": "Attachment Ids",
             "type": "array"
+          },
+          "change_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "deep": {
             "default": true,
@@ -1585,6 +1786,203 @@
         "title": "Login",
         "type": "object"
       },
+      "MCPIntegrationCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "MCPIntegrationCommand",
+        "type": "object"
+      },
+      "MCPIntegrationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "codex_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codex Connected"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "replaced_existing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Existing"
+          },
+          "service_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Url"
+          },
+          "status": {
+            "enum": [
+              "connected",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Count"
+          }
+        },
+        "required": [
+          "status",
+          "project_id",
+          "message"
+        ],
+        "title": "MCPIntegrationResult",
+        "type": "object"
+      },
+      "MCPIntegrationStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "bound_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bound Project Id"
+          },
+          "candidate_proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Proposal Id"
+          },
+          "client_observed": {
+            "title": "Client Observed",
+            "type": "boolean"
+          },
+          "codex_cli_available": {
+            "title": "Codex Cli Available",
+            "type": "boolean"
+          },
+          "codex_command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codex Command"
+          },
+          "codex_configured": {
+            "title": "Codex Configured",
+            "type": "boolean"
+          },
+          "credential_ready": {
+            "title": "Credential Ready",
+            "type": "boolean"
+          },
+          "generation_context_observed": {
+            "title": "Generation Context Observed",
+            "type": "boolean"
+          },
+          "last_call_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Call At"
+          },
+          "last_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tool"
+          },
+          "launcher_ready": {
+            "title": "Launcher Ready",
+            "type": "boolean"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "service_url": {
+            "title": "Service Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_url",
+          "project_id",
+          "bound_project_id",
+          "credential_ready",
+          "launcher_ready",
+          "codex_configured",
+          "codex_cli_available",
+          "codex_command",
+          "client_observed",
+          "last_tool",
+          "last_call_at",
+          "generation_context_observed",
+          "candidate_proposal_id"
+        ],
+        "title": "MCPIntegrationStatus",
+        "type": "object"
+      },
       "ModelConnectionResult": {
         "additionalProperties": false,
         "properties": {
@@ -1937,6 +2335,75 @@
           "language"
         ],
         "title": "ModelSettings",
+        "type": "object"
+      },
+      "NativeValidationRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "attested": {
+            "const": true,
+            "title": "Attested",
+            "type": "boolean"
+          },
+          "native_gxw": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentUpload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operator": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Operator",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "passed",
+              "failed",
+              "inconclusive"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "report": {
+            "maxLength": 64000,
+            "minLength": 1,
+            "title": "Report",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "source_gxw_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Gxw Sha256",
+            "type": "string"
+          },
+          "tool_version": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Tool Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "source_gxw_sha256",
+          "operator",
+          "tool_version",
+          "outcome",
+          "report",
+          "attested"
+        ],
+        "title": "NativeValidationRecord",
         "type": "object"
       },
       "NetworkChange": {
@@ -2839,6 +3306,57 @@
         "title": "SettingsUpdate",
         "type": "object"
       },
+      "SimulatorPlanSave": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_ir_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Expected Ir Sha256",
+            "type": "string"
+          },
+          "issue_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Issue Ids",
+            "type": "array"
+          },
+          "requirement_links": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Requirement Links",
+            "type": "object"
+          },
+          "source_plan_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Plan Id"
+          },
+          "suite": {
+            "additionalProperties": true,
+            "title": "Suite",
+            "type": "object"
+          }
+        },
+        "required": [
+          "suite",
+          "expected_ir_sha256"
+        ],
+        "title": "SimulatorPlanSave",
+        "type": "object"
+      },
       "SpecResult": {
         "additionalProperties": false,
         "properties": {
@@ -3344,6 +3862,44 @@
         "summary": "Fbd Inspect"
       }
     },
+    "/api/fbd/preview": {
+      "post": {
+        "operationId": "preview_api_fbd_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FBDPreview-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview"
+      }
+    },
     "/api/fbd/proposals": {
       "post": {
         "operationId": "fbd_proposal_api_fbd_proposals_post",
@@ -3398,6 +3954,121 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/integrations/mcp": {
+      "get": {
+        "operationId": "mcp_status_api_integrations_mcp_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPIntegrationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp Status"
+      }
+    },
+    "/api/integrations/mcp/codex/connect": {
+      "post": {
+        "operationId": "mcp_connect_codex_api_integrations_mcp_codex_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPIntegrationCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPIntegrationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp Connect Codex"
+      }
+    },
+    "/api/integrations/mcp/test": {
+      "post": {
+        "operationId": "mcp_test_api_integrations_mcp_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPIntegrationCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPIntegrationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp Test"
       }
     },
     "/api/jobs": {
@@ -3648,6 +4319,59 @@
           }
         },
         "summary": "Events"
+      }
+    },
+    "/api/jobs/{job_id}/explorer": {
+      "get": {
+        "operationId": "generation_explorer_api_jobs__job_id__explorer_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "theme",
+            "required": false,
+            "schema": {
+              "default": "dark",
+              "enum": [
+                "light",
+                "dark"
+              ],
+              "title": "Theme",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generation Explorer"
       }
     },
     "/api/jobs/{job_id}/output": {
@@ -4318,6 +5042,54 @@
         "summary": "Artifact"
       }
     },
+    "/api/projects/{project_id}/versions/{version_id}/delivery": {
+      "get": {
+        "operationId": "delivery_api_projects__project_id__versions__version_id__delivery_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delivery"
+      }
+    },
     "/api/projects/{project_id}/versions/{version_id}/diagnostics": {
       "get": {
         "operationId": "diagnostics_api_projects__project_id__versions__version_id__diagnostics_get",
@@ -4364,6 +5136,588 @@
           }
         },
         "summary": "Diagnostics"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/explorer": {
+      "get": {
+        "operationId": "explorer_api_projects__project_id__versions__version_id__explorer_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "theme",
+            "required": false,
+            "schema": {
+              "default": "dark",
+              "enum": [
+                "light",
+                "dark"
+              ],
+              "title": "Theme",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explorer"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/hardware": {
+      "get": {
+        "operationId": "status_api_projects__project_id__versions__version_id__hardware_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Status"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/hardware/sessions": {
+      "post": {
+        "operationId": "propose_api_projects__project_id__versions__version_id__hardware_sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HardwareProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/hardware/sessions/{session_id}/approve": {
+      "post": {
+        "operationId": "approve_api_projects__project_id__versions__version_id__hardware_sessions__session_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HardwareApproval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/hardware/sessions/{session_id}/read": {
+      "post": {
+        "operationId": "read_api_projects__project_id__versions__version_id__hardware_sessions__session_id__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HardwareRead"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/hardware/sessions/{session_id}/revoke": {
+      "post": {
+        "operationId": "revoke_api_projects__project_id__versions__version_id__hardware_sessions__session_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/issues": {
+      "get": {
+        "operationId": "cards_api_projects__project_id__versions__version_id__issues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "report_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cards"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/native-validation": {
+      "get": {
+        "operationId": "records_api_projects__project_id__versions__version_id__native_validation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Records"
+      },
+      "post": {
+        "operationId": "record_api_projects__project_id__versions__version_id__native_validation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeValidationRecord"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/native-validation/{evidence_id}/gxw": {
+      "get": {
+        "operationId": "artifact_api_projects__project_id__versions__version_id__native_validation__evidence_id__gxw_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Artifact"
       }
     },
     "/api/projects/{project_id}/versions/{version_id}/preview": {
@@ -4539,6 +5893,169 @@
         "summary": "Run"
       }
     },
+    "/api/projects/{project_id}/versions/{version_id}/simulation-workbench": {
+      "get": {
+        "operationId": "read_simulation_workbench_api_projects__project_id__versions__version_id__simulation_workbench_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Simulation Workbench"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/simulation-workbench/plans": {
+      "post": {
+        "operationId": "save_simulation_plan_api_projects__project_id__versions__version_id__simulation_workbench_plans_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPlanSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Simulation Plan"
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/simulation-workbench/runs/{run_id}/replay": {
+      "get": {
+        "operationId": "simulation_replay_api_projects__project_id__versions__version_id__simulation_workbench_runs__run_id__replay_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Simulation Replay"
+      }
+    },
     "/api/proposals": {
       "get": {
         "operationId": "proposals_api_proposals_get",
@@ -4709,6 +6226,59 @@
         "summary": "Decision"
       }
     },
+    "/api/proposals/{proposal_id}/explorer": {
+      "get": {
+        "operationId": "candidate_explorer_api_proposals__proposal_id__explorer_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "theme",
+            "required": false,
+            "schema": {
+              "default": "dark",
+              "enum": [
+                "light",
+                "dark"
+              ],
+              "title": "Theme",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicObject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Candidate Explorer"
+      }
+    },
     "/api/proposals/{proposal_id}/preview": {
       "get": {
         "operationId": "preview_api_proposals__proposal_id__preview_get",
@@ -4756,7 +6326,7 @@
                       "$ref": "#/components/schemas/STPreview"
                     },
                     {
-                      "$ref": "#/components/schemas/FBDPreview"
+                      "$ref": "#/components/schemas/FBDPreview-Output"
                     },
                     {
                       "$ref": "#/components/schemas/ExecutionPreview"

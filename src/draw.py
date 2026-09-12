@@ -21,12 +21,12 @@ def generate_gx_works2_csv(
     if is_plc_ir(json_data):
         json_data = ir_to_ladder(json_data)
 
-    device_comments = {}
+    declared_comments = {}
     rungs = []
 
     if isinstance(json_data, dict) and "rungs" in json_data:
         rungs = json_data.get("rungs", [])
-        device_comments = json_data.get("device_comments", {})
+        declared_comments = json_data.get("device_comments", {})
     elif isinstance(json_data, list):
         rungs = json_data
 
@@ -37,15 +37,38 @@ def generate_gx_works2_csv(
         if match: return f"{match.group(1)}{match.group(2).zfill(3)}"
         return addr
 
+    device_comments = {}
+    comment_devices = set()
+
+    def add_missing_comment(addr, comment):
+        if not addr:
+            return
+        identity = addr.strip().upper()
+        match = re.fullmatch(r"([A-Z]+)(\d+)", identity)
+        if match:
+            identity = match.group(1) + (match.group(2).lstrip("0") or "0")
+        if identity not in comment_devices:
+            comment_devices.add(identity)
+            device_comments[addr] = comment
+
+    # Project declarations are authoritative, including explicit empty values.
+    # Work on a separate collection and identify aliases before inferring any
+    # labels, so X1/x001 cannot overwrite or duplicate the same device comment.
+    for addr, comment in declared_comments.items():
+        add_missing_comment(addr, comment)
+
     if infer_device_comments:
         for rung in rungs:
             header = rung.get("header_element")
             if header and header.get("label"):
-                parts = header.get("expression", "").strip().split()
-                if len(parts) >= 2:
-                    addr = parts[1] if parts[0] in ["=", ">", "<", "<=", ">=", "<>"] else parts[0]
-                    if re.match(r'^[A-Z]+\d+$', addr):
-                        device_comments[addr] = header["label"]
+                if header.get("address"):
+                    add_missing_comment(header["address"], header["label"])
+                else:
+                    parts = header.get("expression", "").strip().split()
+                    if len(parts) >= 2:
+                        addr = parts[1] if parts[0] in ["=", ">", "<", "<=", ">=", "<>"] else parts[0]
+                        if re.fullmatch(r'[A-Za-z]+\d+', addr):
+                            add_missing_comment(addr, header["label"])
                         
             for branch in rung.get("branches", []):
                 for elem in branch.get("inputs", []):
@@ -53,16 +76,16 @@ def generate_gx_works2_csv(
                         for sub_b in elem.get("branches", []):
                             for sub_elem in sub_b:
                                 if sub_elem.get("address") and sub_elem.get("label"):
-                                    device_comments[sub_elem["address"]] = sub_elem["label"]
+                                    add_missing_comment(sub_elem["address"], sub_elem["label"])
                     else:
                         if elem.get("address") and elem.get("label"):
-                            device_comments[elem["address"]] = elem["label"]
+                            add_missing_comment(elem["address"], elem["label"])
                 for out in branch.get("outputs", []):
                     if out.get("address") and out.get("label"):
-                        device_comments[out["address"]] = out["label"]
+                        add_missing_comment(out["address"], out["label"])
             for elem in rung.get("shared_inputs", []):
                 if elem.get("address") and elem.get("label"):
-                    device_comments[elem["address"]] = elem["label"]
+                    add_missing_comment(elem["address"], elem["label"])
 
     # 2. 生成注释
     comment_rows = [["COMMENT - 副本"], ["软元件名", "注释"]]

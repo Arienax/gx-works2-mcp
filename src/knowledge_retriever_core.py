@@ -40,7 +40,19 @@ _ERROR_CODE_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:0X)?([0-9A-F]{4,5})(H)?(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
-_ASCII_TERM_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]{1,23}(?![A-Za-z0-9_])")
+_ASCII_TERM_RE = re.compile(
+    r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]{1,23}"
+    r"(?:<>|<=|>=|[<>=])?(?![A-Za-z0-9_<>=])"
+)
+# Official manuals abbreviate comparison families in headings, for example
+# "AND=, >, <, < >, <=, >=". Expand the heading, never the source text.
+_COMPARISON_FAMILY_RE = re.compile(
+    r"(?<![A-Za-z0-9_])([A-Za-z][A-Za-z0-9_]*)"
+    r"((?:<>|<=|>=|[<>=])(?:\s*,\s*(?:<\s*>|<\s*=|>\s*=|[<>=]))+)"
+)
+_OFFICIAL_INSTRUCTION_MANUAL_TYPES = frozenset(
+    {"programming", "positioning", "structured_instruction", "structured_function"}
+)
 _PRODUCT_TERM_RE = re.compile(
     r"(?<![A-Za-z0-9_])FX\d[A-Z0-9]*(?:-[A-Z0-9]+)+(?![A-Za-z0-9_])",
     re.IGNORECASE,
@@ -307,6 +319,7 @@ def _close_thread_connection():
     _thread_state.identity = None
     _thread_state.schema = None
     _thread_state.dense_verification = None
+    _thread_state.instruction_sections = None
 
 
 def _connection(path, identity):
@@ -439,13 +452,29 @@ def _row_in_scope(row, plc_model, task_type):
     return _scope_matches(model, plc_model) and _scope_matches(task, task_type)
 
 
+def _literal_instruction_word(query, word):
+    """Disambiguate the English preposition from an explicitly named FOR opcode."""
+    if str(word).upper() != "FOR":
+        return True
+    normalized = _normalize_text(query)
+    if normalized.casefold() == "for":
+        return True
+    if re.search(r"(?<![A-Za-z0-9_])FOR(?![A-Za-z0-9_])", normalized):
+        return True
+    return bool(re.search(
+        r"[`\"']for[`\"']|\bfor\s*(?:/\s*next\b|instruction\b|指令|循环)|"
+        r"\bfor\s+(?:K[+-]?\d+|D\d+)(?![A-Za-z0-9_])",
+        normalized, re.IGNORECASE,
+    ))
+
+
 def _exact_terms(query):
     ordered = []
     seen = set()
 
     def add(value):
         term = _normalize_text(value).upper()
-        if not term or term in _EXACT_NOISE or term in seen:
+        if not term or term in _EXACT_NOISE or term in seen or not _literal_instruction_word(query, term):
             return
         seen.add(term)
         ordered.append(term)
@@ -553,6 +582,32 @@ def _query_is_clock_semantics(query):
     )
 
 
+def _query_is_timer_preset(query):
+    """Scope device-range evidence to timer settings, units, and time-base questions."""
+    normalized = _normalize_text(query)
+    timer = re.search(r"\btimers?\b|\bT\d+\b|定时器|计时器|时基", normalized, re.IGNORECASE)
+    setting = re.search(
+        r"\bK\d*\b|\bpreset\b|\btime\s*base\b|\bresolution\b|\bunits?\b|"
+        r"\btimer\s+(?:numbers?|ranges?)\b|时基|时间基准|预置值|设定值|定时器编号",
+        normalized, re.IGNORECASE,
+    )
+    return bool(timer and setting and not _query_is_clock_semantics(normalized))
+
+
+def _timer_range_evidence(text, plc_model):
+    """Require model, timer range and time units in the original evidence body."""
+    body = re.split(r"\n\[(?:PAGE|TABLE)\b", str(text or ""), maxsplit=1)[-1]
+    model = _normalize_text(plc_model)
+    if not model:
+        return False
+    model_pattern = r"\s*".join(re.escape(character) for character in model)
+    return bool(
+        re.search(r"(?<![A-Za-z0-9])" + model_pattern + r"(?![A-Za-z0-9])", body, re.IGNORECASE)
+        and re.search(r"\bT\d+\s*(?:to|[-–～]|至)\s*T\d+\b", body, re.IGNORECASE)
+        and re.search(r"\b\d+(?:\.\d+)?\s*(?:ms|s|sec|seconds?)\b", body, re.IGNORECASE)
+    )
+
+
 def _timer_debug_case_matches_query(case_id, query):
     normalized = _normalize_text(query).casefold()
     markers = {
@@ -616,7 +671,7 @@ def _fts_tokens(query):
         add(term)
     for match in _ASCII_WORD_RE.finditer(query):
         value = match.group(0)
-        if value.upper() not in _EXACT_NOISE:
+        if value.upper() not in _EXACT_NOISE and _literal_instruction_word(query, value):
             add(value)
     for match in _CJK_RUN_RE.finditer(query):
         run = match.group(0)
@@ -810,15 +865,92 @@ def _alias_occurs(query, alias):
     normalized_alias = _normalize_text(alias).casefold()
     if not normalized_alias:
         return False
-    if re.fullmatch(r"[a-z][a-z0-9_]*(?:\s+[0-9]+)?", normalized_alias):
+    if re.fullmatch(r"[a-z][a-z0-9_]*(?:<>|<=|>=|[<>=]|\s+[0-9]+)?", normalized_alias):
         return bool(
             re.search(
-                rf"(?<![a-z0-9_]){re.escape(normalized_alias)}(?![a-z0-9_])",
+                rf"(?<![a-z0-9_]){re.escape(normalized_alias)}(?![a-z0-9_<>=])",
                 normalized_query,
                 flags=re.IGNORECASE,
             )
         )
     return len(normalized_alias) >= 2 and normalized_alias in normalized_query
+
+
+def _instruction_heading_terms(section):
+    terms = set(_exact_terms(section))
+    for match in _COMPARISON_FAMILY_RE.finditer(section):
+        prefix, operators = match.groups()
+        terms.update(
+            prefix.upper() + re.sub(r"\s+", "", operator)
+            for operator in operators.split(",")
+        )
+    return terms
+
+
+def _manual_instruction_references(connection, schema, terms, plc_model, task_type, structured_refs):
+    """Recall catalogued opcodes missing from the prebuilt instruction tables.
+
+    Cache only official chapter metadata in memory for this read-only database
+    connection. A chapter title must name the opcode (including abbreviated
+    comparison families), and the original body is checked after fetching it.
+    This narrow path does not relax the generic FTS/dense relevance gates.
+    """
+
+    from instruction_registry import DEFAULT_INSTRUCTION_REGISTRY
+
+    known = DEFAULT_INSTRUCTION_REGISTRY.known_mnemonics()
+    structured_terms = {
+        _normalize_text(item["matched"]).upper()
+        for item in structured_refs
+        if item["match_type"] == "structured_instruction"
+    }
+    missing = [term for term in terms if term in known and term not in structured_terms]
+    if not missing:
+        return []
+    chunks = schema.get("chunks")
+    columns = chunks["columns"] if chunks else ()
+    id_column = _first_column(columns, _CHUNK_ID_COLUMNS)
+    section_column = _first_column(columns, _SECTION_COLUMNS)
+    if not id_column or not section_column or "manual_type" not in columns:
+        return []
+    index = getattr(_thread_state, "instruction_sections", None)
+    if index is None:
+        selected_columns = list(dict.fromkeys(
+            [id_column, section_column, "manual_type"]
+            + _matching_columns(columns, _MODEL_COLUMNS + _TASK_COLUMNS)
+        ))
+        rows = connection.execute(
+            "SELECT {} FROM {} WHERE manual_type IN ({})".format(
+                ",".join(_quote_identifier(column) for column in selected_columns),
+                _quote_identifier(chunks["name"]),
+                ",".join("?" for _ in _OFFICIAL_INSTRUCTION_MANUAL_TYPES),
+            ),
+            tuple(_OFFICIAL_INSTRUCTION_MANUAL_TYPES),
+        ).fetchall()
+        index = {}
+        for row in rows:
+            section = _normalize_text(row[section_column])
+            for term in _instruction_heading_terms(section).intersection(known):
+                index.setdefault(term, []).append(row)
+        _thread_state.instruction_sections = index
+    references = []
+    # Round-robin keeps one common opcode from exhausting the candidate limit.
+    groups = [
+        [(term, row) for row in index.get(term, []) if _row_in_scope(row, plc_model, task_type)]
+        for term in missing
+    ]
+    for depth in range(min(_MAX_ENTITY_ROWS_PER_TERM, max(map(len, groups), default=0))):
+        for group in groups:
+            if depth >= len(group):
+                continue
+            term, row = group[depth]
+            references.append({
+                "kind": "id", "value": row[id_column], "matched": term,
+                "match_type": "manual_instruction", "base_score": 1760.0,
+            })
+            if len(references) >= _MAX_CANDIDATES:
+                return references
+    return references
 
 
 def _structured_references(connection, schema, query, terms, plc_model, task_type):
@@ -923,6 +1055,21 @@ def _structured_references(connection, schema, query, terms, plc_model, task_typ
         for row in rows:
             add(row["id"], row["section"], "manual_section", 1540.0)
 
+    # A concrete timer address often matches an example but not the table's
+    # range endpoints. Recall the official range section when the user asks
+    # about preset units. Keep the original complete chunk and budget policy.
+    if (
+        chunks and {"id", "manual_type", "section", "text"}.issubset(chunks["columns"])
+        and _query_is_timer_preset(query)
+    ):
+        rows = connection.execute(
+            "SELECT * FROM {} WHERE manual_type IN ('programming','structured_device') "
+            "AND section LIKE '%Numbers of timers%'".format(_quote_identifier(chunks["name"])),
+        ).fetchall()
+        for row in rows:
+            if _row_in_scope(row, plc_model, task_type) and _timer_range_evidence(row["text"], plc_model):
+                add(row["id"], row["section"], "manual_section", 1540.0)
+
     aliases = schema.get("instruction_aliases")
     if aliases and {
         "alias_norm",
@@ -945,7 +1092,7 @@ def _structured_references(connection, schema, query, terms, plc_model, task_typ
         }
         for row in rows:
             alias = str(row["alias"] or "")
-            if _alias_occurs(query, alias):
+            if _literal_instruction_word(query, alias) and _alias_occurs(query, alias):
                 alias_type = str(row["alias_type"] or "")
                 add(
                     row["chunk_id"],
@@ -1311,6 +1458,9 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
         plc_model,
         task_type,
     )
+    structured_refs.extend(_manual_instruction_references(
+        connection, schema, exact_terms, plc_model, task_type, structured_refs
+    ))
     # Qualified routes enter the same entity pipeline as native entities. They
     # do not change the original query, official structured lookup, or dense
     # text, and cannot be triggered by bare generic software words.
@@ -1371,6 +1521,10 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
     for reference in structured_refs:
         row = rows.get((reference["kind"], str(reference["value"])))
         result = _chunk_result(row, meta, path, plc_model, task_type)
+        if reference["match_type"] == "manual_instruction" and (
+            result is None or not _alias_occurs(result["text"], reference["matched"])
+        ):
+            continue
         merge_candidate(
             result,
             reference["match_type"],
@@ -1468,7 +1622,8 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
     query_term_set = {term.casefold() for term in exact_terms}
     normalized_task = str(task_type or "").casefold()
     positioning_query = _query_is_positioning(query)
-    timer_query = _query_is_timer_semantics(query)
+    timer_preset_query = _query_is_timer_preset(query)
+    timer_query = _query_is_timer_semantics(query) or timer_preset_query
     clock_query = _query_is_clock_semantics(query)
     explicit_timer_instruction = bool(
         query_term_set.intersection({"ans", "stmr", "ttmr", "wdt"})
@@ -1498,7 +1653,7 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
         # let a thematically similar debugging case displace the exact record.
         if "structured_error" in unique_signal_types:
             score += 1100.0
-        elif "structured_instruction" in unique_signal_types:
+        elif unique_signal_types.intersection({"structured_instruction", "manual_instruction"}):
             score += 420.0
         elif "structured_device" in unique_signal_types:
             score += 320.0
@@ -1548,6 +1703,13 @@ def _retrieve_uncached(path, identity, query, plc_model, task_type, top_k, char_
             timer_debug_case = timer_case_id.startswith("timer_") or timer_case_id == "clock_relay_blink_period"
             if timer_device_section and not explicit_timer_instruction:
                 score += 950.0
+            if (
+                timer_preset_query and "numbers of timers" in section
+                and candidate.get("manual_type") in {"programming", "structured_device"}
+                and _timer_range_evidence(candidate.get("text"), plc_model)
+                and not explicit_timer_instruction
+            ):
+                score += 900.0
             if timer_debug_case:
                 if _timer_debug_case_matches_query(timer_case_id, query):
                     score += (

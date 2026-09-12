@@ -1762,11 +1762,13 @@ pre {
 .approval-mode-indicator.full-access { border-style: dashed; }
 .settings-tabs { display: flex; gap: 8px; padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
 .approval-settings { display: grid; gap: 14px; }
-.approval-settings fieldset { border: 0; padding: 0; display: grid; gap: 9px; }
-.approval-choice { display: flex; align-items: flex-start; gap: 10px; padding: 13px; border: 1px solid var(--border); border-radius: 7px; cursor: pointer; }
+.approval-settings fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; grid-auto-rows: 1fr; gap: 9px; }
+.approval-choice { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 13px; border: 1px solid var(--border); border-radius: 7px; cursor: pointer; }
 .approval-choice.selected { border-color: var(--accent); background: var(--hover); }
-.approval-choice input { margin-top: 3px; }
-.approval-choice span { display: grid; gap: 6px; }
+.approval-choice > input[type="radio"],
+.approval-consent > input[type="checkbox"] { width: 16px; height: 16px; min-height: 0; padding: 0; margin: 3px 0 0; flex: 0 0 16px; }
+.approval-choice > span { min-width: 0; display: grid; align-content: start; gap: 6px; text-align: left; overflow-wrap: anywhere; }
+.approval-choice strong { line-height: 1.5; }
 .approval-choice small { color: var(--muted); line-height: 1.6; }
 .approval-consent { display: flex; align-items: flex-start; gap: 8px; }
 @media (max-width: 1150px) {
