@@ -32,7 +32,12 @@ datas = [
 ]
 
 binaries, hiddenimports = [], ["anyio._backends._asyncio"]
-for package in ("mcp", "pydantic", "pydantic_core", "annotated_types", "typing_inspection"):
+# Do not collect_all("mcp"). The MCP SDK deliberately keeps its command-line
+# interface behind the optional ``mcp[cli]`` extra; recursively collecting the
+# whole package imports ``mcp.cli`` during analysis and makes a core-only install
+# fail when Typer is absent. The product launcher uses the SDK's server/stdio
+# modules, which PyInstaller discovers from the normal application import graph.
+for package in ("pydantic", "pydantic_core", "annotated_types", "typing_inspection"):
     package_datas, package_binaries, package_hiddenimports = collect_all(package, on_error="warn once")
     datas.extend(package_datas)
     binaries.extend(package_binaries)
@@ -50,7 +55,7 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         "PyQt5", "PyQt6", "PySide2", "PySide6", "qt_compat", "main",
-        "tkinter", "openai", "pywinauto", "win32com", "comtypes",
+        "tkinter", "openai", "pywinauto", "win32com", "comtypes", "mcp.cli",
     ],
     noarchive=False,
     optimize=1,
