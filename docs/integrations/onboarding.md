@@ -3,6 +3,19 @@
 The Web workbench is the normal integration entry point. Existing `modelProfiles`,
 `ModelProvider`, `ToolRuntime` and MCP tool schemas remain the source of truth.
 
+## Source checkout quick start
+
+On Windows, `build-web.bat` now prepares the complete source Web runtime by
+default: it creates `.venv` with Python 3.10+ when needed, installs
+`requirements/web.txt`, installs the locked frontend dependencies, regenerates
+API types and builds `web/dist`. After a successful build, run `start-web.cmd`
+directly from the repository root.
+
+Use `build-web.bat --frontend-only` only when the Python backend environment is
+managed separately. `start-web.cmd` prefers the extracted release executable,
+then the source `.venv`, and can also fall back to a locally built
+`dist/GXWorks-Agent-Web/GXWorks-Agent-Web.exe` package.
+
 ## Model API
 
 Open **Settings → Model → Model API**. For an OpenAI-compatible service, enter
