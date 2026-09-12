@@ -1,17 +1,19 @@
 """Operator-triggered local MCP onboarding.
 
-This service never receives arbitrary commands from the browser.  It can bind
-the current GXWorks project to the private local MCP credential, exercise the
-actual product launcher, and register that fixed launcher with the local Codex
-CLI.  PLC engineering operations remain in ToolRuntime.
+This service never receives arbitrary commands from the browser. It binds the
+current GXWorks project to the private local MCP credential, exercises the real
+product launcher, and updates only the fixed `mcp_servers.gxworks` Codex config
+section. PLC engineering operations remain in ToolRuntime.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -71,28 +73,93 @@ def _codex_config_path() -> Path:
     return Path(home).expanduser() / "config.toml" if home else Path.home() / ".codex" / "config.toml"
 
 
-def _restore_config(path: Path, original: bytes | None) -> None:
+def _toml_string(value: str) -> str:
+    # JSON quoted strings are valid TOML basic strings for the path characters
+    # used here and correctly escape Windows backslashes and quotes.
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _gxworks_codex_block(invocation: list[str]) -> str:
+    command, *args = invocation
+    lines = [
+        "[mcp_servers.gxworks]",
+        "command = " + _toml_string(command),
+    ]
+    if args:
+        lines.append("args = [" + ", ".join(_toml_string(value) for value in args) + "]")
+    lines.extend(("startup_timeout_sec = 30", "tool_timeout_sec = 120"))
+    return "\n".join(lines) + "\n"
+
+
+def _replace_gxworks_table(text: str, block: str) -> tuple[str, bool]:
+    """Replace only mcp_servers.gxworks and its nested subtables."""
+    lines = text.splitlines(keepends=True)
+    header = re.compile(r"^\s*\[([^\]]+)\]\s*(?:#.*)?$")
+    start = None
+    end = None
+    for index, line in enumerate(lines):
+        match = header.match(line.rstrip("\r\n"))
+        if not match:
+            continue
+        table = match.group(1).strip()
+        if start is None:
+            if table == "mcp_servers.gxworks":
+                start = index
+        elif not (table == "mcp_servers.gxworks" or table.startswith("mcp_servers.gxworks.")):
+            end = index
+            break
+    replaced = start is not None
+    if start is not None:
+        end = len(lines) if end is None else end
+        lines[start:end] = [block]
+        return "".join(lines), replaced
+    prefix = "".join(lines)
+    if prefix and not prefix.endswith(("\n", "\r")):
+        prefix += "\n"
+    if prefix and not prefix.endswith("\n\n"):
+        prefix += "\n"
+    return prefix + block, False
+
+
+def _write_codex_config(invocation: list[str]) -> bool:
+    path = _codex_config_path()
     try:
-        if original is None:
-            if path.exists():
-                path.unlink()
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(original)
-    except OSError:
-        pass
+        original = path.read_text(encoding="utf-8-sig") if path.is_file() else ""
+    except (OSError, UnicodeError) as error:
+        raise MCPIntegrationError("无法读取 Codex 配置文件。") from error
+    updated, replaced = _replace_gxworks_table(original, _gxworks_codex_block(invocation))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".gxworks-agent-" + uuid.uuid4().hex + ".tmp")
+    try:
+        temporary.write_text(updated, encoding="utf-8", newline="\n")
+        os.replace(temporary, path)
+    except OSError as error:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise MCPIntegrationError("无法原子更新 Codex MCP 配置。") from error
+    return replaced
 
 
 def status(project_id: str, service_url: str) -> dict[str, Any]:
     service_url = validate_service_url(service_url)
     binding = load_service_binding() or {}
     codex = _codex_executable()
+    config_path = _codex_config_path()
+    configured = False
+    try:
+        if config_path.is_file():
+            configured = "[mcp_servers.gxworks]" in config_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        configured = False
     return {
         "service_url": service_url,
         "project_id": project_id,
         "bound_project_id": binding.get("project_id") if binding.get("service_url") == service_url else None,
         "credential_ready": bool(binding and binding.get("service_url") == service_url),
         "launcher_ready": _launcher_ready(),
+        "codex_configured": configured,
         "codex_cli_available": bool(codex),
         "codex_command": Path(codex).name if codex else None,
     }
@@ -130,45 +197,13 @@ def test_connection(project_id: str, service_url: str) -> dict[str, Any]:
 
 
 def connect_codex(project_id: str, service_url: str) -> dict[str, Any]:
-    """Replace only the named `gxworks` Codex MCP entry after a launcher check.
-
-    The user's Codex config bytes are restored if the CLI update fails, so an
-    explicit Connect click cannot strand a previously working configuration.
-    """
+    """Bind the project, verify the launcher, then atomically replace our table."""
     check = test_connection(project_id, service_url)
-    codex = _codex_executable()
-    if not codex:
-        return {
-            **check,
-            "status": "codex_unavailable",
-            "codex_connected": False,
-            "message": "MCP 本身连接正常，但未在 PATH 中检测到 Codex CLI。可在高级设置复制配置。",
-        }
-
-    config_path = _codex_config_path()
-    try:
-        original = config_path.read_bytes() if config_path.is_file() else None
-    except OSError as error:
-        raise MCPIntegrationError("无法读取 Codex 配置文件。") from error
-
-    # `codex mcp add` has no safe in-place replace primitive.  The operator
-    # explicitly requested replacement of our fixed gxworks entry, and the
-    # complete original config is restored if either CLI operation fails.
-    removed = _run([codex, "mcp", "remove", "gxworks"], timeout=15.0)
-    added = _run([codex, "mcp", "add", "gxworks", "--", *launcher_invocation()], timeout=20.0)
-    if added.returncode != 0:
-        _restore_config(config_path, original)
-        raise MCPIntegrationError("Codex MCP 配置写入失败，原配置已恢复。")
-
-    listed = _run([codex, "mcp", "list"], timeout=15.0)
-    if listed.returncode != 0 or "gxworks" not in (listed.stdout + listed.stderr).lower():
-        _restore_config(config_path, original)
-        raise MCPIntegrationError("Codex 未确认 gxworks MCP 注册，原配置已恢复。")
-
+    replaced = _write_codex_config(launcher_invocation())
     return {
         **check,
         "status": "connected",
         "codex_connected": True,
-        "replaced_existing": removed.returncode == 0,
+        "replaced_existing": replaced,
         "message": "Codex 已连接 GXWorks Agent。以后直接描述 PLC 任务即可，无需再次粘贴 MCP 配置。",
     }
