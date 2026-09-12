@@ -38,7 +38,8 @@ export function JobProgress({ job, events, t }: {
     : "GX 执行未完成，请检查 GX Works2 状态。";
   const hasModelPreview = !!(preview.reasoning || preview.content || preview.discarded);
   const showModelPreview = modelDriven || hasModelPreview;
-  if (!running && !showModelPreview && !executionFailed) return null;
+  const executionCompleted = !running && outcome === "accepted" && !!executionDetails?.message;
+  if (!running && !showModelPreview && !executionFailed && !executionCompleted) return null;
   const latest = [...events].reverse().find((event) => ["model_progress", "progress"].includes(event.event_type));
   const phaseNames: Record<string, string> = {
     waiting: "正在等待模型响应", thinking: "模型正在处理需求",
@@ -54,6 +55,7 @@ export function JobProgress({ job, events, t }: {
       <div role="progressbar" aria-label={label} aria-valuetext={label} className="live-progress-track"><span /></div>
     </>}
     {executionFailed && <p className="error-text" role="alert">{t(executionMessage)}</p>}
+    {executionCompleted && <p role="status">{t(String(executionDetails?.message))}</p>}
     {showModelPreview && <details className="stream-preview">
       <summary>{t("查看实时输出")}</summary>
       <p className="muted">{t("生成过程预览，工程结果以最终校验为准。")}</p>

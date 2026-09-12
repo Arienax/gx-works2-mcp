@@ -668,6 +668,12 @@ class WorkbenchService:
         project_id, version_id = command["project_id"], command["version_id"]
         with self.lock.thread_lock:
             version = self.projects.raw_version(project_id, version_id)
+            manual_backup = command.get("manual_backup_acknowledged", False)
+            if type(manual_backup) is not bool or (manual_backup and (
+                command["action"] != "gx_import" or version.get("target_mode") == "fbd"
+                or not all((version.get("artifacts") or {}).get(key) for key in ("program_csv", "comment_csv"))
+            )):
+                raise ValueError("Manual backup acknowledgement is only supported for CSV GX imports")
             if command["action"] == "gx_import":
                 from application.execution import ExecutionUnavailableError, read_gx_environment
 
@@ -682,6 +688,8 @@ class WorkbenchService:
                         "GX Works2 已运行，但尚未新建或打开目标工程。"
                     )
             payload = {"project_id": project_id, "version_id": version_id}
+            if manual_backup:
+                payload["manual_backup_acknowledged"] = True
             plan_id = command.get("plan_id")
             if command["action"] in ("simulation", "debug"):
                 record_id(plan_id)

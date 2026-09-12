@@ -54,6 +54,8 @@ import { Settings } from "./features/Settings";
 import { ApprovalSettingsPanel, approvalLabels } from "./features/ApprovalSettings";
 import type { ApprovalSettings } from "./features/ApprovalSettings";
 import { ProjectToolbar, artifactLabel } from "./features/ProjectToolbar";
+import { submitGXSend } from "./features/gxSend";
+import type { GXSendSelection } from "./features/gxSend";
 import { FBDPanel, FBDImport, emptyFBD } from "./features/FBDPanel";
 import type { FBDModel } from "./features/FBDPanel";
 import { ProgramExplorer, IssueCards } from "./features/ProgramExplorer";
@@ -150,6 +152,10 @@ export default function App() {
   const openedDrafts = useRef(new Set<string>());
   const activeProjectRef = useRef(pid);
   const projectEpoch = useRef(0);
+  const [gxSend, setGXSend] = useState<GXSendSelection | null>(null);
+  const gxSendSelection = useRef({ pid, vid, activeVersionId: "", epoch: 0 });
+  gxSendSelection.current = { pid, vid, activeVersionId: project?.active_version_id || "", epoch: projectEpoch.current };
+  useEffect(() => { setGXSend(null); }, [pid, vid, project?.active_version_id]);
   const composerProjectRef = useRef("");
   useEffect(() => {
     projectEpoch.current += 1;
@@ -772,6 +778,37 @@ export default function App() {
     setProposals((old) => [value, ...old]);
     await showProposal(value);
   }
+  function requestGXSend() {
+    if (!canWrite || preview || jobs.some(activeJob) || !operations.gx_import || !project || project.id !== pid || !version) return;
+    if (version.target_mode === "fbd") {
+      void guarded(() => proposeExecution("gx_import"));
+      return;
+    }
+    setGXSend({ projectId: pid, projectName: project.name, versionId: vid,
+      activeVersionId: project.active_version_id || "",
+      epoch: projectEpoch.current, requestId: key() });
+  }
+  async function confirmGXSend() {
+    const selection = gxSend;
+    if (!selection) return;
+    setGXSend(null);
+    const isCurrent = () => {
+      const current = gxSendSelection.current;
+      return current.pid === selection.projectId && current.vid === selection.versionId &&
+        current.activeVersionId === selection.activeVersionId && current.epoch === selection.epoch;
+    };
+    const result = await submitGXSend(selection, isCurrent, api);
+    if (!isCurrent()) return;
+    setProposals(old => [result.proposal, ...old.filter(p => p.id !== result.proposal.id)]);
+    setSelectedProposal(null);
+    setPreview(null);
+    if (result.job) {
+      setJobId(result.job.id);
+      setJobs(old => [result.job!, ...old.filter(j => j.id !== result.job!.id)]);
+      setPanel("agent");
+    }
+    await reloadProjectSilently(selection.projectId);
+  }
   async function upload(files: FileList | null) {
     if (!files) return;
     for (const file of Array.from(files)) {
@@ -1073,10 +1110,10 @@ export default function App() {
         </div>
         <ProjectToolbar pid={pid} vid={vid} artifacts={version?.artifacts || []}
           exportable={!!version && !preview} canRead={canWrite && !!pid && version?.target_mode !== "fbd"}
-          canSend={canWrite && !preview && !!operations.gx_import}
+          canSend={canWrite && !preview && !jobs.some(activeJob) && !!operations.gx_import}
           canRefresh={!!session && !!pid && !busy && !loading && !jobs.some(activeJob)}
           refreshing={refreshingDrawing} onRead={() => void guarded(() => submitJob("gx_read"))}
-          onSend={() => void guarded(() => proposeExecution("gx_import"))} onRefresh={() => void guarded(refreshDrawing)} t={t}
+          onSend={requestGXSend} onRefresh={() => void guarded(refreshDrawing)} t={t}
           more={<>
             <Button disabled={!canWrite || !pid} onClick={() => setModal("fbd-import")}><FolderOpen size={15}/>{t("导入 GXW")}</Button>
             <Button disabled={!canWrite || !pid || version?.target_mode === "fbd"} onClick={() => void guarded(() => submitJob("gx_inspect"))}>
@@ -1780,6 +1817,16 @@ export default function App() {
           </button>
         </div>
       )}
+      <Modal open={!!gxSend} onOpenChange={open => !open && setGXSend(null)} title={t("发送前请备份")}
+        description={t("发送将覆盖 GX Works2 当前 MAIN 和相关软元件注释。请先自行备份目标工程；本次不会自动备份或检查外部修改。")}
+      >
+        <p>{t("本地项目")}：<strong>{gxSend?.projectName}</strong></p>
+        <p>{t("待发送版本")}：<strong>{gxSend?.versionId}</strong></p>
+        <div className="proposal-actions">
+          <Button onClick={() => setGXSend(null)}>{t("取消")}</Button>
+          <Button variant="primary" disabled={!canWrite} onClick={() => void guarded(confirmGXSend)}>{t("继续发送")}</Button>
+        </div>
+      </Modal>
       <Modal
         open={modal === "new"}
         onOpenChange={(v) => !v && setModal("")}

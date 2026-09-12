@@ -611,6 +611,12 @@
             "title": "Action",
             "type": "string"
           },
+          "manual_backup_acknowledged": {
+            "default": false,
+            "description": "Operator acknowledged manual backup for an ordinary CSV GX send; does not grant execution approval.",
+            "title": "Manual Backup Acknowledged",
+            "type": "boolean"
+          },
           "plan_id": {
             "anyOf": [
               {

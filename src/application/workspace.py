@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -141,6 +142,23 @@ def public_payload(value: Any) -> Any:
             # general job/proposal field whitelist.
             from .job_errors import public_error_details
             result["error_details"] = public_error_details(value["error_details"])
+        if isinstance(value.get("gx_import_summary"), dict):
+            # Keep timing evidence without exposing the importer's private paths
+            # or expanding the generic payload whitelist to arbitrary details.
+            summary = value["gx_import_summary"]
+            projected = {}
+            if isinstance(summary.get("pre_import_policy"), str) and summary["pre_import_policy"] in {"protected", "manual_backup"}:
+                projected["pre_import_policy"] = summary["pre_import_policy"]
+            if type(summary.get("backup_performed")) is bool:
+                projected["backup_performed"] = summary["backup_performed"]
+            stages = {"validate_csv", "validate_comments", "check_project", "backup", "backup_comments",
+                      "prepare_import", "compare_baseline", "import", "import_comments", "verify_roundtrip",
+                      "record_baseline", "save_project", "verify", "total"}
+            timings = summary.get("timings_ms")
+            if isinstance(timings, dict):
+                projected["timings_ms"] = {key: duration for key, duration in timings.items()
+                    if key in stages and type(duration) in (int, float) and math.isfinite(duration) and duration >= 0}
+            result["gx_import_summary"] = projected
         return result
     if isinstance(value, (list, tuple)):
         return [public_payload(item) for item in value]

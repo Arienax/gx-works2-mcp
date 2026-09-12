@@ -1,5 +1,7 @@
-from dataclasses import asdict
+from contextlib import ExitStack
+from dataclasses import asdict, replace
 from pathlib import Path
+import tempfile
 import time
 
 from .baseline_store import ImportBaselineStore
@@ -91,7 +93,58 @@ class ImportService:
         synchronize_comments=False,
         verify_roundtrip=False,
         save_project=False,
+        pre_import_policy="protected",
     ):
+        """Import with protection by default; manual backup is an explicit caller choice."""
+        if not isinstance(pre_import_policy, str) or pre_import_policy not in {"protected", "manual_backup"} or (
+            pre_import_policy == "manual_backup" and (
+                verify_roundtrip or rollback_expected_current_sha256
+                or expected_current_comment_sha256
+            )
+        ):
+            return ImportResult(False, "validate_request", "导入策略无效或与回读/回滚保护冲突。",
+                                ImportErrorCode.INVALID_REQUEST)
+        started = stage_started = time.monotonic()
+        current_stage = None
+        timings = {}
+
+        def report(stage, message):
+            nonlocal current_stage, stage_started
+            now = time.monotonic()
+            if current_stage is not None:
+                timings[current_stage] = timings.get(current_stage, 0) + (now - stage_started) * 1000
+            current_stage, stage_started = stage, now
+            if progress is not None:
+                progress(stage, message)
+
+        with ExitStack() as resources:
+            staging_folder = None
+            if pre_import_policy == "manual_backup":
+                staging_folder = Path(resources.enter_context(tempfile.TemporaryDirectory(prefix="gx-import-")))
+            result = self._import_current_program(
+                csv_path, comment_csv_path=comment_csv_path, start_if_needed=start_if_needed,
+                progress=report, import_context=import_context, project_identity=project_identity,
+                rollback_expected_current_sha256=rollback_expected_current_sha256,
+                expected_current_comment_sha256=expected_current_comment_sha256,
+                synchronize_comments=synchronize_comments, verify_roundtrip=verify_roundtrip,
+                save_project=save_project, staging_folder=staging_folder,
+            )
+        finished = time.monotonic()
+        if current_stage is not None:
+            timings[current_stage] = timings.get(current_stage, 0) + (finished - stage_started) * 1000
+        return replace(result, details={**result.details,
+            "pre_import_policy": pre_import_policy,
+            "backup_performed": bool(result.backup_path),
+            "timings_ms": {**{key: round(value, 3) for key, value in timings.items()},
+                           "total": round((finished - started) * 1000, 3)},
+        })
+
+    def _import_current_program(
+        self, csv_path, *, comment_csv_path, start_if_needed, progress, import_context,
+        project_identity, rollback_expected_current_sha256, expected_current_comment_sha256,
+        synchronize_comments, verify_roundtrip, save_project, staging_folder,
+    ):
+        manual_backup = staging_folder is not None
         def report(stage, message):
             if progress is not None:
                 progress(stage, message)
@@ -217,69 +270,72 @@ class ImportService:
         )
         backup_folder = None
         comment_backup_path = None
-        try:
-            report(
-                "backup",
-                "正在备份当前MAIN（GX Works2将显示“写入至CSV文件”）…",
-            )
-            backup_folder = self.csv_manager.backup_folder(
-                self.backup_root, project_name
-            )
-            exported = backup_folder / "program_before_import.csv"
-            self.automation.export_current_program(session, exported)
-            exported_validation = self._wait_for_valid_export(
-                exported,
-                self.csv_manager.validate,
-            )
-            if not exported_validation.valid:
-                detail = "；".join(exported_validation.errors) or "未知格式错误"
-                raise RuntimeError(
-                    "GX Works2导出的备份CSV未通过格式验证：" + detail
-                )
-            backup_path = exported
-            if should_import_comments:
+        backup_path = ""
+        if not manual_backup:
+            try:
                 report(
-                    "backup_comments",
-                    "正在备份当前全局软元件注释…",
+                    "backup",
+                    "正在备份当前MAIN（GX Works2将显示“写入至CSV文件”）…",
                 )
-                comment_backup_path = backup_folder / "comments_before_import.csv"
-                self.automation.export_current_comments(
-                    session, comment_backup_path
+                backup_folder = self.csv_manager.backup_folder(
+                    self.backup_root, project_name
                 )
-                exported_comments = self._wait_for_valid_export(
-                    comment_backup_path,
-                    lambda path: self.csv_manager.validate_comments(
-                        path,
-                        require_crlf=False,
-                    ),
+                exported = backup_folder / "program_before_import.csv"
+                self.automation.export_current_program(session, exported)
+                exported_validation = self._wait_for_valid_export(
+                    exported,
+                    self.csv_manager.validate,
                 )
-                if not exported_comments.valid:
-                    detail = "；".join(exported_comments.errors) or "未知格式错误"
+                if not exported_validation.valid:
+                    detail = "；".join(exported_validation.errors) or "未知格式错误"
                     raise RuntimeError(
-                        "GX Works2导出的软元件注释备份未通过格式验证："
-                        + detail
+                        "GX Works2导出的备份CSV未通过格式验证：" + detail
                     )
-            self.csv_manager.write_checksum_manifest(backup_folder)
-        except Exception as error:
-            return ImportResult(
-                False,
-                "backup",
-                f"导入前备份失败：{error}",
-                ImportErrorCode.BACKUP_FAILED,
-                csv_path=validation.path,
-                project_name=project_name,
-                details={
-                    "comment_backup_path": (
-                        str(comment_backup_path) if comment_backup_path else ""
+                backup_path = exported
+                if should_import_comments:
+                    report(
+                        "backup_comments",
+                        "正在备份当前全局软元件注释…",
                     )
-                },
-            )
+                    comment_backup_path = backup_folder / "comments_before_import.csv"
+                    self.automation.export_current_comments(
+                        session, comment_backup_path
+                    )
+                    exported_comments = self._wait_for_valid_export(
+                        comment_backup_path,
+                        lambda path: self.csv_manager.validate_comments(
+                            path,
+                            require_crlf=False,
+                        ),
+                    )
+                    if not exported_comments.valid:
+                        detail = "；".join(exported_comments.errors) or "未知格式错误"
+                        raise RuntimeError(
+                            "GX Works2导出的软元件注释备份未通过格式验证："
+                            + detail
+                        )
+                self.csv_manager.write_checksum_manifest(backup_folder)
+            except Exception as error:
+                return ImportResult(
+                    False,
+                    "backup",
+                    f"导入前备份失败：{error}",
+                    ImportErrorCode.BACKUP_FAILED,
+                    csv_path=validation.path,
+                    project_name=project_name,
+                    details={
+                        "comment_backup_path": (
+                            str(comment_backup_path) if comment_backup_path else ""
+                        )
+                    },
+                )
 
-        report("compare_baseline", "正在检查GX Works2工程是否被外部修改…")
+        report("prepare_import" if manual_backup else "compare_baseline",
+               "正在准备待发送的程序与注释…" if manual_backup else "正在检查GX Works2工程是否被外部修改…")
         try:
             current_semantic_hash = self.csv_manager.program_semantic_sha256(
                 backup_path
-            )
+            ) if not manual_backup else ""
             target_semantic_hash = self.csv_manager.program_semantic_sha256(
                 validation.path
             )
@@ -294,13 +350,13 @@ class ImportService:
                 if should_import_comments and comment_validation is not None
                 else ""
             )
-            baseline = self.baseline_store.load(identity)
+            baseline = None if manual_backup else self.baseline_store.load(identity)
         except Exception as error:
             return ImportResult(
                 False,
-                "compare_baseline",
-                f"无法核对GX Works2版本，已停止覆盖：{error}",
-                ImportErrorCode.BASELINE_READ_FAILED,
+                "prepare_import" if manual_backup else "compare_baseline",
+                f"无法准备待发送的CSV：{error}" if manual_backup else f"无法核对GX Works2版本，已停止覆盖：{error}",
+                ImportErrorCode.CSV_INVALID if manual_backup else ImportErrorCode.BASELINE_READ_FAILED,
                 csv_path=validation.path,
                 backup_path=str(backup_path),
                 project_name=project_name,
@@ -308,7 +364,8 @@ class ImportService:
 
         protection_details = {
             "project_identity": identity,
-            "baseline_found": baseline is not None,
+            "baseline_found": None if manual_backup else baseline is not None,
+            "baseline_checked": not manual_backup,
             "current_program_semantic_sha256": current_semantic_hash,
             "target_program_semantic_sha256": target_semantic_hash,
             "baseline_program_semantic_sha256": (
@@ -403,7 +460,7 @@ class ImportService:
         try:
             staged_import_path = self.csv_manager.prepare_import_program(
                 validation.path,
-                backup_folder / "program_to_import.csv",
+                (staging_folder if manual_backup else backup_folder) / "program_to_import.csv",
             )
             report(
                 "import",
@@ -455,7 +512,7 @@ class ImportService:
                     project_name=project_name,
                     details={
                         "gxworks2": import_state,
-                        "comment_backup_path": str(comment_backup_path),
+                        "comment_backup_path": str(comment_backup_path) if comment_backup_path else "",
                         "version_protection": protection_details,
                     },
                 )
@@ -463,9 +520,8 @@ class ImportService:
                 return ImportResult(
                     False,
                     "verify_comments",
-                    comment_import_state.get(
-                        "message", "程序已导入，但GX Works2未报告软元件注释导入成功。"
-                    ),
+                    "程序已导入，但软元件注释导入未完成：" + str(comment_import_state.get(
+                        "message") or "GX Works2未报告软元件注释导入成功。"),
                     ImportErrorCode.IMPORT_VERIFICATION_FAILED,
                     csv_path=validation.path,
                     backup_path=str(backup_path),
@@ -473,7 +529,7 @@ class ImportService:
                     details={
                         "gxworks2": import_state,
                         "comments": comment_import_state,
-                        "comment_backup_path": str(comment_backup_path),
+                        "comment_backup_path": str(comment_backup_path) if comment_backup_path else "",
                         "version_protection": protection_details,
                     },
                 )
@@ -544,6 +600,7 @@ class ImportService:
                 )
 
         baseline_error = None
+        report("record_baseline", "正在记录本次发送版本…")
         try:
             self.baseline_store.save(
                 identity,
@@ -557,6 +614,7 @@ class ImportService:
                 import_context=import_context,
             )
             protection_details["status"] = (
+                "baseline_recorded" if manual_backup else
                 "baseline_created" if baseline is None else "baseline_updated"
             )
         except Exception as error:
@@ -595,11 +653,12 @@ class ImportService:
         stage = "complete"
         if baseline_error:
             stage = "complete_with_warning"
-            error_code = ImportErrorCode.BASELINE_WRITE_FAILED
+            error_code = None if manual_backup else ImportErrorCode.BASELINE_WRITE_FAILED
             imported_message += (
+                " 未能记录同步基线；本次导入已完成。" if manual_backup else
                 " 但未能保存下次导入所需的版本基线；再次导入前请先核对工程。"
             )
-        elif project_save_state is not None and not project_save_state.get("success"):
+        if (manual_backup or not baseline_error) and project_save_state is not None and not project_save_state.get("success"):
             stage = "complete_with_warning"
             error_code = ImportErrorCode.PROJECT_SAVE_REQUIRED
             imported_message += " " + str(

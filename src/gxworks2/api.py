@@ -74,8 +74,9 @@ def import_current_program(
     synchronize_comments=False,
     verify_roundtrip=False,
     save_project=False,
+    pre_import_policy="protected",
 ):
-    """Validate, back up and import one complete generated GX Works2 CSV.
+    """Validate and import a complete CSV, with pre-import protection by default.
 
     This is the only public import operation. UI click/key primitives remain
     internal to an injected automation driver.
@@ -104,6 +105,7 @@ def import_current_program(
         synchronize_comments=synchronize_comments,
         verify_roundtrip=verify_roundtrip,
         save_project=save_project,
+        pre_import_policy=pre_import_policy,
     )
 
 

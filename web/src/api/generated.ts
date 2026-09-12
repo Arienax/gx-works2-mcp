@@ -1228,6 +1228,12 @@ export interface components {
              * @enum {string}
              */
             action: "gx_import" | "simulation" | "debug";
+            /**
+             * Manual Backup Acknowledged
+             * @description Operator acknowledged manual backup for an ordinary CSV GX send; does not grant execution approval.
+             * @default false
+             */
+            manual_backup_acknowledged: boolean;
             /** Plan Id */
             plan_id?: string | null;
             /** Project Id */

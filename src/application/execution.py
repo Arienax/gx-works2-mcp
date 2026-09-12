@@ -379,13 +379,14 @@ class GXExecutionCoordinator:
                         "message": imported.get("message", ""), "import": imported,
                         "gx_compile_status": "unverified", "simulation_status": "not_run"}
             paths = self._csv_artifacts(version, root)
-            # Normal “Send to GX” already keeps a pre-import backup and waits
-            # for GX Works2 to acknowledge each import. Exporting program/comments
-            # again after the write doubles the MFC-dialog traffic and belongs to
-            # explicit inspect/sync workflows, not the fast send path.
+            # Only the Web operator's version-bound backup acknowledgement
+            # selects the fast path. Old proposals and Agent calls stay protected.
+            pre_import_policy = ("manual_backup" if payload.get("manual_backup_acknowledged") is True
+                                 else "protected")
             imported = _mapping(bundle["importer"](
                 paths[0], comment_csv_path=paths[1], start_if_needed=False,
                 synchronize_comments=True, verify_roundtrip=False, save_project=True,
+                pre_import_policy=pre_import_policy,
                 progress=progress,
                 import_context={
                     "project_id": project_id, "version_id": version_id,
@@ -394,11 +395,17 @@ class GXExecutionCoordinator:
                 },
             ))
             success = imported.get("success") is True and not imported.get("error_code")
+            details = imported.get("details") or {}
             return {
                 "status": "imported" if success else "import_failed",
                 "passed": False,
                 "message": imported.get("message", ""),
                 "import": imported,
+                "gx_import_summary": {
+                    "pre_import_policy": pre_import_policy,
+                    "backup_performed": details.get("backup_performed", False),
+                    "timings_ms": details.get("timings_ms", {}),
+                },
                 "gx_compile_status": "unverified", "simulation_status": "not_run",
             }
         plan = payload.get("plan")
