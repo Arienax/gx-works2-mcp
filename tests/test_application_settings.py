@@ -116,9 +116,9 @@ def test_backend_generates_custom_id_and_credential_target(settings_env):
     assert private["credentialTarget"].endswith(selected["id"])
 
 
-def test_delete_builtin_rejected_without_writes(settings_env):
+def test_delete_missing_profile_rejected_without_writes(settings_env):
     with pytest.raises(ValueError):
-        settings_env.service.delete_profile("deepseek-default")
+        settings_env.service.delete_profile("missing-profile")
     assert not settings_env.path.exists() and not settings_env.deletes
 
 

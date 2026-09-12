@@ -82,6 +82,11 @@ class MCPIntegrationStatus(PublicResource):
     codex_configured: bool
     codex_cli_available: bool
     codex_command: str | None
+    client_observed: bool
+    last_tool: str | None
+    last_call_at: str | None
+    generation_context_observed: bool
+    candidate_proposal_id: str | None
 
 
 class MCPIntegrationResult(PublicResource):

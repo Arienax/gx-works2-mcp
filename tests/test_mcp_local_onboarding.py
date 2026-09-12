@@ -8,6 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def isolated_codex_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+
+
 def test_windows_service_binding_roundtrip(monkeypatch):
     from integrations.mcp import service_credentials as credentials
 

@@ -47,6 +47,7 @@ function McpIntegrations({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [serviceCheck, setServiceCheck] = useState<"unchecked" | "passed" | "failed">("unchecked");
 
   const refresh = async () => {
     if (!projectId) {
@@ -61,12 +62,22 @@ function McpIntegrations({
 
   useEffect(() => {
     let stopped = false;
+    setStatus(null);
+    setMessage("");
+    setError("");
+    setServiceCheck("unchecked");
     if (!projectId) return;
-    api<McpStatus>(`/integrations/mcp?project_id=${encodeURIComponent(projectId)}`)
-      .then((value) => !stopped && setStatus(value))
-      .catch((e) => !stopped && setError((e as Error).message));
+    const poll = () => {
+      if (document.visibilityState === "hidden") return;
+      api<McpStatus>(`/integrations/mcp?project_id=${encodeURIComponent(projectId)}`)
+        .then((value) => !stopped && setStatus(value))
+        .catch((e) => !stopped && setError((e as Error).message));
+    };
+    poll();
+    const timer = window.setInterval(poll, 5000);
     return () => {
       stopped = true;
+      window.clearInterval(timer);
     };
   }, [projectId]);
 
@@ -78,11 +89,13 @@ function McpIntegrations({
     try {
       const result = await api<McpResult>(path, "POST", { project_id: projectId });
       if (result.status === "failed") throw new Error(result.message || t("连接失败"));
+      setServiceCheck("passed");
       setMessage(result.message || t("连接成功"));
-      await refresh();
     } catch (e) {
+      if (path.endsWith("/test")) setServiceCheck("failed");
       setError((e as Error).message);
     } finally {
+      try { await refresh(); } catch (e) { setError((e as Error).message); }
       setBusy(false);
     }
   };
@@ -94,10 +107,30 @@ function McpIntegrations({
       <div className="notice">
         <strong>{t("在 Codex 中使用当前工程")}</strong>
         <p>
-          {t("先打开工程，再点击“连接 Codex”。连接完成后，可在 Codex 中查看程序、提出修改和设计测试。使用期间请保持工作台运行。")}
+          {t("打开工程并点击“连接 Codex”，检查 MCP 服务并保存连接配置。使用期间请保持工作台运行。")}
         </p>
-        <p>{t("支持本机 Codex App，无需安装 Codex CLI。首次连接后，请重新启动 Codex App 以加载连接。")}</p>
+        <p>{t("支持本机 Codex App，无需安装 Codex CLI。配置完成后，请重启 Codex App 并创建新任务。")}</p>
       </div>
+
+      {status && <div className="notice">
+        <p><strong>{t("连接配置")}</strong>{" · "}
+          {t(status?.codex_configured ? "连接配置已写入" : "连接配置未写入")}
+        </p>
+        <p><strong>{t("MCP 服务检查")}</strong>{" · "}
+          {t(serviceCheck === "passed" ? "本次服务检查通过" : serviceCheck === "failed" ? "本次服务检查失败" : "尚未执行服务检查")}
+        </p>
+        <p><strong>{t("客户端工具调用")}</strong>{" · "}
+          <Badge tone={status?.client_observed ? "good" : "neutral"}>
+            {t(status?.client_observed ? "客户端已调用" : "等待客户端调用")}
+          </Badge>
+        </p>
+        {status?.last_tool && <p>{t("最后调用工具")}: <span className="mono">{status.last_tool}</span>
+          {status.last_call_at && <> · <time dateTime={status.last_call_at}>{new Date(status.last_call_at).toLocaleString()}</time></>}
+        </p>}
+        {status?.client_observed && <p>{t(status.generation_context_observed ? "已读取生成上下文" : "尚未读取生成上下文")}</p>}
+        {status?.candidate_proposal_id && <p>{t("待检查候选")}: <span className="mono">{status.candidate_proposal_id}</span></p>}
+        <p className="muted">{t("服务检查仅确认工作台可访问。这里的客户端记录来自成功的工程工具调用，不包含工具列表查询。")}</p>
+      </div>}
 
       <div className="context-chips">
         <Badge tone={status?.credential_ready ? "good" : "warn"}>
@@ -114,7 +147,7 @@ function McpIntegrations({
       </label>
       {status?.bound_project_id && (
         <p className="muted">
-          {t("已连接工程")}: <span className="mono">{status.bound_project_id}</span>
+          {t("已绑定工程")}: <span className="mono">{status.bound_project_id}</span>
         </p>
       )}
 
@@ -140,7 +173,7 @@ function McpIntegrations({
         </p>
       )}
       {message && <p role="status">{t(message)}</p>}
-      {error && <p role="alert" className="error-text">{error}</p>}
+      {error && <p role="alert" className="error-text">{t(error)}</p>}
 
       <div className="notice">
         <strong>{t("开始工程任务")}</strong>
@@ -149,6 +182,7 @@ function McpIntegrations({
 
       <details>
         <summary>{t("高级 / 其他 MCP 客户端")}</summary>
+        <p className="muted">{t("若尚无工具调用记录，请检查 Codex 中的 gxworks MCP 连接，并在新任务中明确要求使用 gxworks 工具。")}</p>
         <label>
           Service URL
           <input readOnly value={status?.service_url || window.location.origin} />
@@ -184,7 +218,7 @@ export function Settings({
 }) {
   const [page, setPage] = useState<"models" | "integrations">("models");
   const [selected, setSelected] = useState(value.active_profile_id || "");
-  const [creating, setCreating] = useState(false),
+  const [creating, setCreating] = useState(!value.profiles?.length),
     [busy, setBusy] = useState(false);
   const [name, setName] = useState(""),
     [model, setModel] = useState(""),
@@ -246,6 +280,21 @@ export function Settings({
     !busy && !disabled && !!name.trim() && !!model.trim() && !!baseUrl.trim();
   const discoverReady =
     !busy && !disabled && !!baseUrl.trim() && (!creating || !!secret.trim());
+  const beginCreate = () => {
+    setCreating(true);
+    setName("");
+    setModel("");
+    setBaseUrl("");
+    setSecret("");
+    setCapabilities({});
+    setDefaults("{}");
+    setOverrides("{}");
+    setDiscoveredModels([]);
+    setDetected([]);
+    setError("");
+    setMessage("");
+    setDeleting(false);
+  };
 
   if (page === "integrations") {
     return (
@@ -289,21 +338,7 @@ export function Settings({
           </label>
           <Button
             disabled={busy || disabled}
-            onClick={() => {
-              setCreating(true);
-              setName("");
-              setModel("");
-              setBaseUrl("");
-              setSecret("");
-              setCapabilities({});
-              setDefaults("{}");
-              setOverrides("{}");
-              setDiscoveredModels([]);
-              setDetected([]);
-              setError("");
-              setMessage("");
-              setDeleting(false);
-            }}
+            onClick={beginCreate}
           >
             {t("新建配置")}
           </Button>
@@ -545,6 +580,7 @@ export function Settings({
                           result.profiles?.[0]?.id ||
                           "",
                       );
+                      if (!result.profiles?.length) beginCreate();
                       setDeleting(false);
                       setMessage(t("配置已删除"));
                     })

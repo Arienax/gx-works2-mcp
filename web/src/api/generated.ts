@@ -1628,6 +1628,10 @@ export interface components {
         MCPIntegrationStatus: {
             /** Bound Project Id */
             bound_project_id: string | null;
+            /** Candidate Proposal Id */
+            candidate_proposal_id: string | null;
+            /** Client Observed */
+            client_observed: boolean;
             /** Codex Cli Available */
             codex_cli_available: boolean;
             /** Codex Command */
@@ -1636,6 +1640,12 @@ export interface components {
             codex_configured: boolean;
             /** Credential Ready */
             credential_ready: boolean;
+            /** Generation Context Observed */
+            generation_context_observed: boolean;
+            /** Last Call At */
+            last_call_at: string | null;
+            /** Last Tool */
+            last_tool: string | null;
             /** Launcher Ready */
             launcher_ready: boolean;
             /** Project Id */

@@ -196,18 +196,21 @@ def test_connection(project_id: str, service_url: str) -> dict[str, Any]:
         "project_id": project_id,
         "service_url": service_url,
         "tool_count": int(payload.get("tool_count") or 0),
-        "message": "当前工程连接测试通过，可以开始使用。",
+        "message": "MCP 服务检查通过。客户端是否已加载连接，请以实际工具调用记录为准。",
     }
 
 
 def connect_codex(project_id: str, service_url: str) -> dict[str, Any]:
-    """Bind the project, verify the launcher, then atomically replace our table."""
+    """Check the service and save MCP config without claiming client activity."""
     check = test_connection(project_id, service_url)
-    replaced = _write_codex_config(launcher_invocation())
+    try:
+        replaced = _write_codex_config(launcher_invocation())
+    except OSError as error:
+        raise MCPIntegrationError("Codex 连接配置未完成。请检查配置目录的写入权限后重试连接。") from error
     return {
         **check,
         "status": "connected",
         "codex_connected": True,
         "replaced_existing": replaced,
-        "message": "Codex 已连接当前工程。请在 Codex 中描述工程任务，并在工作台检查结果。",
+        "message": "Codex MCP 连接配置已写入。请重启 Codex App 并创建新任务，用 gxworks 描述工程需求。实际连接使用情况请查看客户端工具调用记录。",
     }

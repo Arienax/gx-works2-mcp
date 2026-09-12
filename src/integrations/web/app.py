@@ -21,6 +21,7 @@ from application.workbench import WorkbenchService, sfc_requirement, ChangeScope
 from application.fbd import FBDValidationError
 from application.execution import ExecutionUnavailableError
 from application.workspace import ConflictError, WorkspaceBusyError
+from application.settings import ModelConfigurationRequiredError
 from .security import LocalSecurity
 from .mcp_routes import register_mcp_routes
 from . import responses as dto
@@ -78,6 +79,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.exception_handler(ValueError)
     async def invalid(_request, _error):
         return JSONResponse({"error": {"code": "invalid_request", "message": "输入或工程状态无效，请检查所选版本及设置。"}}, status_code=400)
+
+    @app.exception_handler(ModelConfigurationRequiredError)
+    async def model_configuration_required(_request, _error):
+        return JSONResponse({"error": {"code": "model_configuration_required", "message": "尚未配置模型，请在模型 API 设置中新建配置。"}}, status_code=400)
 
     @app.exception_handler(FBDValidationError)
     async def invalid_fbd(_request, error):

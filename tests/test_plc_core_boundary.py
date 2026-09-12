@@ -329,7 +329,6 @@ def test_create_program_candidate_rejects_invalid_ladder(ladder):
 
 @pytest.mark.parametrize("opcode,operands,error", [
     ("UNVERIFIED", [], "unsupported APP_INSTR"),
-    ("OUT", ["Y0"], "typed COIL"),
     ("turn on motor", [], "invalid APP_INSTR opcode"),
     ("RD3A", ["D0"], "exactly 3 operands"),
     ("DRVTBL", [], "not supported by FX3U"),
@@ -343,7 +342,7 @@ def test_create_program_candidate_requires_real_catalogued_application_instructi
         PLCCore().create_program_candidate(ladder, plc_model="FX3U")
 
 
-@pytest.mark.parametrize("kind", ["derived_top", "derived_rung", "block_output", "nested_parallel", "long_label"])
+@pytest.mark.parametrize("kind", ["derived_top", "block_output", "nested_parallel", "long_label"])
 def test_generation_cannot_smuggle_derived_fields_or_import_only_syntax(kind):
     ladder = ir_to_ladder(_program())
     rung = ladder["rungs"][0]
@@ -364,26 +363,29 @@ def test_generation_cannot_smuggle_derived_fields_or_import_only_syntax(kind):
         PLCCore().create_program_candidate(ladder, plc_model="FX3U")
 
 
-def test_create_program_candidate_rejects_confirmed_approach_conflict():
+def test_create_program_candidate_defers_confirmed_approach_conflict_to_review():
     spec = {"selected_approach": {
         "name": "必须自锁", "generation_contract": {"required_structures": ["self_hold"]},
     }}
-    with pytest.raises(ValueError, match="self_hold|自保持"):
-        PLCCore().create_program_candidate(ir_to_ladder(_program()), plc_model="FX3U", confirmed_spec=spec)
+    core = PLCCore()
+    candidate = core.create_program_candidate(ir_to_ladder(_program()), plc_model="FX3U", confirmed_spec=spec)
+    assert candidate["validation_profile"] == "generation_structural"
+    assert not core.validate_project(candidate["candidate_ir"], spec)["valid"]
 
 
-def test_create_program_candidate_rejects_confirmed_hardware_conflict():
+def test_create_program_candidate_defers_hardware_heuristics_to_review():
     ladder = ir_to_ladder(_program())
     ladder["rungs"][0]["branches"][0]["outputs"] = [{
         "type": "APP_INSTR", "opcode": "PLSY", "operands": ["K100", "K1000", "Y0"],
     }]
-    with pytest.raises(ValueError, match="relay output"):
-        PLCCore().create_program_candidate(ladder, plc_model="FX3U", confirmed_spec={
-            "hardware_profile": {"plc_family": "FX3U", "output_type": "relay"},
-        })
+    spec = {"hardware_profile": {"plc_family": "FX3U", "output_type": "relay"}}
+    core = PLCCore()
+    candidate = core.create_program_candidate(ladder, plc_model="FX3U", confirmed_spec=spec)
+    assert candidate["diagnostics"]["valid"]
+    assert not core.validate_project(candidate["candidate_ir"], spec)["valid"]
 
 
-def test_create_program_candidate_rejects_failed_core_validation(monkeypatch):
+def test_create_program_candidate_retains_nonblocking_static_diagnostics(monkeypatch):
     core = PLCCore()
 
     def diagnostics(program):
@@ -391,21 +393,22 @@ def test_create_program_candidate_rejects_failed_core_validation(monkeypatch):
         return {"counts": {"error": 1}, "findings": [{"code": "STATIC_ERROR", "message": "test diagnostic"}]}
 
     monkeypatch.setattr(core, "get_diagnostics", diagnostics)
-    with pytest.raises(ValueError, match="STATIC_ERROR"):
-        core.create_program_candidate(ir_to_ladder(_program()), plc_model="FX3U")
+    candidate = core.create_program_candidate(ir_to_ladder(_program()), plc_model="FX3U")
+    assert candidate["diagnostics"]["valid"] is True
+    assert candidate["diagnostics"]["findings"][0]["code"] == "STATIC_ERROR"
 
 
 @pytest.mark.parametrize("existing_version", [False, True])
 @pytest.mark.parametrize("compile_failure", [False, True])
 def test_generated_candidate_uses_only_temporary_artifacts_and_never_persists(tmp_path, monkeypatch, existing_version, compile_failure):
-    import plc_debug_loop
+    import plc_generation
 
     store = SessionStore(base_dir=tmp_path / "workspace", legacy_dir=tmp_path)
     project = store.create_project("新程序候选", plc_model="FX3U")
     version = _persist_base(store, project["id"], _program()) if existing_version else None
     project = store.get_project(project["id"])
     before = {path.relative_to(store.base_dir): path.read_bytes() for path in store.base_dir.rglob("*") if path.is_file()}
-    renderer = plc_debug_loop.render_candidate_artifacts
+    renderer = plc_generation.render_generation_artifacts
     directories = []
 
     def render(program, directory):
@@ -414,15 +417,15 @@ def test_generated_candidate_uses_only_temporary_artifacts_and_never_persists(tm
         if compile_failure:
             (directory / "partial.txt").write_text("partial")
             raise ValueError("test compile failure")
-        artifacts = renderer(program, directory)
-        assert len(artifacts) == 6
-        assert all((directory / name).exists() for name in artifacts.values())
-        return artifacts
+        rendered = renderer(program, directory)
+        assert len(rendered["artifacts"]) == 6
+        assert all((directory / name).exists() for name in rendered["artifacts"].values())
+        return rendered
 
     def forbid_persistence(*args, **kwargs):
         pytest.fail("Candidate creation must not persist a version")
 
-    monkeypatch.setattr(plc_debug_loop, "render_candidate_artifacts", render)
+    monkeypatch.setattr(plc_generation, "render_generation_artifacts", render)
     monkeypatch.setattr(SessionStore, "prepare_version", forbid_persistence)
     monkeypatch.setattr(SessionStore, "complete_version", forbid_persistence)
     result = build_default_tool_registry().call(
@@ -436,6 +439,8 @@ def test_generated_candidate_uses_only_temporary_artifacts_and_never_persists(tm
         assert "test compile failure" in result["error"]["message"]
     else:
         assert result["status"] == "confirmation_required"
+        assert result["data"]["verification"]["behavior_verified"] is False
+        assert result["data"]["verification"]["native_verified"] is False
         pending = result["data"]["pending_action"]
         assert pending["type"] == "accept_generated_program"
         assert pending["_candidate_ir"]["program_name"] == "MOTOR"

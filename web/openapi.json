@@ -1888,6 +1888,21 @@
             ],
             "title": "Bound Project Id"
           },
+          "candidate_proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Proposal Id"
+          },
+          "client_observed": {
+            "title": "Client Observed",
+            "type": "boolean"
+          },
           "codex_cli_available": {
             "title": "Codex Cli Available",
             "type": "boolean"
@@ -1911,6 +1926,32 @@
             "title": "Credential Ready",
             "type": "boolean"
           },
+          "generation_context_observed": {
+            "title": "Generation Context Observed",
+            "type": "boolean"
+          },
+          "last_call_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Call At"
+          },
+          "last_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tool"
+          },
           "launcher_ready": {
             "title": "Launcher Ready",
             "type": "boolean"
@@ -1932,7 +1973,12 @@
           "launcher_ready",
           "codex_configured",
           "codex_cli_available",
-          "codex_command"
+          "codex_command",
+          "client_observed",
+          "last_tool",
+          "last_call_at",
+          "generation_context_observed",
+          "candidate_proposal_id"
         ],
         "title": "MCPIntegrationStatus",
         "type": "object"

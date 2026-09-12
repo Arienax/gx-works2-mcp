@@ -3,10 +3,12 @@
 The standalone behavior below remains the default. An additional, explicitly
 selected `--service-url` / `--service-token-env` mode connects to the local Web
 application's shared proposal store; see [service connection and operator approval](web.md#mcp-的显式服务连接模式).
-Agent credentials cannot approve proposals in that mode.
+Agent credentials cannot approve proposals in that mode. MCP is the supported
+engineering interface and requires no client skill. Optional client guidance cannot
+replace the platform or bypass its tools and approval boundaries.
 
-The stdio server is working. External agents discover and call the same twelve
-high-level tools used by the built-in agent. The server reads an existing saved
+The stdio server exposes the same twelve high-level tools used by the built-in
+agent. External clients discover their current schemas through `tools/list`. The server reads an existing saved
 project through SessionStore; it does not launch the desktop or contact a model.
 
 ```mermaid
@@ -106,7 +108,7 @@ That bridge and desktop approval delivery are not implemented.
 `ToolRegistry`, including nested patch schemas. There is no second tool catalog.
 
 Available operations include project/program summaries, generation context,
-initial ladder candidates, network reads, local manual search, diagnostics,
+full or partial ladder candidates, network reads, local manual search, diagnostics,
 validation, temporary compilation, candidate patches
 and GX import requests. Manual search uses the existing bundled local knowledge
 index. Installing NumPy in the MCP environment optionally enables the existing
@@ -132,98 +134,120 @@ status, diffs, hashes, candidate IDs and pending-action fields survive the
 boundary. `public_tool_result_data` recursively removes private fields, including
 `_candidate_ir` and `_confirmed_spec`; raw `ToolResult.data` is never sent.
 
-## Initial ladder generation
+## Shared API generation and ordinary edits
 
-An external agent can supply the model output for the first program in a saved
-project, including a project with no versions. It designs `ladder_v1` itself;
-the server never calls DeepSeek, OpenAI or another model provider.
+The external client supplies the model planning and ladder response. Both first
+creation and ordinary edits use `create_program_candidate`; the MCP server
+never calls DeepSeek, OpenAI or another model provider to generate a second
+answer. The existing API generation path is the acceptance authority.
 
 ```text
-get_generation_context
-  → agent designs ladder_v1 (optionally search_plc_manual)
-  → create_program_candidate
-  → ToolRuntime.invoke → shared ToolRegistry handler
-  → PLCCore.create_program_candidate
-      → validate_ladder_full(require_catalogued_instructions=True)
-      → generation shape check → build_plc_ir(revision=1)
-      → PLCCore.validate_project (validate_plc_ir + static diagnostics)
-  → PLCCore.compile_project (temporary directory, removed on completion/failure)
+get_current_project
+  → get_generation_context(user_requirement="current request")
+  → client designs a full or partial ladder (search_plc_manual if still needed)
+  → create_program_candidate → ToolRuntime → PLC Core
+      → shared API compatibility normalization and partial materialization
+      → structural validation and conservative condition cleanup
+      → build_plc_ir and validate_plc_ir(validate_ladder=False)
+      → shared API artifacts in a temporary directory
   → status: confirmation_required
 ```
 
-`get_generation_context` takes exactly this input schema:
+`get_generation_context` accepts an optional `user_requirement` string, up to
+24,000 characters; `{}` remains valid. Other arguments are rejected. Its
+`generation_instructions` and `generation_request` use the same API prompt,
+output discipline, routing, selected PLC profile, confirmed specification,
+current ladder and local RAG assembly in
+[`plc_generation_context.py`](../../src/plc_generation_context.py). The current
+request improves routing and retrieval. Automatic generation/edit retrieval
+retains the API's policy and budget (five results, 7,000 characters); a retrieval
+failure retains the full model profile rather than calling a model or failing
+context preparation. `search_plc_manual` remains available for a specific
+instruction, timer range or unresolved model fact.
 
-```json
-{"type":"object","properties":{},"additionalProperties":false}
-```
+The result also retains `project_id`, `plc_model`, `target_mode`, `workflow_mode`,
+`has_confirmed_spec`, `confirmed_spec`, `output_contract` and
+`current_version_id`. The specification comes from the selected version
+snapshot, or the project when there is no snapshot. It is a field-by-field
+engineering projection: confirmed I/O, parameters, selected approach, hardware
+and execution constraints remain; unselected approaches, drafts, chat history,
+provider configuration, credentials, UI state and private paths do not. Current
+ladder context is similarly projected. With no specification the result has
+`has_confirmed_spec: false` and `confirmed_spec: null`. The complete stored
+specification remains local for candidate construction and binding hashes.
 
-Its public `data` contains `project_id`, `plc_model`, `target_mode`,
-`workflow_mode`, `has_confirmed_spec`, `confirmed_spec` and `output_contract`.
-The confirmed specification is a field-by-field projection of the context's
-selected version snapshot, or the project specification when there is no
-snapshot. It includes the requirement summary/notes, confirmed parameters,
-selected approach and generation contract, canonical `io_table`, relevant
-hardware profile/context, execution semantics and static-analysis constraints
-when present. Legacy I/O text is returned only when no canonical table exists.
-With no confirmed specification it returns `has_confirmed_spec: false` and
-`confirmed_spec: null`; a specification is not fabricated. Unselected approaches,
-review drafts, chat history, filesystem paths, credentials, provider settings
-and UI objects are excluded. The full stored specification stays local and is
-passed unchanged to the core, including for the confirmation hash.
+`output_contract.schema` describes the recommended API response: full ladder
+JSON, or full/partial alternatives when a current ladder exists. It is output
+guidance, not an additional MCP-only validator. The authoritative parser is
+[`prepare_ladder_candidate`](../../src/plc_generation.py), shared by the API
+workflow and PLC Core.
 
-`output_contract` contains `format: "ladder_v1"`, a complete standalone JSON
-schema, textual rules and a list of server-owned fields. The model-free
-[`plc_generation_contract.py`](../../src/plc_generation_contract.py) is the source
-of this schema and the nested `ladder` schema in `create_program_candidate`.
-Label length and application-opcode token rules are also shared with the
-existing validator. `api.py` and its model prompts/transport behavior are unchanged.
+`create_program_candidate` accepts only these model-owned arguments:
 
-`create_program_candidate` has an object input with `additionalProperties: false`:
-
-| Property | Schema | Required |
+| Property | Accepted input | Required |
 | --- | --- | --- |
-| `program_name` | string, 1–64 characters, default `MAIN`; whitespace-only names rejected | No |
-| `ladder` | full `ladder_v1_schema()` | Yes |
+| `program_name` | Nonblank string, 1–64 characters; omission keeps the current program name, or `MAIN` for first creation | No |
+| `ladder` | Object accepted by the shared API parser: full ladder or partial edit | Yes |
 
-The ladder schema permits only `device_comments` (object with string comments
-of at most 64 characters) and `rungs` (nonempty array). Each rung requires
-`rung_id` (nonnegative integer), `header_element` (null or a simple input) and
-`branches` (nonempty array); `shared_inputs` and `debug_note` are optional.
-Each branch requires `branch_id` (integer ≥1), `y_offset_level` (integer ≥0),
-`inputs` (array) and `outputs` (nonempty array). Inputs use NO/NC/P/F/COMPARE or a
-single-level `parallel_block`; RISING/FALLING/BLOCK_INPUT remain explicit
-compatibility aliases. Outputs use COIL/PLS/PLF/TIMER/COUNTER/APP_INSTR. Labels
-and notes allow null and have a 64-character limit. Extra rung/element fields,
-nested parallel blocks, import-only BLOCK_OUTPUT expressions and APP_INSTR OUT
-are rejected for new candidates. This shape check does not change the legacy
-import, built-in generation or patch validators.
+A full response supplies `device_comments` and a nonempty `rungs` array. A
+partial response uses `mode: "partial"`, optional changed/new complete `rungs`,
+`device_comments` updates and `delete_rung_ids`. Partial edits require the bound
+current ladder. Unsubmitted rung bodies remain unchanged; new rung insertion
+and explicit deletion follow the existing API ordering rules.
+An explicit workbench change scope is checked again before proposal creation
+and saving.
 
-The context supplies the PLC model and confirmed specification. The core fixes
-revision to 1 and generates candidate IDs and hashes. There are no model input
-fields for project/model overrides, revisions, specifications, IDs or hashes.
-Canonical networks, instructions, reads/writes, devices, timing, logic, static
-analysis, I/O map and source hashes are always built locally. The agent must not
-submit a canonical IR or attempt to override derived fields.
+Compatibility conversion runs before structural checks. Legacy `TIMER` with a
+C address becomes `COUNTER`; unambiguous `APP_INSTR OUT` becomes the dedicated
+coil, timer or counter output. `BLOCK_OUTPUT` instruction expressions are
+converted to typed outputs/application instructions and then face the same
+catalogue, CPU, operand and writable-target checks. Unknown instructions do not
+bypass validation by using a legacy encoding. Additional rung source fields
+accepted by the API remain source data and cannot overwrite derived IR fields.
 
-Successful results contain diagnostics, network/device counts and a
-`pending_action` of type `accept_generated_program`, with `project_id`,
-`project_name`, `program_name`, candidate ID, revision,
-candidate/ladder/specification hashes and temporary artifact hashes.
-Private `_candidate_ir` and `_confirmed_spec` remain
-only in the in-process result. Public MCP text and structured results contain
-neither field. A validation or compilation failure is a tool error, never a
-confirmation request. The server does not retry or invoke a repair model.
-Server instructions direct the agent to correct reported errors and make at
-most two retries (three submissions total), then report remaining failures.
+Hard failures cover malformed containers, unsupported elements, invalid or
+out-of-range addresses, unsupported/catalogue-missing instructions, invalid
+arity or write targets, invalid identities/partial envelopes, scope escapes and
+inconsistent IR. Selected-approach, duplicate-coil, timing-style and other
+semantic findings do not add a second acceptance gate. Existing analysis
+metadata remains available for diagnostics and Review.
 
-Use `get_current_program_info → read_network → patch_program` for edits to an
-existing program; that workflow and its revision/confirmation behavior remain
-unchanged. Do not edit SessionStore files to bypass either tool path.
+Conservative condition normalization can remove duplicate ordinary conditions,
+extract a shared branch prefix or combine adjacent ordinary outputs with the
+same conditions. It preserves evaluation position around edges, complex or
+stateful operations, unknown side effects and read-after-write dependencies.
+It does not OR together repeated writes to the same coil. With a baseline, only
+submitted/changed rungs are eligible. `normalization.changes` and `.skipped`
+explain actions and exclusions using messages and network IDs, without copied
+program bodies. Service-mode proposals and saved versions retain this summary.
+
+The service owns PLC/project/specification binding, `generation_structural`,
+revision, candidate IDs and hashes. Revision starts at 1 or advances from the
+bound current IR. Canonical networks, instructions, access sets, analysis and
+source hashes are computed locally. Clients cannot override these fields.
+The profile follows temporary compilation, proposal checks, first/child-version
+saving and reload/preview; semantic checks are not silently reapplied during
+saving or reading a generated version.
+
+Successful results include structural diagnostics, counts, normalization,
+artifact hashes and an `accept_generated_program` pending action. Private
+`_candidate_ir`, `_confirmed_spec` and `_validation_profile` stay in-process.
+The public result identifies the validation profile and distinguishes structural
+acceptance from unexecuted behavior/native verification. A structural or
+compilation failure is a tool error. There is no automatic semantic repair or
+repeated-submission loop; report the returned error and use an explicitly
+requested repair workflow when appropriate.
+
+For explicit scoped Debug work, `read_network → patch_program` retains its
+existing revision/hash checks and strict validation. Ordinary edits use the
+shared generation path above. Do not edit SessionStore records to bypass either
+path. See [generation profiles and boundaries](../architecture/generation-fast-path.md).
 
 ## Confirmation and safety
 
-`create_program_candidate` and `patch_program` validate and temporarily compile
-a candidate. They do not save a new project version or change `active_version_id`.
+In standalone mode, `create_program_candidate` and `patch_program` validate and
+temporarily compile a candidate. They do not save a new project version or
+change `active_version_id`.
 `import_current_program_to_gxworks2` only prepares an import request.
 All three return `status: "confirmation_required"` with a public
 `pending_action`, even though `isError` is false. This means preparation succeeded,
@@ -235,7 +259,10 @@ no retained candidate queue and no delivery into the desktop's confirmation UI.
 Candidate IDs are audit identifiers, not resumable approval tokens. To apply a
 change, reproduce and review it in the existing desktop workflow and confirm
 there. Do not tell users an MCP proposal has already changed their project or GX
-state. A future bridge must preserve the existing guarded confirmation points.
+state. The separate Web service mode stores proposals and applies the workbench
+approval policy; its Agent credential cannot approve them. Only a returned
+saved `version_id` proves that a local version was saved. Neither kind of
+receipt proves GX import, native compilation, simulation or PLC execution.
 
 Mouse/keyboard primitives, filesystem deletion, `write_plc`, `force_device` and
 unrestricted physical PLC writes are not exposed. Compilation uses the existing

@@ -27,6 +27,7 @@ def register_mcp_routes(app, service, security) -> None:
         service.projects.project(project_id)
         from application.mcp_integrations import status
         value = status(project_id, security.origin)
+        activity = service.mcp_activity(project_id)
         return dto.MCPIntegrationStatus(
             service_url=security.origin,
             project_id=value["project_id"],
@@ -36,6 +37,11 @@ def register_mcp_routes(app, service, security) -> None:
             codex_configured=value["codex_configured"],
             codex_cli_available=value["codex_cli_available"],
             codex_command=public(value["codex_command"]),
+            client_observed=activity["client_observed"],
+            last_tool=public(activity["last_tool"]),
+            last_call_at=activity["last_call_at"],
+            generation_context_observed=activity["generation_context_observed"],
+            candidate_proposal_id=public(activity["candidate_proposal_id"]),
         )
 
     @app.post("/api/integrations/mcp/test", response_model=dto.MCPIntegrationResult,

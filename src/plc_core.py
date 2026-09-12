@@ -44,6 +44,7 @@ class PLCCorePort(Protocol):
         plc_model: str,
         program_name: str = "MAIN",
         confirmed_spec: Optional[Mapping[str, Any]] = None,
+        previous_program: Optional[Mapping[str, Any]] = None,
     ) -> Mapping[str, Any]: ...
 
     def compile_project(
@@ -208,50 +209,43 @@ class PLCCore:
         }
 
     def create_program_candidate(
-        self,
-        ladder: Mapping[str, Any],
-        *,
-        plc_model: str,
+        self, ladder: Mapping[str, Any], *, plc_model: str,
         program_name: str = "MAIN",
         confirmed_spec: Optional[Mapping[str, Any]] = None,
+        previous_program: Optional[Mapping[str, Any]] = None,
     ) -> Mapping[str, Any]:
-        """Build an unpersisted initial candidate from model-owned ladder_v1."""
-
-        from plc_generation_contract import validate_generation_shape
-        from plc_json_validator import validate_ladder_full
+        """Prepare one generated full/partial ladder through the API fast path."""
+        from plc_generation import prepare_ladder_candidate
+        from plc_ir import ir_to_ladder
 
         if not isinstance(ladder, Mapping):
             raise TypeError("ladder must be an object")
         if not isinstance(program_name, str) or not program_name.strip() or len(program_name) > 64:
             raise ValueError("program_name must contain 1 to 64 characters")
-        ladder = copy.deepcopy(dict(ladder))
-        confirmed_spec = copy.deepcopy(confirmed_spec)
-        validate_ladder_full(
-            ladder,
-            plc_model=plc_model,
-            confirmed_spec=confirmed_spec,
-            require_catalogued_instructions=True,
+        previous_ladder = None
+        revision = 1
+        if previous_program is not None:
+            validate_plc_ir(previous_program, validate_ladder=False)
+            previous_ladder = ir_to_ladder(previous_program)
+            revision = int(previous_program.get("revision") or 0) + 1
+        prepared = prepare_ladder_candidate(
+            dict(ladder), plc_model=plc_model, program_name=program_name,
+            revision=revision, confirmed_spec=copy.deepcopy(confirmed_spec),
+            previous_ladder=previous_ladder,
         )
-        # Narrow import-compatible syntax to the published generation subset.
-        validate_generation_shape(ladder)
-        program_ir = build_plc_ir(
-            ladder,
-            plc_model=plc_model,
-            program_name=program_name,
-            revision=1,
-            confirmed_spec=confirmed_spec,
-        )
-        validation = self.validate_project(program_ir, confirmed_spec)
-        if validation.get("valid") is not True:
-            detail = validation.get("error") or validation.get("findings") or validation.get("counts")
-            raise ValueError("新程序候选未通过 PLC 校验：" + str(detail))
+        program_ir = prepared["program_ir"]
+        validation = {"valid": True, "profile": prepared["validation_profile"],
+                      "messages": prepared["validation_messages"],
+                      **self.get_diagnostics(program_ir)}
         devices_by_kind: Dict[str, int] = {}
         for device in program_ir["devices"].values():
             kind = device["kind"]
             devices_by_kind[kind] = devices_by_kind.get(kind, 0) + 1
         return {
             "candidate_id": "candidate_" + uuid.uuid4().hex[:16],
-            "revision": 1,
+            "revision": revision,
+            "validation_profile": prepared["validation_profile"],
+            "normalization": prepared["normalization"],
             "candidate_ir_sha256": canonical_sha256(program_ir),
             "ladder_sha256": program_ir["source"]["ladder_sha256"],
             "candidate_ir": program_ir,
@@ -276,13 +270,10 @@ class PLCCore:
 
         structural = validation_profile == "generation_structural"
         def render(target: Path) -> Mapping[str, Any]:
-            # Preserve the historical renderer call shape for strict callers
-            # (including Agent/tool integrations and test doubles). Only the
-            # direct-generation profile opts out of semantic ladder validation.
+            # Generation shares the API renderer; explicit Debug keeps strict.
             if structural:
-                artifacts = render_candidate_artifacts(
-                    program, target, validate_ladder=False
-                )
+                from plc_generation import render_generation_artifacts
+                artifacts = render_generation_artifacts(program, target)["artifacts"]
             else:
                 artifacts = render_candidate_artifacts(program, target)
             hashes = {
@@ -353,6 +344,7 @@ def accept_candidate_patch(store: Any, action: Mapping[str, Any]) -> Mapping[str
                 "st_renderer_schema_version": ST_RENDERER_SCHEMA_VERSION,
                 "artifacts": dict(compiled["artifacts"]),
                 "validation_profile": validation_profile,
+                "normalization": copy.deepcopy(action.get("normalization")),
                 "validation": {
                     "status": "candidate_ready" if structural else "passed",
                     "messages": (["候选结构可解析；需求一致性未在生成后重复判定"]

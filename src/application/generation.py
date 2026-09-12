@@ -7,28 +7,21 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Callable, Optional
 import copy
-import hashlib
 
 import api
 from application.base import model_call
 from application.jobs import JobCancelled
 from application.generation_repair import (
-    GenerationError, GenerationValidationError, materialize_partial,
-    check_candidate_containers,
+    GenerationError, GenerationValidationError,
 )
 from i18n import get_language, language_context, tr
 from config_manager import get_active_model_name, load_full_config
-from contract_repair import patch_device_addresses
-from ladder_repair import (
-    normalize_app_instr_out_outputs, normalize_legacy_counter_outputs,
-)
+from plc_generation import prepare_ladder_candidate, render_generation_artifacts
 from plc_json_validator import (
-    PLCJsonValidationError, validate_ladder_candidate_structure,
-    validate_ladder_partial_structure, validate_st_json,
+    PLCJsonValidationError, validate_st_json,
 )
 from plc_ir import (
-    IR_SCHEMA_VERSION, PLCIRValidationError, build_plc_ir, canonical_sha256,
-    ir_to_ladder, is_plc_ir, validate_plc_ir,
+    IR_SCHEMA_VERSION, PLCIRValidationError, canonical_sha256, is_plc_ir,
 )
 
 
@@ -146,43 +139,15 @@ class GenerationWorkflow:
             validation_messages = []
             repair_attempts = 0
 
-            # Preserve only semantics that were explicitly stored as structured
-            # confirmed data.  Do not infer new blocking requirements from prose.
-            semantic_requirements = []
-            if self.target_mode == "ladder" and isinstance(self.confirmed_context, dict):
-                explicit = self.confirmed_context.get("execution_semantics")
-                if isinstance(explicit, list):
-                    from plc_semantics import normalize_semantic_requirements
-                    semantic_requirements = normalize_semantic_requirements(explicit)
-
             # ---------- Phase 1: one model generation ----------
             full_content = ""
             streaming_succeeded = False
             is_edit_mode = self.target_mode == "ladder" and self.previous_json is not None
-            model_user_input = self.user_input
-            if self.target_mode == "ladder" and not self.repair_mode:
-                output_discipline = (
-                    '输出协议纪律：只返回协议允许的 JSON 字段，不要输出解释性正文。'
-                    'debug_note 是可选字段，默认省略；不要用 debug_note 记录推理、修改原因或长说明。'
-                    '已有 device_comments 无必要不要改写。label、debug_note、device_comment 单条文本目标不超过48字符，'
-                    '硬上限64字符；返回前自行检查字段名和文本长度。\n\n'
-                )
-                if is_edit_mode:
-                    # This is a model instruction, not an application-side gate.
-                    # The parser deliberately continues to accept both partial and
-                    # full JSON so an imperfect model choice never becomes another
-                    # hard-validation failure or hidden retry loop.
-                    model_user_input = (
-                        output_discipline
-                        + '这是对系统提供的 Current version JSON 的修改请求。除非用户明确要求整体重写，'
-                        '优先返回 mode="partial"：device_comments 只列确实需要修改的注释，rungs 只列修改或新增的完整梯级，'
-                        'delete_rung_ids 只列需要删除的梯级；不要重复输出未修改梯级。'
-                        '如果你仍返回完整 JSON，应用也会正常接受，不需要为了格式选择重新生成。\n\n'
-                        '用户修改要求：\n'
-                        + self.user_input
-                    )
-                else:
-                    model_user_input = output_discipline + '用户要求：\n' + self.user_input
+            from plc_generation_context import generation_user_input
+            model_user_input = generation_user_input(
+                self.user_input, is_edit_mode=is_edit_mode,
+                target_mode=self.target_mode, repair_mode=self.repair_mode,
+            )
             try:
                 stream_model_response = self.dependencies.stream_response or api.stream_model_response
 
@@ -252,88 +217,27 @@ class GenerationWorkflow:
             if not json_str:
                 raise GenerationError(tr('大模型未返回合法数据'))
 
+            prepared_candidate = None
+
             def parse_candidate(candidate):
+                nonlocal prepared_candidate
                 emit_parsing_progress(tr('正在解析模型输出：读取 JSON 结构'))
                 parsed = json.loads(candidate)
                 if not isinstance(parsed, dict):
                     raise PLCJsonValidationError("$: expected JSON object")
-
                 if self.target_mode == "ladder":
-                    check_candidate_containers(parsed)
-                    emit_parsing_progress(tr('正在解析模型输出：规范化梯形图协议'))
-                    parsed, converted_counters = normalize_legacy_counter_outputs(parsed)
-                    if converted_counters:
-                        validation_messages.append(
-                            tr('已将旧版 TIMER+C 计数器结构转换为 COUNTER：')
-                            + ", ".join(converted_counters)
-                        )
-                    parsed, converted_outs = normalize_app_instr_out_outputs(parsed)
-                    if converted_outs:
-                        validation_messages.append(
-                            tr('已将误放入 APP_INSTR 的 OUT 转换为标准输出结构：')
-                            + "；".join(converted_outs)
-                        )
-
-                    # Explicit repair/debug tools keep their scope boundary, but
-                    # direct generation never starts a hidden semantic repair.
-                    if self.repair_mode:
-                        if parsed.get("mode") != "partial":
-                            raise PLCJsonValidationError('$.mode: repair must return "partial"')
-                        changed_ids = {
-                            int(rung.get("rung_id"))
-                            for rung in parsed.get("rungs", [])
-                            if rung.get("rung_id") is not None
-                        }
-                        changed_ids.update(int(item) for item in parsed.get("delete_rung_ids", []))
-                        outside = changed_ids - self.allowed_rung_ids
-                        if outside:
-                            raise PLCJsonValidationError(
-                                "$.rungs: repair changed evidence-external rung ids "
-                                + ", ".join(map(str, sorted(outside)))
-                            )
-                        comment_addresses = {
-                            str(item).strip().upper()
-                            for item in parsed.get("device_comments", {})
-                        }
-                        outside_comments = comment_addresses - self.allowed_addresses
-                        if outside_comments:
-                            raise PLCJsonValidationError(
-                                "$.device_comments: repair changed evidence-external addresses "
-                                + ", ".join(sorted(outside_comments))
-                            )
-                        if self.task_type == "contract_repair":
-                            if parsed.get("delete_rung_ids"):
-                                raise PLCJsonValidationError(
-                                    "$.delete_rung_ids: contract repair may not delete existing rungs"
-                                )
-                            if self.allowed_addresses:
-                                referenced_addresses = patch_device_addresses(parsed)
-                                outside_devices = referenced_addresses - self.allowed_addresses
-                                if outside_devices:
-                                    raise PLCJsonValidationError(
-                                        "$.rungs: contract repair introduced out-of-scope devices "
-                                        + ", ".join(sorted(outside_devices))
-                                    )
-
-                    if parsed.get("mode") == "partial":
-                        if self.previous_json is None:
-                            raise PLCJsonValidationError(
-                                '$.mode: received "partial" without a previous ladder'
-                            )
-                        validate_ladder_partial_structure(parsed, plc_model=self.plc_model)
-                        parsed = materialize_partial(self.previous_json, parsed)
-
-                    if not parsed.get("rungs"):
-                        raise PLCJsonValidationError("$.rungs: generated program must not be empty")
-                    emit_parsing_progress(tr('正在解析模型输出：检查结构与地址'))
-                    validate_ladder_candidate_structure(
-                        parsed,
-                        plc_model=self.plc_model,
-                        require_catalogued_instructions=True,
+                    prepared_candidate = prepare_ladder_candidate(
+                        parsed, plc_model=self.plc_model, program_name=self.program_name,
+                        revision=self.revision, confirmed_spec=self.confirmed_context,
+                        previous_ladder=self.previous_json, repair_mode=self.repair_mode,
+                        allowed_rung_ids=self.allowed_rung_ids,
+                        allowed_addresses=self.allowed_addresses, task_type=self.task_type,
+                        on_progress=emit_parsing_progress,
                     )
-                else:
-                    emit_parsing_progress(tr('正在解析模型输出：校验 ST 结构'))
-                    validate_st_json(parsed)
+                    validation_messages.extend(prepared_candidate["validation_messages"])
+                    return prepared_candidate["ladder"]
+                emit_parsing_progress(tr('正在解析模型输出：校验 ST 结构'))
+                validate_st_json(parsed)
                 return parsed
 
             def persist_repair_candidate():
@@ -360,57 +264,14 @@ class GenerationWorkflow:
                 ) from error
 
             if self.target_mode == "ladder":
-                emit_parsing_progress(tr('正在解析模型输出：构建 PLC IR'))
-                program_ir = build_plc_ir(
-                    parsed_json,
-                    plc_model=self.plc_model,
-                    program_name=self.program_name,
-                    revision=self.revision,
-                    confirmed_spec=self.confirmed_context,
-                    semantic_requirements=semantic_requirements,
-                )
-                # IR validation here proves deterministic consistency only. It
-                # deliberately does not re-judge the confirmed user intent.
-                validate_plc_ir(program_ir, validate_ladder=False)
+                program_ir = prepared_candidate["program_ir"]
                 self._emit("progress", {
                     "stage": "parsed",
                     "message": tr('模型输出已解析为候选程序'),
                 })
-
-                rendered_ladder = ir_to_ladder(program_ir)
-                final_json_str = json.dumps(rendered_ladder, ensure_ascii=False, indent=2)
-                json_path = self.output_dir / "ladder.json"
-                json_path.write_text(final_json_str, encoding="utf-8")
-
-                from plc_st_renderer import (
-                    ST_RENDERER_SCHEMA_VERSION,
-                    render_plc_ir_to_st,
-                    validate_st_traceability,
-                )
-                st_from_ir = render_plc_ir_to_st(program_ir)
-                validate_st_traceability(program_ir, st_from_ir)
-                st_path = self.output_dir / "program_from_ir.st"
-                st_path.write_text(st_from_ir, encoding="utf-8")
-                ir_path = self.output_dir / "program.ir.json"
-                ir_path.write_text(json.dumps(program_ir, ensure_ascii=False, indent=2), encoding="utf-8")
-
-                from draw import AdvancedSVGLadder, generate_gx_works2_csv
-                drawer = AdvancedSVGLadder()
-                svg_content = drawer.generate_ladder(final_json_str)
-                output_path = self.output_dir / "ladder.svg"
-                output_path.write_text(svg_content, encoding="utf-8")
-
-                artifacts = {
-                    "json": json_path.name,
-                    "ir": ir_path.name,
-                    "svg": output_path.name,
-                    "st_from_ir": st_path.name,
-                }
-                if self.plc_model == "FX3U":
-                    program_csv = self.output_dir / "program.csv"
-                    comment_csv = self.output_dir / "comments.csv"
-                    generate_gx_works2_csv(program_ir, str(program_csv), str(comment_csv))
-                    artifacts.update({"program_csv": program_csv.name, "comment_csv": comment_csv.name})
+                rendered = render_generation_artifacts(program_ir, self.output_dir)
+                artifacts = rendered["artifacts"]
+                from plc_st_renderer import ST_RENDERER_SCHEMA_VERSION
 
                 from plc_semantics import SEMANTICS_SCHEMA_VERSION
                 from plc_static_analyzer import STATIC_ANALYSIS_SCHEMA_VERSION
@@ -424,7 +285,7 @@ class GenerationWorkflow:
                     "ir_schema_version": IR_SCHEMA_VERSION,
                     "ir_sha256": canonical_sha256(program_ir),
                     "ladder_sha256": program_ir["source"]["ladder_sha256"],
-                    "st_from_ir_sha256": hashlib.sha256(st_from_ir.encode("utf-8")).hexdigest(),
+                    "st_from_ir_sha256": rendered["st_from_ir_sha256"],
                     "st_renderer_schema_version": ST_RENDERER_SCHEMA_VERSION,
                     "semantic_schema_version": SEMANTICS_SCHEMA_VERSION,
                     "semantic_summary": {
@@ -451,8 +312,9 @@ class GenerationWorkflow:
                         "scan_budget": program_ir["timing"].get("performance", {}).get("scan_budget", {}),
                         "scan_monitor": program_ir["timing"].get("performance", {}).get("scan_monitor", {}),
                     },
-                    "width": int(drawer.width),
-                    "height": int(drawer.height),
+                    "width": rendered["width"],
+                    "height": rendered["height"],
+                    "normalization": prepared_candidate["normalization"],
                     "artifacts": artifacts,
                     "contract_mismatch": None,
                     "validation": {

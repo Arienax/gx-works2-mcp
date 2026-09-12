@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -29,7 +30,9 @@ def onboarding(tmp_path, monkeypatch):
     ))
     monkeypatch.setattr(credentials, "_is_windows", lambda: True)
     config = tmp_path / "codex" / "config.toml"
+    skill = tmp_path / "home" / ".agents" / "skills" / "gxworks" / "SKILL.md"
     monkeypatch.setattr(integrations, "_codex_config_path", lambda: config)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
     monkeypatch.setattr(integrations, "_codex_executable", lambda: None)
     invocation = [str(tmp_path / "product" / "gxworks-agent-mcp.exe")]
     monkeypatch.setattr(integrations, "launcher_invocation", lambda: invocation)
@@ -50,7 +53,8 @@ def onboarding(tmp_path, monkeypatch):
     app = _app(service.store.base_dir, service.state_dir, service=service)
     with TestClient(app, base_url=ORIGIN) as client:
         yield SimpleNamespace(client=client, headers=_login(client), service=service, project=project["id"],
-            integrations=integrations, credentials=credentials, secrets=secrets, config=config, launches=launches)
+            integrations=integrations, credentials=credentials, secrets=secrets, config=config,
+            skill=skill, launches=launches)
 
 
 def test_ready_http_status_preserves_boolean_and_origin_without_codex_cli(onboarding):
@@ -63,6 +67,9 @@ def test_ready_http_status_preserves_boolean_and_origin_without_codex_cli(onboar
     assert value["launcher_ready"] is True
     assert value["codex_cli_available"] is False
     assert value["codex_command"] is None
+    assert "skill_installed" not in value
+    assert value["client_observed"] is False and value["last_tool"] is None
+    assert value["generation_context_observed"] is False and value["candidate_proposal_id"] is None
     assert env.launches == [] and not env.config.exists()
     assert "isolated-onboarding-agent-secret" not in response.text
     assert "agent_token" not in response.text
@@ -77,12 +84,108 @@ def test_http_connect_writes_only_temporary_config_without_codex_cli(onboarding)
     assert value["status"] == "connected" and value["codex_connected"] is True
     assert value["service_url"] == ORIGIN
     assert value["tool_count"] == 12
+    assert "skill_installed" not in value
+    assert not env.skill.parent.parent.parent.exists()
     assert len(env.launches) == 1
     assert env.credentials.load_service_binding()["project_id"] == env.project
     config = env.config.read_text(encoding="utf-8")
     assert "[mcp_servers.gxworks]" in config and "gxworks-agent-mcp.exe" in config
     assert "isolated-onboarding-agent-secret" not in config + response.text
     assert "agent_token" not in config + response.text
+    state = env.client.get("/api/integrations/mcp", params={"project_id": env.project}).json()
+    assert state["codex_configured"] is True and "skill_installed" not in state
+    assert state["client_observed"] is False and state["last_tool"] is None
+
+
+def test_http_existing_custom_skill_is_preserved_and_connection_succeeds(onboarding):
+    env = onboarding
+    env.skill.parent.mkdir(parents=True)
+    env.skill.write_text("---\nname: gxworks\n---\nUser custom skill\n", encoding="utf-8")
+    before = env.skill.read_bytes()
+    response = env.client.post("/api/integrations/mcp/codex/connect",
+        json={"project_id": env.project}, headers=env.headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "connected" and response.json()["codex_connected"] is True
+    assert "skill_installed" not in response.json()
+    assert env.skill.read_bytes() == before and env.config.exists() and len(env.launches) == 1
+
+
+@pytest.mark.parametrize("custom_skill", [False, True])
+def test_http_status_and_connect_never_access_skill_directory(onboarding, monkeypatch, custom_skill):
+    env = onboarding
+    before = b"User-owned gxworks instructions\n"
+    if custom_skill:
+        env.skill.parent.mkdir(parents=True)
+        env.skill.write_bytes(before)
+
+    # A missing or inaccessible skill tree must not affect either operation.
+    # Guard reads as well as writes: simply preserving bytes would miss a new
+    # readiness dependency on the user's existing skill.
+    with monkeypatch.context() as guarded:
+        for name in ("stat", "open", "mkdir", "unlink", "rename", "replace"):
+            original = getattr(Path, name)
+
+            def check(path, *args, _original=original, **kwargs):
+                if ".agents" in path.parts:
+                    pytest.fail("MCP onboarding must not access user skill directories")
+                return _original(path, *args, **kwargs)
+
+            guarded.setattr(Path, name, check)
+        state = env.client.get("/api/integrations/mcp", params={"project_id": env.project})
+        assert state.status_code == 200 and state.json()["credential_ready"] is True
+        response = env.client.post("/api/integrations/mcp/codex/connect",
+            json={"project_id": env.project}, headers=env.headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "connected"
+        state = env.client.get("/api/integrations/mcp", params={"project_id": env.project}).json()
+        assert state["codex_configured"] is True and state["client_observed"] is False
+
+    if custom_skill:
+        assert env.skill.read_bytes() == before
+        assert list(env.skill.parent.iterdir()) == [env.skill]
+    else:
+        assert not env.skill.parent.parent.parent.exists()
+
+
+def test_http_config_write_failure_preserves_config_and_never_claims_connected(onboarding, monkeypatch):
+    env = onboarding
+    env.config.parent.mkdir(parents=True)
+    original = b"model = 'user-model'\n"
+    env.config.write_bytes(original)
+    replace = env.integrations.os.replace
+
+    def deny_config_write(source, destination):
+        if Path(destination) == env.config:
+            raise PermissionError("isolated config replacement failure")
+        return replace(source, destination)
+
+    monkeypatch.setattr(env.integrations.os, "replace", deny_config_write)
+    response = env.client.post("/api/integrations/mcp/codex/connect",
+        json={"project_id": env.project}, headers=env.headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "failed" and response.json()["codex_connected"] is False
+    assert env.config.read_bytes() == original and list(env.config.parent.iterdir()) == [env.config]
+    assert not env.skill.parent.parent.parent.exists()
+    assert len(env.launches) == 1
+
+
+def test_http_activity_projects_only_the_current_project_public_status(onboarding, monkeypatch):
+    env = onboarding
+    observed = []
+    def activity(project_id):
+        observed.append(project_id)
+        return {"client_observed": True, "last_tool": "propose_ladder", "last_call_at": "2026-09-12T10:00:00+00:00",
+            "generation_context_observed": True, "candidate_proposal_id": "proposal-isolated",
+            "agent_token": "hidden-token", "_candidate_ir": {"secret": "hidden-candidate"}}
+    monkeypatch.setattr(env.service, "mcp_activity", activity)
+    response = env.client.get("/api/integrations/mcp", params={"project_id": env.project})
+    assert response.status_code == 200, response.text
+    value = response.json()
+    assert observed == [env.project]
+    assert value["client_observed"] is True and value["last_tool"] == "propose_ladder"
+    assert value["last_call_at"] == "2026-09-12T10:00:00+00:00"
+    assert value["generation_context_observed"] is True and value["candidate_proposal_id"] == "proposal-isolated"
+    assert "hidden-token" not in response.text and "hidden-candidate" not in response.text
 
 
 def test_http_connection_test_preserves_origin_and_binding(onboarding):

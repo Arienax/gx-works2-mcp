@@ -1,3 +1,4 @@
+import { ConditionNormalization } from "./ConditionNormalization";
 type Fields = Record<string, unknown>;
 const fields = (value: unknown): Fields => value && typeof value === "object" && !Array.isArray(value) ? value as Fields : {};
 const values = (value: unknown) => Array.isArray(value) ? value.map(String).join(", ") : "";
@@ -13,5 +14,6 @@ export function ChangeSummary({summary,t}:{summary:Fields;t:(s:string)=>string})
     <p>{t("软元件注释变化")}：{values(impact.device_comments) || "—"}</p>
     {!!impact.network_order_changed && <p>{t("网络顺序已变化")}</p>}
     {!!values(impact.metadata_fields) && <p>{t("程序属性变化")}：{values(impact.metadata_fields)}</p>}
+    <ConditionNormalization value={summary.normalization} t={t}/>
   </details>;
 }

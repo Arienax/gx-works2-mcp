@@ -366,15 +366,17 @@ def test_generation_tool_schemas_describe_only_model_owned_input(empty_project):
     store, project_id = empty_project
     adapter = MCPToolAdapter(build_default_tool_runtime(), SessionToolContextProvider(store.base_dir, project_id))
     schemas = {tool.name: tool.input_schema for tool in adapter.list_tools()}
-    assert schemas["get_generation_context"] == {
-        "type": "object", "properties": {}, "additionalProperties": False,
-    }
+    context_schema = schemas["get_generation_context"]
+    assert set(context_schema["properties"]) == {"user_requirement"}
+    assert not context_schema.get("required")
+    assert context_schema["additionalProperties"] is False
     schema = schemas["create_program_candidate"]
     assert schema["required"] == ["ladder"]
     assert schema["additionalProperties"] is False
     assert set(schema["properties"]) == {"program_name", "ladder"}
     assert schema["properties"]["program_name"]["default"] == "MAIN"
-    assert schema["properties"]["ladder"] == ladder_v1_schema()
+    assert schema["properties"]["ladder"]["type"] == "object"
+    assert "oneOf" not in schema["properties"]["ladder"]
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate({"ladder": _generation_ladder()})
     for bad in [
@@ -382,7 +384,10 @@ def test_generation_tool_schemas_describe_only_model_owned_input(empty_project):
         {"ladder": {"device_comments": {}, "rungs": [], "networks": []}},
         {"ladder": {"device_comments": {}, "rungs": "text"}},
     ]:
-        assert not Draft202012Validator(schema).is_valid(bad)
+        # Transport owns top-level tool arguments; the shared API parser owns
+        # ladder compatibility and structural errors after normalization.
+        rejected = adapter.call_tool("create_program_candidate", bad, "invalid-generation")
+        assert rejected.is_error
 
 
 @pytest.mark.parametrize("output", [
@@ -411,9 +416,8 @@ def test_generation_schema_and_core_accept_the_documented_element_types(output):
 
 
 @pytest.mark.parametrize("invalid", [
-    {"type": "APP_INSTR", "opcode": "OUT", "operands": ["Y0"]},
     {"type": "APP_INSTR", "opcode": "please run the motor", "operands": []},
-    {"type": "BLOCK_OUTPUT", "expression": "OUT Y0"},
+    {"type": "BLOCK_OUTPUT", "expression": "UNVERIFIED Y0"},
     {"type": "COIL", "address": "Y0", "label": "L" * 65},
 ])
 def test_generation_schema_and_core_reject_output_escape_hatches(invalid):
@@ -450,6 +454,10 @@ def test_versionless_generation_context_and_candidate_over_mcp(empty_project):
             assert not result.is_error
             assert result.structured_content["status"] == "confirmation_required"
             assert result.structured_content["data"]["requires_confirmation"] is True
+            verification = result.structured_content["data"]["verification"]
+            assert verification["deterministic_checks_passed"] is True
+            assert verification["behavior_verified"] is False
+            assert verification["native_verified"] is False
             pending = result.structured_content["data"]["pending_action"]
             assert pending["type"] == "accept_generated_program"
             assert pending["project_id"] == project_id
@@ -527,8 +535,11 @@ def test_generation_uses_the_context_model_and_version_spec_snapshot():
     assert projected["plc_model"] == "FX5U"
     assert projected["confirmed_spec"]["summary"] == spec["summary"]
     failed = runtime.invoke(ToolCall("candidate", "create_program_candidate", {"ladder": _generation_ladder()}), context)
-    assert failed.is_error
-    assert "Y0" in failed.content
+    assert not failed.is_error
+    pending = failed.data["data"]["pending_action"]
+    assert pending["_candidate_ir"]["plc"]["cpu"] == "FX5U"
+    assert pending["_confirmed_spec"] == spec
+    assert pending["_validation_profile"] == "generation_structural"
     no_spec = build_tool_context({"id": "empty", "plc_model": "FX5U"})
     projected = runtime.invoke(ToolCall("context", "get_generation_context", {}), no_spec).data["data"]
     assert projected["has_confirmed_spec"] is False
@@ -650,7 +661,7 @@ raise SystemExit(main())
                         initialized = await client.initialize()
                         assert initialized.server_info.name == "gxworks-agent"
                         assert "confirmation_required" in initialized.instructions
-                        assert "retry at most twice" in initialized.instructions
+                        assert "do not start an automatic repeated-submission loop" in initialized.instructions
                         assert initialized.capabilities.tools is not None
                         assert {tool.name for tool in (await client.list_tools()).tools} == set(SAFE_TOOL_NAMES)
                         calls = [] if without_version else [

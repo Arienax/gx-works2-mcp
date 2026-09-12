@@ -1,3 +1,4 @@
+import { ConditionNormalization } from "./features/ConditionNormalization";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import {
@@ -1607,7 +1608,7 @@ export default function App() {
                     <GitBranch size={15} />
                     <strong>
                       {p.action === "accept_local"
-                        ? t("保存旧草稿")
+                        ? t("保存候选")
                         : p.action}
                     </strong>
                     {status(p.status)}
@@ -1648,6 +1649,7 @@ export default function App() {
                       )}
                     </div>
                   )}
+                  <ConditionNormalization value={p.summary?.normalization} t={t}/>
                   {!!p.summary?.validation && (
                     <DataView value={p.summary.validation} />
                   )}
@@ -1674,7 +1676,7 @@ export default function App() {
                           <Check size={14} />
                           {t(
                             p.action === "accept_local"
-                              ? "保存旧草稿"
+                              ? "保存候选"
                               : "批准执行",
                           )}
                         </Button>

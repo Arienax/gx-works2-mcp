@@ -7,6 +7,7 @@ import hashlib
 import json
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from application.projects import ProjectService, contained, public, record_id
@@ -30,6 +31,7 @@ class WorkbenchService:
         self.jobs = None
         self.proposals = None
         self.execution = None
+        self._mcp_activity = {}
         from application.approval import ApprovalPolicy
         self.approval = ApprovalPolicy(self.state_dir)
         from application.fbd import FBDService
@@ -490,6 +492,7 @@ class WorkbenchService:
             payload = {"project_id": project_id, "target_mode": metadata["target_mode"],
                        "plc_model": project.get("plc_model", "FX3U"), "_confirmed_spec": project.get("confirmed_spec"),
                        "_validation_profile": metadata.get("validation_profile", "strict"),
+                       "normalization": metadata.get("normalization"),
                        "change_scope": snapshot.get("change_scope")}
             if metadata["target_mode"] == "ladder":
                 payload["_candidate_ir"] = json.loads((out_dir / metadata["artifacts"]["ir"]).read_text(encoding="utf-8"))
@@ -501,7 +504,7 @@ class WorkbenchService:
                 self._check_snapshot(snapshot)
                 payload = self._with_candidate_diff(project_id, (version or {}).get("id"), payload)
                 proposal = self.proposals.create("accept_local", project_id, payload,
-                    public_summary={"summary": text[:500], "validation": metadata["validation"], "diff": self._diff_summary(payload["_preview_diff"])},
+                    public_summary={"summary": text[:500], "validation": metadata["validation"], "normalization": metadata.get("normalization"), "diff": self._diff_summary(payload["_preview_diff"])},
                     base_version_id=(version or {}).get("id"), request_id=ctx.job_id)
                 ctx.checkpoint()
                 proposal = self._save_local_proposal(proposal)
@@ -581,7 +584,7 @@ class WorkbenchService:
         pending = {**pending, "change_scope": change_scope}
         payload = self._with_candidate_diff(pending["project_id"], base_id, pending) if action == "accept_local" else dict(pending)
         proposal = self.proposals.create(action, pending["project_id"], payload,
-            public_summary={"summary": "Agent 提出的工程操作", "diff": self._diff_summary(payload["_preview_diff"]) if "_preview_diff" in payload else pending.get("diff"), "validation": pending.get("validation")},
+            public_summary={"summary": "Agent 提出的工程操作", "diff": self._diff_summary(payload["_preview_diff"]) if "_preview_diff" in payload else pending.get("diff"), "validation": pending.get("validation"), "normalization": pending.get("normalization")},
             base_version_id=base_id, request_id=request_id)
         if action == "accept_local":
             # Direct UI requests save without a second prompt. Connected API
@@ -593,6 +596,31 @@ class WorkbenchService:
             return proposal
         return self._apply_execution_policy(proposal, consent)
 
+    def mcp_activity(self, project_id):
+        """Report successful client calls seen by this service instance only.
+
+        A launcher check only lists tools and never advances this state. Keep
+        summaries in memory: old receipts must not imply a restarted client has
+        loaded this service. Do not retain arguments, prompts or credentials.
+        """
+        return dict(self._mcp_activity.get(project_id, {
+            "client_observed": False, "last_tool": None, "last_call_at": None,
+            "generation_context_observed": False, "candidate_proposal_id": None,
+        }))
+
+    def _observe_mcp_call(self, command, response):
+        if response.get("is_error"):
+            return
+        project_id, name = command["project_id"], command["name"]
+        current = self.mcp_activity(project_id)
+        current.update(client_observed=True, last_tool=name,
+                       last_call_at=datetime.now(timezone.utc).isoformat())
+        if name == "get_generation_context":
+            current["generation_context_observed"] = True
+        if name in {"create_program_candidate", "patch_program"} and response.get("proposal_id"):
+            current["candidate_proposal_id"] = response["proposal_id"]
+        self._mcp_activity[project_id] = current
+
     def agent_call(self, command):
         self.writable()
         request_key = hashlib.sha256((command["project_id"] + ":" + command["call_id"]).encode()).hexdigest()
@@ -603,6 +631,7 @@ class WorkbenchService:
                 saved = read_json(path)
                 if saved["input_hash"] != digest:
                     raise ConflictError("Agent call ID was already used with other arguments")
+                self._observe_mcp_call(command, saved["response"])
                 return saved["response"]
             context = self.projects.tool_context(command["project_id"], command.get("version_id"))
             scope = self._command_scope(command, context)
@@ -620,6 +649,7 @@ class WorkbenchService:
                 if proposal.get("execution_job_id"):
                     response["execution_job_id"] = proposal["execution_job_id"]
             atomic_json(path, {"input_hash": digest, "response": response})
+            self._observe_mcp_call(command, response)
             return response
 
     @staticmethod
