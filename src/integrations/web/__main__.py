@@ -41,9 +41,23 @@ def main(argv=None):
         origin=origin, operator_token=token, agent_token=agent_token)
     login_url = origin + "/#token=" + quote(token, safe="")
     print("Workbench link (keep private): " + login_url, file=sys.stderr)
-    if "PLC_WEB_AGENT_TOKEN" not in os.environ:
-        print("MCP agent token (keep private; set as PLC_WEB_AGENT_TOKEN in your MCP client): " + agent_token,
-              file=sys.stderr)
+
+    credential_published = False
+    try:
+        from integrations.mcp.service_credentials import save_service_binding
+        credential_published = save_service_binding(origin, agent_token)
+    except Exception:
+        # Credential publication is convenience only; never prevent the local
+        # engineering service from starting when Windows Credential Manager is
+        # unavailable. Explicit environment configuration remains supported.
+        credential_published = False
+    if credential_published:
+        print("MCP service credential saved locally; MCP clients can connect without copying a token.", file=sys.stderr)
+    elif os.name != "nt":
+        print("MCP automatic credential discovery is Windows-only; use PLC_WEB_AGENT_TOKEN on this platform.", file=sys.stderr)
+    else:
+        print("MCP credential auto-save is unavailable; set PLC_WEB_AGENT_TOKEN explicitly if MCP is needed.", file=sys.stderr)
+
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port, workers=1, access_log=False))
     stopped = threading.Event()
     if args.open_browser:
@@ -52,6 +66,12 @@ def main(argv=None):
         server.run()
     finally:
         stopped.set()
+        if credential_published:
+            try:
+                from integrations.mcp.service_credentials import clear_service_binding
+                clear_service_binding(origin, agent_token)
+            except Exception:
+                pass
     return 0 if server.started else 1
 
 
