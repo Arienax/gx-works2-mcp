@@ -7,7 +7,7 @@ settings by themselves.
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from typing import Any, Dict, Mapping
 
 from model_provider import (
     ModelRequest,
@@ -77,7 +77,7 @@ def _structured_output_probe(provider, model: str) -> bool:
     return isinstance(payload, Mapping) and payload.get("probe") is True
 
 
-def inspect_openai_compatible(provider, model: str, configured_capabilities=None) -> dict[str, Any]:
+def inspect_openai_compatible(provider, model: str, configured_capabilities=None) -> Dict[str, Any]:
     """Discover model ids and probe capabilities that can be tested safely.
 
     Tool calling and JSON-object structured output are actively probed.  Other
