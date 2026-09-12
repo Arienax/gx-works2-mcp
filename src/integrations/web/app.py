@@ -22,6 +22,7 @@ from application.fbd import FBDValidationError
 from application.execution import ExecutionUnavailableError
 from application.workspace import ConflictError, WorkspaceBusyError
 from .security import LocalSecurity
+from .mcp_routes import register_mcp_routes
 from . import responses as dto
 from .schemas import (Login, ProjectCreate, ProjectUpdate, ActivateVersion, SpecUpdate,
                       JobCreate, GenerationRepair, ProposalDecision, ExecutionProposal, AgentCall,
@@ -52,6 +53,7 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service, app.state.security = service, security
     app.middleware("http")(security.middleware)
+    register_mcp_routes(app, service, security)
 
     @app.exception_handler(Exception)
     async def internal_error(_request, _error):
@@ -195,7 +197,8 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
             content = service.projects.svg_preview(project_id, version_id, artifact_id, theme=theme)
             if download:
                 headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(path.name)
-            return Response(content, media_type="image/svg+xml", headers=headers)
+            return Response(content, media_type=media_type(path), filename=path.name if download else None,
+                headers=headers)
         return FileResponse(path, media_type=media_type(path), filename=path.name if download else None,
             headers=headers)
 
