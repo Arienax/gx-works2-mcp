@@ -197,8 +197,7 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
             content = service.projects.svg_preview(project_id, version_id, artifact_id, theme=theme)
             if download:
                 headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(path.name)
-            return Response(content, media_type=media_type(path), filename=path.name if download else None,
-                headers=headers)
+            return Response(content, media_type="image/svg+xml", headers=headers)
         return FileResponse(path, media_type=media_type(path), filename=path.name if download else None,
             headers=headers)
 
