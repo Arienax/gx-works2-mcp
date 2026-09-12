@@ -70,12 +70,10 @@ def main(argv=None):
         server.run()
     finally:
         stopped.set()
-        if credential_published:
-            try:
-                from integrations.mcp.service_credentials import clear_service_binding
-                clear_service_binding(origin, agent_token)
-            except Exception:
-                pass
+        # Keep the private local binding in Credential Manager.  Once this Web
+        # process exits its token is harmless because no service accepts it;
+        # the next startup atomically replaces the token/origin and can retain
+        # the previously bound project when it still exists in this workspace.
     return 0 if server.started else 1
 
 
