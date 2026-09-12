@@ -66,34 +66,54 @@ def test_launcher_check_uses_saved_service_and_bound_project(monkeypatch, capsys
     }
 
 
-def test_codex_connect_restores_config_when_add_fails(monkeypatch, tmp_path):
+def test_codex_connect_replaces_only_gxworks_table(monkeypatch, tmp_path):
     import application.mcp_integrations as integrations
 
     config = tmp_path / ".codex" / "config.toml"
     config.parent.mkdir()
-    original = b"[mcp_servers.old]\ncommand='old'\n"
-    config.write_bytes(original)
+    config.write_text(
+        "model = 'deepseek-v4-flash'\n\n"
+        "[mcp_servers.keep]\ncommand = 'keep-me'\n\n"
+        "[mcp_servers.gxworks]\ncommand = 'old-launcher'\n"
+        "env = { PLC_WEB_AGENT_TOKEN = 'old-secret' }\n\n"
+        "[projects.'D:/trusted']\ntrust_level = 'trusted'\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(integrations, "_codex_config_path", lambda: config)
-    monkeypatch.setattr(integrations, "_codex_executable", lambda: "codex")
-    monkeypatch.setattr(integrations, "launcher_invocation", lambda: ["gxworks-agent-mcp.exe"])
+    monkeypatch.setattr(
+        integrations,
+        "launcher_invocation",
+        lambda: [r"C:\GXWorks Agent\gxworks-agent-mcp.exe"],
+    )
     monkeypatch.setattr(integrations, "test_connection", lambda project_id, service_url: {
         "status": "connected", "project_id": project_id, "service_url": service_url, "tool_count": 12,
     })
 
-    def run(parts, timeout=15.0):
-        if parts[1:4] == ["mcp", "add", "gxworks"]:
-            config.write_text("broken", encoding="utf-8")
-            return SimpleNamespace(returncode=1, stdout="", stderr="failed")
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    result = integrations.connect_codex("project_abc", "http://127.0.0.1:8765")
+    text = config.read_text(encoding="utf-8")
+    assert result["codex_connected"] is True and result["replaced_existing"] is True
+    assert "deepseek-v4-flash" in text and "keep-me" in text and "trust_level = 'trusted'" in text
+    assert text.count("[mcp_servers.gxworks]") == 1
+    assert "gxworks-agent-mcp.exe" in text
+    assert "old-secret" not in text and "PLC_WEB_AGENT_TOKEN" not in text
+    assert "127.0.0.1" not in text and "project_abc" not in text
 
-    monkeypatch.setattr(integrations, "_run", run)
-    try:
-        integrations.connect_codex("project_abc", "http://127.0.0.1:8765")
-    except integrations.MCPIntegrationError:
-        pass
-    else:
-        raise AssertionError("failed Codex registration must surface an error")
-    assert config.read_bytes() == original
+
+def test_codex_table_replacement_preserves_following_server():
+    import application.mcp_integrations as integrations
+
+    original = (
+        "[mcp_servers.gxworks]\ncommand='old'\n\n"
+        "[mcp_servers.gxworks.env]\nOLD='1'\n\n"
+        "[mcp_servers.other]\ncommand='other'\n"
+    )
+    updated, replaced = integrations._replace_gxworks_table(
+        original, "[mcp_servers.gxworks]\ncommand='new'\n"
+    )
+    assert replaced
+    assert "OLD='1'" not in updated
+    assert "command='other'" in updated
+    assert updated.count("[mcp_servers.gxworks]") == 1
 
 
 def test_integrations_ui_does_not_require_token_copy():
