@@ -79,3 +79,11 @@ jobs:
         run: |
           & .\build-web.bat --no-pause
           if ($LASTEXITCODE -ne 0) { throw 'Web frontend build failed.' }
+      - name: Exercise real HTTP/browser generation delivery
+        run: |
+          python -m pip install playwright==1.55.0
+          if ($LASTEXITCODE -ne 0) { throw 'Playwright installation failed.' }
+          python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Chromium installation failed.' }
+          python scripts/web_generation_e2e.py --web-dist web/dist --report web-generation-e2e.json
+          if ($LASTEXITCODE -ne 0) { throw 'Generation delivery E2E failed.' }
