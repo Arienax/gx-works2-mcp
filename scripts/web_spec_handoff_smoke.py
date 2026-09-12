@@ -259,7 +259,7 @@ async def generation_failure(page, model):
         "response_language": "zh-CN", "contract_name": "ladder", "diagnostic_id": "a" * 16,
         "violation_count": 1, "truncated": False, "stop_reason": "attempt_limit",
         "violations": [{"path": "content$.rungs.36.shared_inputs.3.type", "reason": "invalid_shared_input"}]})
-    await expect(page.get_by_text("梯形图候选未通过硬校验，未接受任何程序。", exact=True)).to_be_visible()
+    await expect(page.get_by_text("梯形图候选结构不符合协议，未接受任何程序。", exact=True)).to_be_visible()
     await expect(page.get_by_text("content$.rungs.36.shared_inputs.3.type", exact=True)).to_be_visible()
     await expect(page.get_by_text("公共串联输入中不能包含并联块；请在分支输入中表达并联逻辑。", exact=True)).to_be_visible()
     assert len(model.posts) == 1 and not model.proposals and model.project["confirmed_spec"]
