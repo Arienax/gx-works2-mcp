@@ -62,27 +62,36 @@ try {
         $listener.Stop()
     }
 
-    $packageExecutable = Join-Path $applicationRoot "GXWorks-Agent-Web.exe"
-    if (Test-Path -LiteralPath $packageExecutable -PathType Leaf) {
-        $backend = $packageExecutable
+    $releaseExecutable = Join-Path $applicationRoot "GXWorks-Agent-Web.exe"
+    $sourcePython = Join-Path $applicationRoot ".venv\Scripts\python.exe"
+    $builtPackageExecutable = Join-Path $applicationRoot "dist\GXWorks-Agent-Web\GXWorks-Agent-Web.exe"
+    if (Test-Path -LiteralPath $releaseExecutable -PathType Leaf) {
+        $backend = $releaseExecutable
         $backendArgs = @()
         $backendKind = "release"
-    } else {
-        $backend = Join-Path $applicationRoot ".venv\Scripts\python.exe"
-        if (-not (Test-Path -LiteralPath $backend -PathType Leaf)) {
-            throw "源码环境尚未安装。普通使用请打开发布包内的 start-web.cmd；源码安装步骤见 docs\integrations\web.md。"
-        }
+        $staticIndex = Join-Path $applicationRoot "web\dist\index.html"
+    } elseif (Test-Path -LiteralPath $sourcePython -PathType Leaf) {
+        $backend = $sourcePython
         $backendArgs = @("-m", "integrations.web")
         $backendKind = "source"
+        $staticIndex = Join-Path $applicationRoot "web\dist\index.html"
+    } elseif (Test-Path -LiteralPath $builtPackageExecutable -PathType Leaf) {
+        $backend = $builtPackageExecutable
+        $backendArgs = @()
+        $backendKind = "built-package"
+        $staticIndex = Join-Path (Split-Path -Parent $builtPackageExecutable) "web\dist\index.html"
+    } else {
+        throw "源码运行环境和本地构建包都不存在。请先运行根目录 build-web.bat；若要生成独立发布包，请运行 scripts\build_web_package.ps1。"
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $applicationRoot "web\dist\index.html") -PathType Leaf)) {
-        throw "缺少网页资源。请使用完整发布目录，或先按 Web 指南构建源码前端。"
+    if (-not (Test-Path -LiteralPath $staticIndex -PathType Leaf)) {
+        throw "缺少网页资源。源码模式请先运行 build-web.bat；发布包请保持完整目录结构。"
     }
     $backendArgs += @("--workspace", $resolvedWorkspace, "--port", [string]$selectedPort)
     if ($ReadOnly) { $backendArgs += "--read-only" }
     if (-not $NoBrowser) { $backendArgs += "--open-browser" }
 
     Write-Host ("工作区：" + $resolvedWorkspace)
+    Write-Host ("后端：" + $backendKind)
     Write-Host ("模式：" + $(if ($ReadOnly) { "只读浏览" } else { "自动保存；审批模式在网页设置中调整" }))
     if ($ValidateOnly) {
         Write-Output (@{ validated = $true; backend = $backendKind; workspace = $resolvedWorkspace; port = $selectedPort; read_only = [bool]$ReadOnly; browser_requested = -not [bool]$NoBrowser; service_started = $false } | ConvertTo-Json -Compress)
