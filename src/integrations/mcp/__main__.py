@@ -2,6 +2,8 @@
 
 Normal Web users connect through the running local application service.  The
 SessionStore reader remains available as an explicit --standalone/headless mode.
+An explicitly supplied legacy --workspace still selects standalone mode for
+backward compatibility, but new integrations should use --standalone.
 """
 
 import argparse
@@ -18,6 +20,7 @@ class _StderrParser(argparse.ArgumentParser):
 
 
 def main(argv=None) -> int:
+    raw_args = list(argv) if argv is not None else list(sys.argv[1:])
     parser = _StderrParser(description="GXWorks Agent MCP server (Python 3.10+).")
     parser.add_argument(
         "--stdio", action="store_true",
@@ -46,12 +49,14 @@ def main(argv=None) -> int:
         default=os.environ.get("GXWORKS_AGENT_TOKEN_ENV", "").strip() or "PLC_WEB_AGENT_TOKEN",
         help="Environment variable containing the Web service agent token (default: PLC_WEB_AGENT_TOKEN).",
     )
-    args = parser.parse_args(argv)
-    if args.standalone and args.workspace is None:
+    args = parser.parse_args(raw_args)
+    explicit_workspace = "--workspace" in raw_args
+    standalone = bool(args.standalone or explicit_workspace)
+    if standalone and args.workspace is None:
         parser.error("--standalone requires --workspace or PLC_AI_WORKSPACE_DIR")
-    if args.standalone and ("--service-url" in (argv or ()) or "--service-token-env" in (argv or ())):
-        parser.error("--standalone cannot be combined with service connection options")
-    if not args.standalone and not os.environ.get(args.service_token_env, "").strip():
+    if standalone and ("--service-url" in raw_args or "--service-token-env" in raw_args):
+        parser.error("standalone mode cannot be combined with service connection options")
+    if not standalone and not os.environ.get(args.service_token_env, "").strip():
         parser.error(
             f"Normal Web-service mode requires agent token environment variable {args.service_token_env}. "
             "Use --standalone only for advanced/headless SessionStore access."
@@ -66,7 +71,7 @@ def main(argv=None) -> int:
         # Keep import and setup diagnostics off the protocol stream as well.
         with redirect_stdout(sys.stderr):
             import anyio
-            if args.standalone:
+            if standalone:
                 from .context_provider import SessionToolContextProvider
                 from .server import serve_stdio
 
