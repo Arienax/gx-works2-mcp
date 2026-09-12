@@ -1,7 +1,7 @@
 """Private local MCP service discovery for the product launcher.
 
 The Web process publishes only a loopback origin, an unprivileged Agent token
-and an optional project binding.  On Windows this record lives in Credential
+and an optional project binding. On Windows this record lives in Credential
 Manager; it is never exposed through the browser API or project workspace.
 Environment variables remain the explicit fallback for CI/headless use.
 """
@@ -16,6 +16,10 @@ from urllib.parse import urlsplit, urlunsplit
 
 SERVICE_CREDENTIAL_TARGET = "GXWorks-Agent/mcp-service/v1"
 _PROJECT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
 
 
 def _service_url(value: Any) -> str:
@@ -60,13 +64,13 @@ def _record(service_url: str, token: str, project_id: str | None = None) -> dict
 
 
 def persistent_store_available() -> bool:
-    return os.name == "nt"
+    return _is_windows()
 
 
 def save_service_binding(service_url: str, token: str, project_id: str | None = None) -> bool:
     """Persist the current local service for the same Windows logon session."""
     record = _record(service_url, token, project_id)
-    if os.name != "nt":
+    if not _is_windows():
         return False
     from credential_store import write_api_key
 
@@ -75,7 +79,7 @@ def save_service_binding(service_url: str, token: str, project_id: str | None = 
 
 
 def load_service_binding() -> dict[str, Any] | None:
-    if os.name != "nt":
+    if not _is_windows():
         return None
     from credential_store import read_api_key
 
@@ -102,7 +106,7 @@ def bind_project(project_id: str) -> dict[str, Any]:
 
 def clear_service_binding(service_url: str, token: str) -> None:
     """Delete only the record owned by this exact Web process."""
-    if os.name != "nt":
+    if not _is_windows():
         return
     current = load_service_binding()
     if not current:
