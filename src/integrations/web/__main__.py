@@ -35,11 +35,15 @@ def main(argv=None):
     from .app import create_app
     import uvicorn
     token = os.environ.get("PLC_WEB_OPERATOR_TOKEN") or secrets.token_urlsafe(32)
+    agent_token = os.environ.get("PLC_WEB_AGENT_TOKEN") or secrets.token_urlsafe(32)
     origin = "http://127.0.0.1:" + str(args.port)
     app = create_app(args.workspace, state_dir=args.state_dir, read_only=args.read_only,
-        origin=origin, operator_token=token, agent_token=os.environ.get("PLC_WEB_AGENT_TOKEN"))
+        origin=origin, operator_token=token, agent_token=agent_token)
     login_url = origin + "/#token=" + quote(token, safe="")
     print("Workbench link (keep private): " + login_url, file=sys.stderr)
+    if "PLC_WEB_AGENT_TOKEN" not in os.environ:
+        print("MCP agent token (keep private; set as PLC_WEB_AGENT_TOKEN in your MCP client): " + agent_token,
+              file=sys.stderr)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port, workers=1, access_log=False))
     stopped = threading.Event()
     if args.open_browser:
