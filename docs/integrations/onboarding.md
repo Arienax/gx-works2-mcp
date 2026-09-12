@@ -5,8 +5,8 @@ The Web workbench is the normal integration entry point. Existing `modelProfiles
 
 ## Source checkout quick start
 
-On Windows, `build-web.bat` now prepares the complete source Web runtime by
-default: it creates `.venv` with Python 3.10+ when needed, installs
+On Windows, `build-web.bat` prepares the complete source Web runtime by default:
+it creates `.venv` with Python 3.10+ when needed, installs
 `requirements/web.txt`, installs the locked frontend dependencies, regenerates
 API types and builds `web/dist`. After a successful build, run `start-web.cmd`
 directly from the repository root.
@@ -30,28 +30,54 @@ existing known-good capability merely because an optional probe fails.
 
 ## MCP for Web users
 
-Open **Settings → Model → Integrations / MCP** after selecting a project. The page
-generates Codex, Claude and Cursor configuration using the selected project and
-the current loopback Web origin.
+Open **Settings → Model → Integrations / MCP** after selecting a project. Normal
+Windows use no longer asks the user to copy an Agent token or paste MCP setup
+text into a model.
 
-Normal MCP startup is the Web service bridge:
+At Web startup the application creates a credential separate from the operator
+login token and stores the current loopback MCP service record in Windows
+Credential Manager. The record contains the loopback service origin, the
+unprivileged Agent token and the currently bound project id. It is private to the
+local process/user boundary and is never returned to the browser or written into
+the PLC workspace.
+
+In **Integrations / MCP**:
+
+1. **测试 MCP 连接** binds the currently selected project and executes the real
+   product launcher with `--check`. A successful result proves that launcher
+   discovery, local credential lookup, Agent authentication and tool discovery
+   all work.
+2. **连接 Codex** performs the same check, then registers the fixed GXWorks MCP
+   launcher with the local Codex CLI. If an older `gxworks` entry exists, only
+   that named entry is replaced; if registration fails, the original Codex
+   config bytes are restored.
+3. After that, Codex can be prompted directly, for example: `用 gxworks 给当前工程生成一个起保停`.
+   The user should not paste MCP TOML into the model or ask the model to inspect
+   this repository merely to discover how to connect.
+
+The normal launcher therefore needs no user-facing URL, token, workspace or
+Python path:
 
 ```text
-gxworks-agent-mcp --project <project-id> --service-url http://127.0.0.1:8765
+gxworks-agent-mcp
 ```
 
-The Web launcher creates a credential separate from the operator token. If
-`PLC_WEB_AGENT_TOKEN` was not supplied before startup, the generated MCP agent
-token is printed once in the Web launch terminal. Put that value in the MCP
-client's `PLC_WEB_AGENT_TOKEN` environment entry. Do not use the operator login
-token as an MCP credential.
+The Windows Web release builds `gxworks-agent-mcp.exe` beside
+`GXWorks-Agent-Web.exe`. Source checkouts use the same product entry internally
+through the source `.venv`; the Web onboarding action writes the correct absolute
+launcher invocation to Codex automatically.
 
-The Windows Web release also builds `gxworks-agent-mcp.exe` beside
-`GXWorks-Agent-Web.exe`; source checkouts provide `gxworks-agent-mcp.cmd` and a
-portable launcher script. End users do not need to know the internal Python
-module path or set `PYTHONPATH`.
+The selected project binding is preserved across Web restarts when that project
+still exists in the reopened workspace. Opening another workspace never blindly
+reuses a project id that is absent there.
 
-## Advanced / headless
+## Advanced / other clients
+
+Claude, Cursor and other stdio MCP clients can use the same launcher. Bind the
+current project once with **测试 MCP 连接**, then configure the client to start
+`gxworks-agent-mcp`. Environment variables and explicit `--service-url` remain
+available for automation and non-Windows development, but are not part of the
+normal Windows user path.
 
 Direct SessionStore access is retained for CI, isolated tests and headless use:
 
