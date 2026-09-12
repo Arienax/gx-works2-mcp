@@ -5,14 +5,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_build_web_prepares_python_runtime_by_default():
+def test_build_web_double_click_wrapper_is_thin_and_pauses_on_failure():
     text = (ROOT / "build-web.bat").read_text(encoding="utf-8")
+    assert "scripts\\build_web_source.ps1" in text
+    assert 'if "%~1"=="" goto :args_done' in text
+    assert "for %%A in (%*)" not in text
+    assert "--frontend-only" in text
+    assert "--no-pause" in text
+    assert "build-web.log" in text
+    assert "pause" in text.lower()
+
+
+def test_source_build_script_prepares_python_runtime_by_default():
+    text = (ROOT / "scripts" / "build_web_source.ps1").read_text(encoding="utf-8-sig")
     assert ".venv\\Scripts\\python.exe" in text
+    assert '"-3"' in text
     assert "-m venv" in text
     assert "requirements\\web.txt" in text
-    assert "pip install -r" in text
+    assert "-m pip install -r" in text
     assert "import fastapi, uvicorn, openai, numpy, mcp" in text
-    assert "--frontend-only" in text
+    assert "npm ci failed" in text
+    assert "npm run types failed" in text
+    assert "npm run build failed" in text
     assert "Source Web runtime is ready. You can now run start-web.cmd." in text
 
 
