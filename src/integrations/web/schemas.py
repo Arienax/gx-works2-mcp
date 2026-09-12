@@ -136,3 +136,7 @@ class SFCStep(Command):
 
 class SFCInput(Command):
     steps: list[SFCStep] = Field(min_length=1, max_length=100)
+
+
+class MCPIntegrationCommand(Command):
+    project_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
