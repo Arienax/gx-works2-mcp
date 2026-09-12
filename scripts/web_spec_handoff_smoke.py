@@ -180,14 +180,11 @@ async def handoff(page, model):
     await expect(page.locator(".composer select")).to_have_value("generation")
     await expect(page.locator(".composer textarea")).to_have_value("")
     await expect(page.get_by_text(STALE_NOTICE, exact=True)).to_have_count(0)
-    assert not model.posts, "Confirming alone must not silently call the model"
     button = page.get_by_role("button", name=CTA, exact=True)
-    await expect(button).to_be_enabled()
-    await button.evaluate("el => { el.click(); el.click(); }")
     await expect(button).to_be_disabled()
     assert len(model.posts) == 1 and model.posts[0]["text"] == DEFAULT_TEXT
     model.finish()
-    await expect(page.get_by_role("button", name="保存旧草稿", exact=True)).to_be_enabled(timeout=15000)
+    await expect(page.get_by_text("Mock candidate pending operator review", exact=True)).to_be_visible(timeout=15000)
     assert model.preview_reads and not model.decisions
     assert len(model.posts) == 1
 
@@ -281,7 +278,7 @@ async def run(origin, baseline_only):
             cases = [
                 ("generation validation failure keeps exact safe location and confirmed spec", MockAPI(confirmed=True, history=False), generation_failure),
                 ("model timeout displays actionable classification", MockAPI(confirmed=True, history=False), generation_timeout),
-                ("confirm -> explicit generation -> preview; no duplicate or automatic approval", MockAPI(), handoff),
+                ("confirm -> automatic generation -> preview; no duplicate or automatic approval", MockAPI(), handoff),
                 ("restored confirmed project: empty-input keyboard generation", MockAPI(confirmed=True, history=False), keyboard),
                 ("unconfirmed project cannot generate", MockAPI(history=False), blocked),
                 ("read-only project cannot generate", MockAPI(confirmed=True, history=False, read_only=True), blocked),
