@@ -119,6 +119,10 @@ class MockAPI:
             self.preview_reads.append(path)
             data = {"target_mode": "ladder", "program": {"networks": []}, "diff": {},
                     "svg": '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text x="5" y="20">Mock candidate</text></svg>'}
+        elif path == "/proposals/candidate-1/explorer":
+            data = {"width": 120, "height": 40,
+                    "svg": '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text x="5" y="20">Mock candidate</text></svg>',
+                    "networks": [], "devices": {}, "address_targets": []}
         elif path.endswith("/decision"):
             self.decisions.append(body)
             status, data = 500, {"error": {"message": "Approval must never be automatic"}}
