@@ -16,7 +16,7 @@ def test_windows_service_binding_roundtrip(monkeypatch):
         delete_api_key=lambda target: store.pop(target, None),
     )
     monkeypatch.setitem(sys.modules, "credential_store", fake)
-    monkeypatch.setattr(credentials.os, "name", "nt")
+    monkeypatch.setattr(credentials, "_is_windows", lambda: True)
 
     assert credentials.save_service_binding("http://127.0.0.1:8765", "agent-secret")
     saved = credentials.load_service_binding()
