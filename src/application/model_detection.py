@@ -83,22 +83,26 @@ def inspect_openai_compatible(provider, model: str, configured_capabilities=None
     Tool calling and JSON-object structured output are actively probed.  Other
     capability flags are preserved from the selected profile because reasoning,
     multimodal support and provider-specific thinking controls cannot be safely
-    inferred from a generic text-only OpenAI-compatible request.
+    inferred from a generic text-only OpenAI-compatible request.  A failed
+    best-effort probe never downgrades an existing known-good True flag.
     """
     models = sorted(set(provider.list_models(timeout=15.0)))
     selected = str(model or "").strip()
     probe_model = selected if selected in models else (models[0] if models else selected)
     capabilities = dict(configured_capabilities or {})
-    detected = {
+    detected_values = {
         "tools": _tool_probe(provider, probe_model) if probe_model else False,
         "structured_output": _structured_output_probe(provider, probe_model) if probe_model else False,
     }
-    capabilities.update(detected)
+    for name, supported in detected_values.items():
+        if supported or name not in capabilities:
+            capabilities[name] = supported
     return {
         "models": models,
         "recommended_model": probe_model or None,
         "selected_model_available": bool(selected and selected in models),
         "capabilities": capabilities,
-        "detected": sorted(detected),
+        "detected": sorted(detected_values),
+        "probe_results": detected_values,
         "note": "已自动检测工具调用与结构化输出；推理、视觉和供应商专用参数保留现有配置，可在高级设置中手动调整。",
     }
