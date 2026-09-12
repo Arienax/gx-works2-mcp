@@ -1,7 +1,8 @@
 """Check a built Web package without creating a project or invoking GX/MX.
 
 This launches only the Web executable, in read-only mode against a temporary
-absent workspace. The bundled Simulator2 gateway is checked as a file only.
+absent workspace. The bundled Simulator2 gateway is checked as a file only and
+the MCP product executable is invoked only with --help.
 """
 
 from __future__ import annotations
@@ -22,7 +23,8 @@ from pathlib import Path
 
 def check_package(package, archive_path=None):
     required = (
-        "GXWorks-Agent-Web.exe", "web/dist/index.html", "config.default.json",
+        "GXWorks-Agent-Web.exe", "gxworks-agent-mcp.exe", "gxworks-agent-mcp.cmd",
+        "web/dist/index.html", "config.default.json",
         "pattern_library.json", "plc_models.json", "knowledge/fx3u_knowledge.sqlite",
         "knowledge/fx3u_dense_lsa.npz", "knowledge/manifest.json",
         "knowledge/THIRD_PARTY_NOTICES.md", "resources/locales/en.json",
@@ -36,6 +38,14 @@ def check_package(package, archive_path=None):
             raise RuntimeError("Missing package resource: " + name)
     if (package / "config.json").exists():
         raise RuntimeError("Do not ship user config.json in a clean release package.")
+    help_result = subprocess.run(
+        [str(package / "gxworks-agent-mcp.exe"), "--help"],
+        cwd=package,
+        capture_output=True,
+        timeout=15,
+    )
+    if help_result.returncode != 0 or help_result.stdout or b"GXWorks Agent MCP server" not in help_result.stderr:
+        raise RuntimeError("Bundled MCP product launcher did not expose a clean stdio-safe help entry.")
     qt_excluded = None
     if archive_path is not None:
         from PyInstaller.archive.readers import ZlibArchiveReader
@@ -98,7 +108,7 @@ def smoke(package, archive_path=None):
                     "ok": True, "packaged_server_started": True, "static_assets_loaded": len(assets),
                     "operator_login": True, "read_only_workspace_unchanged": True,
                     "qt_modules_excluded": qt_excluded, "gateway_binary_bundled_not_started": True,
-                    "native_gx_not_tested": True,
+                    "mcp_launcher_bundled": True, "native_gx_not_tested": True,
                 }
             finally:
                 process.terminate()
