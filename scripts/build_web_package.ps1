@@ -37,7 +37,9 @@ if (-not [string]::IsNullOrWhiteSpace($StageName)) {
         throw "This staging package already exists. Choose a new StageName; existing packages are not replaced in staging mode."
     }
 }
-$packageExecutable = [IO.Path]::GetFullPath((Join-Path $distRoot "GXWorks-Agent-Web\GXWorks-Agent-Web.exe"))
+$packageDirectory = [IO.Path]::GetFullPath((Join-Path $distRoot "GXWorks-Agent-Web"))
+$packageExecutable = [IO.Path]::GetFullPath((Join-Path $packageDirectory "GXWorks-Agent-Web.exe"))
+$mcpExecutable = [IO.Path]::GetFullPath((Join-Path $packageDirectory "gxworks-agent-mcp.exe"))
 if (-not $ValidateOnly) {
     $runningPackage = @(Get-Process -Name "GXWorks-Agent-Web" -ErrorAction SilentlyContinue | Where-Object {
         $_.Path -and [string]::Equals($_.Path, $packageExecutable, [StringComparison]::OrdinalIgnoreCase)
@@ -52,8 +54,8 @@ if ([string]::IsNullOrWhiteSpace($Python)) {
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw "Provide -Python with a Python 3.10+ environment containing requirements/web.txt and PyInstaller."
 }
-& $Python -c "import sys; assert sys.version_info >= (3, 10); import PyInstaller, fastapi, uvicorn, openai, numpy; import pythoncom, pywinauto"
-if ($LASTEXITCODE -ne 0) { throw "Web packaging dependencies are missing from the selected environment." }
+& $Python -c "import sys; assert sys.version_info >= (3, 10); import PyInstaller, fastapi, uvicorn, openai, numpy, mcp; import pythoncom, pywinauto"
+if ($LASTEXITCODE -ne 0) { throw "Web/MCP packaging dependencies are missing from the selected environment." }
 
 $resolvedGateway = ""
 if (-not [string]::IsNullOrWhiteSpace($GatewayDirectory)) {
@@ -70,7 +72,9 @@ $requiredResources = @(
     "resources\knowledge\fx3u_knowledge.sqlite", "resources\knowledge\fx3u_dense_lsa.npz",
     "resources\knowledge\manifest.json", "resources\knowledge\THIRD_PARTY_NOTICES.md",
     "resources\locales\en.json", "resources\locales\ja.json", "resources\app.ico", "LICENSE",
-    "docs\integrations\web.md", "docs\architecture\web-migration-checklist.md", "start-web.cmd", "scripts\start_web.ps1"
+    "docs\integrations\web.md", "docs\integrations\mcp.md", "docs\architecture\web-migration-checklist.md",
+    "start-web.cmd", "gxworks-agent-mcp.cmd", "scripts\start_web.ps1", "scripts\mcp_entry.py",
+    "packaging\pyinstaller\mcp.spec"
 )
 foreach ($resource in $requiredResources) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $resource) -PathType Leaf)) {
@@ -101,8 +105,9 @@ try {
     Pop-Location
 }
 if ($ValidateOnly) {
-    Write-Output "Web release resources and selected packaging dependencies are present. No executable was built or started."
-    Write-Output ("Package destination: " + $packageExecutable)
+    Write-Output "Web release resources, MCP launcher resources and selected packaging dependencies are present. No executable was built or started."
+    Write-Output ("Web package destination: " + $packageExecutable)
+    Write-Output ("MCP launcher destination: " + $mcpExecutable)
     Write-Output ("Archive destination: " + (Join-Path $buildRoot "web\PYZ-00.pyz"))
     return
 }
@@ -114,9 +119,13 @@ try {
     $env:GX_WEB_PACKAGE_ALLOW_WITHOUT_GATEWAY = $(if ($AllowWithoutGateway) { "1" } else { "0" })
     Push-Location $repositoryRoot
     try {
-        $spec = Join-Path $repositoryRoot "packaging\pyinstaller\web.spec"
-        & $Python -m PyInstaller --noconfirm --distpath $distRoot --workpath $buildRoot $spec
+        $webSpec = Join-Path $repositoryRoot "packaging\pyinstaller\web.spec"
+        & $Python -m PyInstaller --noconfirm --distpath $distRoot --workpath $buildRoot $webSpec
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller Web package build failed." }
+        $mcpSpec = Join-Path $repositoryRoot "packaging\pyinstaller\mcp.spec"
+        $mcpWork = Join-Path $buildRoot "mcp"
+        & $Python -m PyInstaller --noconfirm --distpath $packageDirectory --workpath $mcpWork $mcpSpec
+        if ($LASTEXITCODE -ne 0) { throw "PyInstaller MCP launcher build failed." }
     } finally {
         Pop-Location
     }
@@ -124,7 +133,12 @@ try {
     [Environment]::SetEnvironmentVariable("GX_WEB_PACKAGE_GATEWAY_DIR", $previousGateway, "Process")
     [Environment]::SetEnvironmentVariable("GX_WEB_PACKAGE_ALLOW_WITHOUT_GATEWAY", $previousWithoutGateway, "Process")
 }
+if (-not (Test-Path -LiteralPath $mcpExecutable -PathType Leaf)) {
+    throw "MCP product launcher was not produced: $mcpExecutable"
+}
+Copy-Item -LiteralPath (Join-Path $repositoryRoot "gxworks-agent-mcp.cmd") -Destination (Join-Path $packageDirectory "gxworks-agent-mcp.cmd") -Force
 Write-Output $packageExecutable
+Write-Output $mcpExecutable
 if ($AllowWithoutGateway -and [string]::IsNullOrWhiteSpace($resolvedGateway)) {
     Write-Warning "This package does not include the Simulator2 gateway; real simulator acceptance has not been performed."
 }
