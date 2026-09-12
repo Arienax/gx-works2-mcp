@@ -24,15 +24,21 @@ class _StderrParser(argparse.ArgumentParser):
         super()._print_message(message, sys.stderr)
 
 
+def _has_option(raw_args, name):
+    return any(value == name or value.startswith(name + "=") for value in raw_args)
+
+
 def _service_connection(args, raw_args, parser):
     from .service_credentials import load_service_binding
     from .service_client import validate_service_url
 
-    binding = load_service_binding() or {}
-    explicit_url = "--service-url" in raw_args
+    token = os.environ.get(args.service_token_env, "").strip()
+    # A fully specified headless connection must not touch local credentials.
+    binding = {} if args.service_url and token and (args.project or args.check) else (load_service_binding() or {})
+    explicit_url = bool(args.service_url)
     service_url = args.service_url or binding.get("service_url") or "http://127.0.0.1:8765"
     service_url = validate_service_url(service_url)
-    token = os.environ.get(args.service_token_env, "").strip()
+    matching_binding = binding if binding.get("service_url") == service_url else {}
     if not token and binding:
         bound_url = validate_service_url(binding.get("service_url"))
         if explicit_url and bound_url != service_url:
@@ -44,7 +50,8 @@ def _service_connection(args, raw_args, parser):
             "No local MCP credential was found. Start GXWorks Agent Web once to publish its credential, "
             f"or set {args.service_token_env} explicitly."
         )
-    project_id = args.project or binding.get("project_id")
+    # A project bound to another origin is never a default for this service.
+    project_id = args.project or matching_binding.get("project_id")
     return service_url, token, project_id
 
 
@@ -75,13 +82,13 @@ def main(argv=None) -> int:
         help="Optional environment variable containing the Agent token. Normal Windows use reads Credential Manager instead.",
     )
     args = parser.parse_args(raw_args)
-    explicit_workspace = "--workspace" in raw_args
+    explicit_workspace = _has_option(raw_args, "--workspace")
     standalone = bool(args.standalone or explicit_workspace)
     if standalone and args.workspace is None:
         parser.error("--standalone requires --workspace or PLC_AI_WORKSPACE_DIR")
     if standalone and not args.project:
         parser.error("standalone mode requires --project")
-    if standalone and ("--service-url" in raw_args or "--service-token-env" in raw_args or args.check):
+    if standalone and (_has_option(raw_args, "--service-url") or _has_option(raw_args, "--service-token-env") or args.check):
         parser.error("standalone mode cannot be combined with service connection/check options")
     if sys.version_info < (3, 10):
         parser.error("MCP requires Python 3.10+ in a separate environment from the Win7 desktop")

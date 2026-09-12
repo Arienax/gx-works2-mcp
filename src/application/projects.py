@@ -186,6 +186,17 @@ class ProjectService:
         return build_tool_context(project, version=version, program_ir=program,
                                   ladder=ir_to_ladder(program) if program else None)
 
+    def verified_program(self, project_id: str, version_id: str) -> dict | None:
+        """Bind navigation and evidence to the saved IR without semantic revalidation."""
+        from plc_ir import canonical_sha256
+        from .workspace import ConflictError
+        version = self.raw_version(project_id, version_id)
+        program = self.program(project_id, version_id)
+        if version.get("target_mode") == "ladder" and version.get("ir_sha256"):
+            if not program or canonical_sha256(program) != version["ir_sha256"]:
+                raise ConflictError("Version IR changed after validation")
+        return program
+
     def invoke(self, project_id: str, version_id: str | None, call_id: str, name: str, arguments: dict):
         return self.runtime.invoke(ToolCall(call_id, name, arguments), self.tool_context(project_id, version_id))
 

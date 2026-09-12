@@ -72,18 +72,18 @@ def save_service_binding(service_url: str, token: str, project_id: str | None = 
     record = _record(service_url, token, project_id)
     if not _is_windows():
         return False
-    from credential_store import write_api_key
+    from windows_credentials import write_secret
 
-    write_api_key(json.dumps(record, ensure_ascii=False, separators=(",", ":")), SERVICE_CREDENTIAL_TARGET)
+    write_secret(json.dumps(record, ensure_ascii=False, separators=(",", ":")), SERVICE_CREDENTIAL_TARGET)
     return True
 
 
 def load_service_binding() -> dict[str, Any] | None:
     if not _is_windows():
         return None
-    from credential_store import read_api_key
+    from windows_credentials import read_secret
 
-    raw = read_api_key(SERVICE_CREDENTIAL_TARGET).strip()
+    raw = read_secret(SERVICE_CREDENTIAL_TARGET).strip()
     if not raw:
         return None
     try:
@@ -113,6 +113,6 @@ def clear_service_binding(service_url: str, token: str) -> None:
         return
     if current["service_url"] != _service_url(service_url) or current["agent_token"] != str(token).strip():
         return
-    from credential_store import delete_api_key
+    from windows_credentials import delete_secret
 
-    delete_api_key(SERVICE_CREDENTIAL_TARGET)
+    delete_secret(SERVICE_CREDENTIAL_TARGET)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import copy
+from contextlib import nullcontext
 from difflib import unified_diff
 import hashlib
 import json
@@ -172,6 +173,33 @@ Do not assert semantic equivalence or compilation merely because a model was gen
 class FBDService:
     def __init__(self, workbench):
         self.workbench = workbench
+
+    def preview(self, project_id, model, version_id=None):
+        """Validate/render the current draft without saving a proposal or version."""
+        from gxw.models import GXWFormatError
+        wb = self.workbench
+        with wb.lock.thread_lock if wb.lock else nullcontext():
+            project = wb.projects.raw_project(project_id)
+            baseline = None
+            if version_id:
+                version = wb.projects.raw_version(project_id, version_id)
+                if version.get("target_mode") != "fbd":
+                    raise FBDValidationError("FBD 草稿预览需要选择 FBD 版本。")
+                baseline = wb.projects.artifact(project_id, version_id, "gxw").read_bytes()
+            elif project.get("active_version_id"):
+                raise ConflictError("Select the current base version before previewing an FBD draft")
+            if baseline is None and project.get("plc_model", "FX3U").upper() != "FX3U":
+                raise FBDValidationError("Native FBD generation currently has an FX3U project template only")
+            try:
+                result = generate_object_project(model, baseline=baseline)
+                program, declarations, _ = read_project(result.data, model.get("program"))
+                return {"model_sha256": canonical_hash(model),
+                        "gxw_sha256": hashlib.sha256(result.data).hexdigest(),
+                        "svg": render_structured_svg(program),
+                        "model": export_object_model(program, declarations),
+                        "gx_compile": "not_run"}
+            except GXWFormatError as error:
+                raise FBDValidationError(str(error)) from error
 
     def propose(self, command):
         from gxw.models import GXWFormatError

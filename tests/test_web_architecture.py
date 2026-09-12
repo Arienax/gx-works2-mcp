@@ -166,6 +166,14 @@ def test_root_build_and_packaging_layout_is_explicit():
     ):
         assert (ROOT / new_path).is_file(), new_path
     build_script = (ROOT / "build-web.bat").read_text(encoding="utf-8")
-    assert "npm.cmd ci" in build_script
-    assert "npm.cmd run types" in build_script
-    assert "npm.cmd run build" in build_script
+    assert 'scripts\\build_web_source.ps1' in build_script
+    assert '-FrontendOnly' in build_script
+    assert 'exit /b %BUILD_EXIT%' in build_script
+    implementation = (ROOT / "scripts/build_web_source.ps1").read_text(encoding="utf-8")
+    assert "Get-Command npm.cmd" in implementation
+    assert "& $npm.Source ci" in implementation
+    assert "& $npm.Source run types" in implementation
+    assert "& $npm.Source run build" in implementation
+    assert "requirements\\web.txt" in implementation
+    assert "dist\\index.html" in implementation
+    assert "exit $exitCode" in implementation

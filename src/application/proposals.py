@@ -210,6 +210,8 @@ class ProposalService:
                     payload["confirmed_spec_hash"] = canonical_sha256(spec) if spec is not None else None
                 elif payload.get("target_mode") not in ("st", "fbd"):
                     raise ValueError("Local candidate requires IR or staged ST/FBD artifacts")
+                scope_summary = self._candidate_scope(project_id, selected, payload)
+                public_summary = {**(public_summary or {}), **scope_summary}
             proposal_id = "proposal_" + uuid.uuid4().hex
             if action == "accept_local" and payload.get("target_mode") in ("st", "fbd") and "_candidate_ir" not in payload:
                 payload = self._freeze_staging(proposal_id, payload)
@@ -223,6 +225,18 @@ class ProposalService:
                       "private_payload": payload, "payload_hash": canonical_hash(payload)}
             self._save(record)
             return self._public(record)
+
+    def _candidate_scope(self, project_id, base_id, payload):
+        """Derive constraints and impact before any durable candidate save."""
+        from plc_change_scope import enforce_change_scope, validate_scope_baseline
+        before = self.store.load_program_ir(project_id, base_id, persist_legacy=False) if base_id else None
+        target_mode = payload.get("target_mode") or ("ladder" if "_candidate_ir" in payload else None)
+        scope = validate_scope_baseline(payload.get("change_scope"), before, target_mode=target_mode)
+        payload["change_scope"] = scope
+        summary = {"change_scope": scope}
+        if "_candidate_ir" in payload:
+            summary["impact"] = enforce_change_scope(before, payload["_candidate_ir"], scope, target_mode=target_mode)
+        return summary
 
     @staticmethod
     def _verify_payload(record):
@@ -239,6 +253,8 @@ class ProposalService:
         if self._base_snapshot(record["project_id"], record["base_version_id"]) != record["base_snapshot"]:
             raise ConflictError("Base version changed; regenerate the proposal")
         payload = record["private_payload"]
+        if record["action"] == "accept_local":
+            self._candidate_scope(record["project_id"], record["base_version_id"], copy.deepcopy(payload))
         if payload.get("target_mode") in ("st", "fbd") and payload.get("artifacts"):
             root = contained(Path(payload["staging_dir"]), self.directory)
             for entry in payload["artifacts"].values():

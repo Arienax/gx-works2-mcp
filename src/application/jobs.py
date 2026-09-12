@@ -190,7 +190,7 @@ class JobManager:
         except Exception as exc:
             diagnostics.exception_record(exc)
             safe_codes = {"ResponseRejectedError": "response_rejected", "ConflictError": "input_conflict",
-                          "ContextUnavailableError": "context_unavailable"}
+                          "ContextUnavailableError": "context_unavailable", "ChangeScopeError": "change_scope_violation"}
             status, error_code, result = "failed", safe_codes.get(type(exc).__name__, "job_failed"), None
             error_details = acceptance_error_details(exc)
             if error_details is not None:

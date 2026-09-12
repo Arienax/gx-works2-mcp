@@ -30,9 +30,8 @@ existing known-good capability merely because an optional probe fails.
 
 ## MCP for Web users
 
-Open **Settings → Model → Integrations / MCP** after selecting a project. Normal
-Windows use no longer asks the user to copy an Agent token or paste MCP setup
-text into a model.
+Select a project, then open **Settings → Model → Integrations / MCP** to connect
+Codex. Keep the workbench running while using its engineering tools.
 
 At Web startup the application creates a credential separate from the operator
 login token and stores the current loopback MCP service record in Windows
@@ -51,9 +50,9 @@ In **Integrations / MCP**:
    the `[mcp_servers.gxworks]` table in the user's Codex `config.toml`. Model
    selection/provider settings, project trust entries and every other MCP server
    are left unchanged. This does not require the Codex CLI to be in `PATH`.
-3. After that, Codex can be prompted directly, for example: `用 gxworks 给当前工程生成一个起保停`.
-   The user should not paste MCP TOML into the model or ask the model to inspect
-   this repository merely to discover how to connect.
+3. In Codex, describe the task and its input/output behavior, for example:
+   `使用 gxworks 为当前工程编写启停控制：X0 启动、X1 停止、Y0 控制电机，停止优先。`
+   Review the program, change summary and pending approvals in the workbench.
 
 The normal launcher therefore needs no user-facing URL, token, workspace or
 Python path:

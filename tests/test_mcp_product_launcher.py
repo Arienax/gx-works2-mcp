@@ -5,15 +5,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from mcp_test_support import isolated_mcp_command, isolated_mcp_environment
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(*args):
-    env = {**os.environ, "PYTHONPATH": "", "PLC_AI_WORKSPACE_DIR": ""}
-    env.pop("PLC_WEB_AGENT_TOKEN", None)
+    env = isolated_mcp_environment(PYTHONPATH="", PLC_AI_WORKSPACE_DIR="")
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mcp_entry.py"), *args],
+        isolated_mcp_command(*args, entry=ROOT / "scripts" / "mcp_entry.py"),
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -28,7 +29,7 @@ def test_product_entry_help_requires_no_pythonpath():
     assert b"GXWorks Agent MCP server" in result.stderr
 
 
-def test_product_entry_defaults_to_web_service_and_requires_agent_token():
+def test_product_entry_requires_credentials_when_no_service_is_saved():
     result = _run("--project", "p1")
     assert result.returncode == 2
     assert result.stdout == b""

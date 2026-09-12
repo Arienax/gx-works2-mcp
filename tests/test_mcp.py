@@ -682,14 +682,16 @@ raise SystemExit(main())
 
 
 def test_cli_help_and_setup_errors_use_only_stderr(tmp_path):
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "PLC_AI_WORKSPACE_DIR": ""}
+    from mcp_test_support import isolated_mcp_command, isolated_mcp_environment
+
+    env = isolated_mcp_environment(PYTHONPATH=str(ROOT / "src"), PLC_AI_WORKSPACE_DIR="")
     for args, expected_code in [
         (["--help"], 0),
         (["--stdio", "--project", "absent"], 2),
         (["--stdio", "--workspace", str(tmp_path / "missing"), "--project", "absent"], 2),
     ]:
         result = subprocess.run(
-            [sys.executable, "-m", "integrations.mcp", *args],
+            isolated_mcp_command(*args),
             env=env, cwd=tmp_path, capture_output=True, timeout=15,
         )
         assert result.returncode == expected_code

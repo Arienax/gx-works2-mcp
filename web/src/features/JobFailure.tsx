@@ -40,7 +40,9 @@ function FailureMessage({ job, t }: { job: Job; t: (key: string) => string }) {
     </p>)}
     <p className="muted">{t("系统没有自动再次调用模型。可由你确认后仅修复当前候选的结构问题。")}</p>
   </div>;
+  if (job.error_code === "change_scope_violation") return <p className="error-text" role="alert">{t("候选超出允许修改的范围。请查看任务详情，调整范围或重新生成。")}</p>;
   if (job.error_code !== "response_rejected") return <p className="error-text">{t(errorMessages[job.error_code] || job.error_code)}</p>;
+
   return <div className="job-failure" role="alert">
     <p className="error-text">{t("模型回复未通过检查，请重试。")}</p>
     {job.error_details?.violations?.length ? <ul>

@@ -305,8 +305,10 @@ def test_browser_demo_main_analysis_confirm_generation_autosaves_with_private_au
             analysis = service.submit({**command, "kind": "analysis", "request_id": "demo-analysis"})
             service.jobs._futures[analysis["id"]].result(timeout=10)
             assert service.jobs.get(analysis["id"])["status"] == "completed"
-            draft = service.output(analysis["id"])["spec_draft"]
-            assert service.set_spec(project["id"], spec=draft, expected_hash=None)["valid"]
+            output = service.output(analysis["id"])
+            draft = output["spec_draft"]
+            assert output["spec_base_hash"] is not None
+            assert service.set_spec(project["id"], spec=draft, expected_hash=output["spec_base_hash"])["valid"]
             job = service.submit({**command, "kind": "generation", "request_id": "demo-generation"})
             service.jobs._futures[job["id"]].result(timeout=10)
             completed = service.jobs.get(job["id"])

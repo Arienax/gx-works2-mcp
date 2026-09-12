@@ -107,21 +107,18 @@ function McpIntegrations({
   return (
     <div className="form settings-form">
       <div className="notice">
-        <strong>GXWorks Agent MCP</strong>
+        <strong>{t("在 Codex 中使用当前工程")}</strong>
         <p>
-          {t("Web 会把 MCP 服务地址和独立 Agent 凭据保存到 Windows Credential Manager。连接完成后，Codex 只需启动本机 launcher，不再需要复制 token、service-url 或工程 ID。")}
+          {t("先打开工程，再点击“连接 Codex”。连接完成后，可在 Codex 中查看程序、提出修改和设计测试。使用期间请保持工作台运行。")}
         </p>
       </div>
 
       <div className="context-chips">
         <Badge tone={status?.credential_ready ? "good" : "warn"}>
-          {t(status?.credential_ready ? "本机凭据已就绪" : "本机凭据未就绪")}
+          {t(status?.credential_ready ? "工作台连接已就绪" : "工作台连接待初始化")}
         </Badge>
         <Badge tone={status?.launcher_ready ? "good" : "warn"}>
-          {t(status?.launcher_ready ? "MCP launcher 已就绪" : "MCP launcher 不可用")}
-        </Badge>
-        <Badge tone={status?.codex_cli_available ? "good" : "warn"}>
-          {t(status?.codex_cli_available ? "已检测到 Codex" : "未检测到 Codex CLI")}
+          {t(status?.launcher_ready ? "连接组件已就绪" : "连接组件不可用")}
         </Badge>
       </div>
 
@@ -129,13 +126,9 @@ function McpIntegrations({
         {t("当前工程")}
         <input readOnly value={projectId || t("未选择工程")} />
       </label>
-      <label>
-        Service URL
-        <input readOnly value={status?.service_url || window.location.origin} />
-      </label>
       {status?.bound_project_id && (
         <p className="muted">
-          {t("MCP 当前绑定工程")}: <span className="mono">{status.bound_project_id}</span>
+          {t("已连接工程")}: <span className="mono">{status.bound_project_id}</span>
         </p>
       )}
 
@@ -157,28 +150,35 @@ function McpIntegrations({
 
       {!status?.credential_ready && (
         <p className="muted">
-          {t("请先用当前版本重新启动 Web 工作台。启动器会自动生成并保存 MCP Agent 凭据，不再在终端要求手工复制 token。")}
+          {t("连接尚未就绪。请重新启动工作台，再尝试连接。")}
         </p>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && <p role="status">{t(message)}</p>}
       {error && <p role="alert" className="error-text">{error}</p>}
 
       <div className="notice">
-        <strong>{t("连接后怎么用")}</strong>
-        <p>{t("以后在 Codex 中直接说“用 gxworks 给当前工程生成起保停”即可。不要再把 MCP 配置粘贴给模型，也不需要让模型读取本仓库来研究接入方式。")}</p>
+        <strong>{t("开始工程任务")}</strong>
+        <p>{t("在 Codex 中输入任务，例如：“用 gxworks 为当前工程生成起保停程序：X0 启动，X1 停止，Y0 控制电机。”生成后在工作台检查程序、变更摘要和待审批操作。")}</p>
       </div>
 
       <details>
-        <summary>{t("Advanced / 其他 MCP 客户端")}</summary>
+        <summary>{t("高级 / 其他 MCP 客户端")}</summary>
+        <label>
+          Service URL
+          <input readOnly value={status?.service_url || window.location.origin} />
+        </label>
+        <Badge tone={status?.codex_cli_available ? "good" : "neutral"}>
+          {t(status?.codex_cli_available ? "Codex CLI 已检测到（可选）" : "Codex CLI 未检测到（可选）")}
+        </Badge>
         <p className="muted">
-          {t("Claude/Cursor 等客户端也可以直接启动同一个 launcher。先点击“测试 MCP 连接”绑定当前工程；正常 Windows 使用不需要 env、service-url、PYTHONPATH 或 python -m integrations.mcp。")}
+          {t("将下方配置添加到 Claude、Cursor 等 MCP 客户端。点击“测试 MCP 连接”可绑定当前工程；配置中的 gxworks-agent-mcp 需可由客户端启动。")}
         </p>
         <pre className="mono">{manualConfig}</pre>
         <Button onClick={() => void navigator.clipboard.writeText(manualConfig)}>
           {t("复制高级配置")}
         </Button>
         <p className="muted">
-          {t("无 Web 服务的 CI/headless 场景仍可使用：gxworks-agent-mcp --standalone --workspace <workspace> --project <project-id>。")}
+          {t("CI 或无界面环境未启动 Web 服务时，使用：gxworks-agent-mcp --standalone --workspace <workspace> --project <project-id>。")}
         </p>
       </details>
     </div>
@@ -347,14 +347,14 @@ export function Settings({
             onChange={(e) => setSecret(e.target.value)}
           />
         </label>
-        <p className="muted">{t("密钥仅保存到后端凭据存储。")}</p>
+        <p className="muted">{t("API Key 用于连接模型服务；编辑已有配置时，留空可保留已保存的密钥。")}</p>
         <div className="form-actions">
           <Button
             disabled={!discoverReady}
             onClick={() =>
               void run(async () => {
                 const probeId = selected || value.active_profile_id || value.profiles?.[0]?.id || "";
-                if (!probeId) throw new Error(t("没有可用于能力探测的基础配置。"));
+                if (!probeId) throw new Error(t("请先保存一个模型配置，再检测可用模型与能力。"));
                 const draft = {
                   id: probeId,
                   name: name.trim() || "Custom API",
@@ -406,7 +406,7 @@ export function Settings({
         <details>
           <summary>{t("高级设置")}</summary>
           <p className="muted">
-            {t("普通用户无需修改。仅在供应商文档明确要求时调整 capability、生成参数或请求覆盖参数。")}
+            {t("如供应商要求特定参数，可在此调整模型能力、生成参数和请求覆盖参数。")}
           </p>
           <div className="capability-grid">
             {[

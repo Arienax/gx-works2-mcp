@@ -175,6 +175,10 @@ def _launcher_ready() -> bool:
 
 def test_connection(project_id: str, service_url: str) -> dict[str, Any]:
     service_url = validate_service_url(service_url)
+    # A different running service must not overwrite the saved project binding.
+    saved_binding = load_service_binding()
+    if saved_binding and saved_binding.get("service_url") != service_url:
+        raise MCPIntegrationError("当前浏览器连接的 Web 服务与本机 MCP 凭据不一致，请重启当前 Web 工作台。")
     binding = bind_project(project_id)
     if binding["service_url"] != service_url:
         raise MCPIntegrationError("当前浏览器连接的 Web 服务与本机 MCP 凭据不一致，请重启当前 Web 工作台。")
@@ -192,7 +196,7 @@ def test_connection(project_id: str, service_url: str) -> dict[str, Any]:
         "project_id": project_id,
         "service_url": service_url,
         "tool_count": int(payload.get("tool_count") or 0),
-        "message": "MCP launcher 已通过本机凭据连接当前 Web 工程。",
+        "message": "当前工程连接测试通过，可以开始使用。",
     }
 
 
@@ -205,5 +209,5 @@ def connect_codex(project_id: str, service_url: str) -> dict[str, Any]:
         "status": "connected",
         "codex_connected": True,
         "replaced_existing": replaced,
-        "message": "Codex 已连接 GXWorks Agent。以后直接描述 PLC 任务即可，无需再次粘贴 MCP 配置。",
+        "message": "Codex 已连接当前工程。请在 Codex 中描述工程任务，并在工作台检查结果。",
     }

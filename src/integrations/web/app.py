@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 
 from application.projects import media_type, public
-from application.workbench import WorkbenchService, sfc_requirement
+from application.workbench import WorkbenchService, sfc_requirement, ChangeScopeError
 from application.fbd import FBDValidationError
 from application.execution import ExecutionUnavailableError
 from application.workspace import ConflictError, WorkspaceBusyError
@@ -82,6 +82,10 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.exception_handler(FBDValidationError)
     async def invalid_fbd(_request, error):
         return JSONResponse({"error": {"code": "invalid_fbd", "message": public(str(error))}}, status_code=400)
+
+    @app.exception_handler(ChangeScopeError)
+    async def invalid_scope(_request, error):
+        return JSONResponse({"error": {"code": "change_scope_violation", "message": public(str(error))}}, status_code=400)
 
     @app.exception_handler(ConflictError)
     async def conflict(_request, _error):
@@ -364,6 +368,17 @@ def create_app(workspace, *, state_dir=None, read_only=False, origin="http://127
     @app.post("/api/agent/tools/call", response_model=dto.AgentToolResult, response_model_exclude_unset=True)
     def agent_call(command: AgentCall):
         return service.agent_call(command.model_dump())
+
+    from .exploration_routes import register as register_exploration
+    register_exploration(app, service)
+    from .simulation_routes import register as register_simulation
+    register_simulation(app, service)
+    from .native_validation_routes import register as register_native_validation
+    register_native_validation(app, service)
+    from .delivery_routes import register as register_delivery
+    register_delivery(app, service)
+    from .hardware_routes import register as register_hardware
+    register_hardware(app, service)
 
     if static_dir is None:
         import sys
