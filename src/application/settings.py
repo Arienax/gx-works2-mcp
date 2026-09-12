@@ -254,7 +254,8 @@ class SettingsService:
 
     def test_connection(self, profile_id, *, profile=None, api_key=None):
         from config_manager import get_model_profile
-        from model_provider import test_model_profile
+        from model_provider import create_provider
+        from application.model_detection import inspect_openai_compatible
         with _SETTINGS_LOCK:
             config = self.read_config()
             selected = get_model_profile(config, _profile_id(profile_id))
@@ -263,10 +264,24 @@ class SettingsService:
             key = api_key if api_key is not None else self._key(config, selected)
             if not str(key or "").strip():
                 return {"status": "failed", "message": "请先配置 API Key。", "error_code": "missing_key"}
+            frozen = copy.deepcopy(selected)
         try:
-            # Shared desktop probe uses /models with timeout=15 and max_retries=0.
-            message = test_model_profile(copy.deepcopy(selected), key)
-            return {"status": "connected", "message": message}
+            provider = create_provider(frozen, key)
+            inspection = inspect_openai_compatible(
+                provider,
+                str(frozen.get("model") or ""),
+                frozen.get("capabilities") or {},
+            )
+            return {
+                "status": "connected",
+                # Keep the public response contract stable for one release.
+                # The Web client recognizes this JSON payload and falls back to
+                # ordinary text for older backends.
+                "message": json.dumps({
+                    "kind": "model_discovery_v1",
+                    **inspection,
+                }, ensure_ascii=False),
+            }
         except Exception as error:
             code = getattr(error, "code", "provider_error")
             if code not in ("authentication", "rate_limit", "timeout", "invalid_request", "unavailable"):
