@@ -194,7 +194,9 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
                 await expect(page.locator('.spec-editor')).to_be_visible(timeout=180000 if live else 30000)
                 await page.get_by_role('button', name='确认规格', exact=True).click()
                 await expect(page.locator('.composer')).to_be_visible()
-            await page.get_by_role('button', name='按已确认规格生成程序', exact=True).click()
+                await expect(page.get_by_role('button', name='按已确认规格生成程序', exact=True)).to_be_disabled()
+            else:
+                await page.get_by_role('button', name='按已确认规格生成程序', exact=True).click()
             job = await wait_job(server, pid)
             output = server.service.output(job['id'])
             assert server.service.projects.project(pid)['version_count'] == (0 if blocked else 1)
