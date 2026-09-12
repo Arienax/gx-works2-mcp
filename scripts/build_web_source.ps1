@@ -14,8 +14,16 @@ function Write-Step([string]$Text) {
     Write-Host $Text -ForegroundColor Cyan
 }
 
+$transcriptStarted = $false
 try {
-    Start-Transcript -Path $log -Force | Out-Null
+    try {
+        Start-Transcript -Path $log -Force | Out-Null
+        $transcriptStarted = $true
+    } catch {
+        # The visible console remains authoritative if transcription is unavailable.
+        Write-Host ("[WARN] Could not start build transcript: " + $_.Exception.Message) -ForegroundColor Yellow
+    }
+
     Write-Host "=============================================="
     Write-Host "  GXWorks Agent - Web source build"
     Write-Host "=============================================="
@@ -28,26 +36,35 @@ try {
 
         if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
             Write-Step "[1/4] Creating Python Web environment in .venv ..."
-            $bootstrap = $null
+            $bootstrapExe = $null
+            $bootstrapPrefix = @()
+
             $py = Get-Command py.exe -ErrorAction SilentlyContinue
             if ($py) {
                 & $py.Source -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
-                if ($LASTEXITCODE -eq 0) { $bootstrap = @($py.Source, "-3") }
+                if ($LASTEXITCODE -eq 0) {
+                    $bootstrapExe = $py.Source
+                    $bootstrapPrefix = @("-3")
+                }
             }
-            if (-not $bootstrap) {
+            if (-not $bootstrapExe) {
                 $python = Get-Command python.exe -ErrorAction SilentlyContinue
                 if ($python) {
                     & $python.Source -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
-                    if ($LASTEXITCODE -eq 0) { $bootstrap = @($python.Source) }
+                    if ($LASTEXITCODE -eq 0) {
+                        $bootstrapExe = $python.Source
+                        $bootstrapPrefix = @()
+                    }
                 }
             }
-            if (-not $bootstrap) {
+            if (-not $bootstrapExe) {
                 throw "Python 3.10+ was not found in PATH. Install Python 3.10 or newer and rerun build-web.bat."
             }
-            if ($bootstrap.Count -eq 2) {
-                & $bootstrap[0] $bootstrap[1] -m venv (Join-Path $root ".venv")
+
+            if ($bootstrapPrefix.Count -gt 0) {
+                & $bootstrapExe @bootstrapPrefix -m venv (Join-Path $root ".venv")
             } else {
-                & $bootstrap[0] -m venv (Join-Path $root ".venv")
+                & $bootstrapExe -m venv (Join-Path $root ".venv")
             }
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
                 throw "Failed to create .venv."
@@ -109,12 +126,15 @@ try {
     if (-not $FrontendOnly) {
         Write-Host "[OK] Source Web runtime is ready. You can now run start-web.cmd." -ForegroundColor Green
     }
-    exit 0
+    $exitCode = 0
 } catch {
     Write-Host ""
     Write-Host ("[ERROR] " + $_.Exception.Message) -ForegroundColor Red
     Write-Host ("Detailed log: " + $log) -ForegroundColor Yellow
-    exit 1
+    $exitCode = 1
 } finally {
-    try { Stop-Transcript | Out-Null } catch {}
+    if ($transcriptStarted) {
+        try { Stop-Transcript | Out-Null } catch {}
+    }
 }
+exit $exitCode
