@@ -87,14 +87,16 @@ def inspect_openai_compatible(provider, model: str, configured_capabilities=None
     """
     models = sorted(set(provider.list_models(timeout=15.0)))
     selected = str(model or "").strip()
+    probe_model = selected if selected in models else (models[0] if models else selected)
     capabilities = dict(configured_capabilities or {})
     detected = {
-        "tools": _tool_probe(provider, selected) if selected else False,
-        "structured_output": _structured_output_probe(provider, selected) if selected else False,
+        "tools": _tool_probe(provider, probe_model) if probe_model else False,
+        "structured_output": _structured_output_probe(provider, probe_model) if probe_model else False,
     }
     capabilities.update(detected)
     return {
         "models": models,
+        "recommended_model": probe_model or None,
         "selected_model_available": bool(selected and selected in models),
         "capabilities": capabilities,
         "detected": sorted(detected),
