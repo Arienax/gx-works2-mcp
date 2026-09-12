@@ -128,11 +128,12 @@ class Server:
                 exc_value.add_note('Disposable HTTP server also failed to stop')
                 return False
             raise RuntimeError('Test backend failed to stop')
-    def project(self, name, *, blocked=False):
+    def project(self, name, *, legacy_contract=False):
         project = self.service.create_project(name=name, plc_model='FX3U', target_mode='ladder')
-        if blocked:
-            # Legacy confirmed input requiring MOV is deliberately inconsistent
-            # with the fixture's direct-contact candidate. It must stay blocked.
+        if legacy_contract:
+            # A legacy confirmed approach may carry an old hard-looking contract,
+            # but confirmed specification is generation context, not a second
+            # post-hoc semantic gate after the model returns a valid PLC program.
             spec = {'summary': REQUIREMENT, 'io_table': [], 'parameters': [],
                 'selected_approach': {'name': 'MOV approach', 'generation_contract': {'required_opcodes': ['MOV'], 'enforce': True}}}
             self.service.store.set_confirmed_spec(project['id'], spec)
@@ -181,13 +182,13 @@ async def wait_job(server, pid):
     raise RuntimeError('Generation did not complete in test budget')
 
 
-async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, baseline=False, live=None):
+async def run_case(browser, root, web_dist, name, *, legacy_contract=False, fault=None, live=None):
     provider = Provider(live)
     with Server(root, web_dist, provider, fault=fault) as server:
-        pid = server.project(name, blocked=blocked)
+        pid = server.project(name, legacy_contract=legacy_contract)
         context, page, page_errors = await open_page(browser, server, pid)
         try:
-            if not blocked:
+            if not legacy_contract:
                 await page.locator('.composer textarea').fill(REQUIREMENT)
                 await page.get_by_role('button', name='发送', exact=True).click()
                 await expect(page.locator('.spec-editor')).to_be_visible(timeout=180000 if live else 30000)
@@ -198,116 +199,100 @@ async def run_case(browser, root, web_dist, name, *, blocked=False, fault=None, 
                 await page.get_by_role('button', name='按已确认规格生成程序', exact=True).click()
             job = await wait_job(server, pid)
             output = server.service.output(job['id'])
-            assert server.service.projects.project(pid)['version_count'] == (0 if blocked else 1)
-            if blocked:
-                assert output['status'] == 'contract_mismatch' and not output.get('proposal_id')
-                assert server.service.proposals.list(pid) == []
-                if baseline:
-                    await expect(page.get_by_text('候选内容已通过响应验收，请在待审批中查看校验结果与差异。', exact=True)).to_be_visible(timeout=20000)
-                    assert await page.locator('.canvas-shell img').count() == 0
-                    return {'name': name, 'passed': True, 'baseline_bug_reproduced': True}
-                await expect(page.get_by_text('受阻候选预览（不可接受）', exact=True)).to_be_visible(timeout=20000)
-                await visible_svg(page)
-                calls_before = provider.calls
-                await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
-                await expect(page.get_by_text('预览已刷新，未调用模型或修改程序。', exact=True)).to_be_visible()
-                await visible_svg(page)
-                assert provider.calls == calls_before
-                assert await page.get_by_role('button', name='接受为本地版本', exact=True).count() == 0
-                await expect(page.get_by_role('button', name='发送到 GX', exact=True)).to_be_disabled()
-                await expect(page.get_by_role('button', name='导出文件', exact=False)).to_be_disabled()
-                assert await page.get_by_text('候选内容已通过响应验收，请在待审批中查看校验结果与差异。', exact=True).count() == 0
-                await page.reload()
-                await expect(page.get_by_text('受阻候选预览（不可接受）', exact=True)).to_be_visible(timeout=20000)
-                await visible_svg(page)
-                assert provider.calls == 1
-                assert server.service.projects.project(pid)['version_count'] == 0
-            else:
-                assert output.get('proposal_id'), 'Generation finished without a proposal'
-                proposal = server.service.proposals.get(output['proposal_id'])
-                assert proposal['status'] == 'accepted' and output['version_id'] == proposal['result']['version_id']
-                if fault == 'preview-once':
-                    await expect(page.get_by_text('Transient preview read failure', exact=True)).to_be_visible(timeout=20000)
-                    await page.get_by_role('button', name='查看程序', exact=True).click()
-                await visible_svg(page)
-                calls_before = provider.calls
-                await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
-                await expect(page.get_by_text('预览已刷新，未调用模型或修改程序。', exact=True)).to_be_visible()
-                await visible_svg(page)
-                assert provider.calls == calls_before
-                assert server.service.projects.project(pid)['version_count'] == 1
-                # Refresh formerly cleared the preview and permanently marked it shown.
-                await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
-                await expect(page.get_by_text('正在读取工程', exact=True)).to_have_count(0, timeout=20000)
-                await visible_svg(page)
-                await page.reload()
-                await visible_svg(page)
-                assert server.service.projects.project(pid)['version_count'] == 1
-                assert await page.get_by_role('button', name='接受为本地版本', exact=True).count() == 0
-                assert server.service.projects.project(pid)['version_count'] == 1
-                await expect(page.locator('.preview-banner')).to_have_count(0)
-                await visible_svg(page)
-                await page.reload()
-                await visible_svg(page)
-                project = server.service.projects.project(pid)
-                vid = project['active_version_id']
-                # Exercise the visible export menu with real file bytes.
-                await page.locator('.export-menu summary').click()
-                async with page.expect_download() as download_info:
-                    await page.locator('.export-menu').get_by_role('link').filter(has=page.get_by_text('程序 CSV', exact=True)).click()
-                download = await download_info.value
-                assert download.suggested_filename.endswith('.csv')
-                path = await download.path()
-                assert Path(path).read_bytes() == server.service.projects.artifact(pid, vid, 'program_csv').read_bytes()
-                for width in (1920, 1366, 1024):
-                    await page.set_viewport_size({'width': width, 'height': 950})
-                    await expect(page.locator('.project-toolbar')).to_be_visible()
-                    assert await page.locator('.project-toolbar').evaluate('el => el.scrollWidth <= el.clientWidth + 1')
-                    assert await page.locator('.project-toolbar').get_by_role('button', name='刷新结果 / 重绘梯形图').count() == 1
-                if fault is None:
-                    evidence = Path(os.environ['GX_DELIVERY_EVIDENCE_DIR'])
-                    await page.set_viewport_size({'width': 1600, 'height': 1000})
-                    await page.screenshot(path=str(evidence / 'autosaved-toolbar.png'), full_page=True)
-                    await page.locator('.approval-mode-indicator').click()
-                    await expect(page.get_by_role('radio', name='替我审批', exact=False)).to_be_visible()
-                    await page.get_by_role('radio', name='替我审批', exact=False).check()
-                    await page.get_by_role('button', name='保存审批模式', exact=True).click()
-                    await expect(page.get_by_text('审批模式已保存，仅影响后续请求。', exact=True)).to_be_visible()
-                    assert server.service.approval.read()['mode'] == 'auto'
-                    await page.get_by_role('radio', name='完全访问', exact=False).check()
-                    await expect(page.get_by_role('button', name='保存审批模式', exact=True)).to_be_disabled()
-                    await page.get_by_role('checkbox', name='我允许工作台自动执行已支持的 GX、仿真和调试操作。', exact=True).check()
-                    await page.get_by_role('button', name='保存审批模式', exact=True).click()
-                    await expect(page.locator('.approval-mode-indicator')).to_have_text('完全访问')
-                    assert server.service.approval.read()['mode'] == 'full'
-                    await page.screenshot(path=str(evidence / 'approval-settings.png'), full_page=True)
-                    await page.get_by_role('radio', name='逐项审批', exact=False).check()
-                    await page.get_by_role('button', name='保存审批模式', exact=True).click()
-                    await expect(page.locator('.approval-mode-indicator')).to_have_text('逐项审批')
-                    await page.keyboard.press('Escape')
-                artifacts = project['versions'][0]['artifacts']
-                assert {'ir','json','svg','program_csv','st_from_ir'} <= {a['id'] for a in artifacts if a['available']}
-                assert server.service.proposals.get(output['proposal_id'])['status'] == 'accepted'
-                # Delete just the derived SVG in the disposable fixture. The new
-                # button must recover pixels from canonical IR, without changing
-                # the saved version or invoking a second generation.
-                saved_svg = server.service.projects.artifact(pid, vid, 'svg')
-                saved_svg.unlink()
-                await page.reload()
-                await expect(page.locator('.preview-banner')).to_have_count(0)
-                await expect(page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True)).to_be_enabled()
-                before = {str(p): p.read_bytes() for p in server.service.store.base_dir.rglob('*') if p.is_file()}
-                await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
-                await expect(page.get_by_text('预览已刷新，未调用模型或修改程序。', exact=True)).to_be_visible()
-                await visible_svg(page)
-                assert before == {str(p): p.read_bytes() for p in server.service.store.base_dir.rglob('*') if p.is_file()}
-                assert not saved_svg.exists() and server.service.projects.project(pid)['version_count'] == 1
-                assert provider.calls == 2 or live
+            project_state = server.service.projects.project(pid)
+            assert project_state['version_count'] == 1
+            assert output.get('status') == 'saved'
+            assert output.get('proposal_id'), 'Generation finished without a proposal'
+            assert output.get('version_id'), 'Generation finished without a saved version'
+            assert output.get('status') != 'contract_mismatch'
+            if legacy_contract:
+                contract = project_state['confirmed_spec']['selected_approach']['generation_contract']
+                assert contract['required_opcodes'] == ['MOV'] and contract['enforce'] is True
+            proposal = server.service.proposals.get(output['proposal_id'])
+            assert proposal['status'] == 'accepted' and output['version_id'] == proposal['result']['version_id']
+            if fault == 'preview-once':
+                await expect(page.get_by_text('Transient preview read failure', exact=True)).to_be_visible(timeout=20000)
+                await page.get_by_role('button', name='查看程序', exact=True).click()
+            await visible_svg(page)
+            calls_before = provider.calls
+            await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
+            await expect(page.get_by_text('预览已刷新，未调用模型或修改程序。', exact=True)).to_be_visible()
+            await visible_svg(page)
+            assert provider.calls == calls_before
+            assert server.service.projects.project(pid)['version_count'] == 1
+            # Refresh formerly cleared the preview and permanently marked it shown.
+            await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
+            await expect(page.get_by_text('正在读取工程', exact=True)).to_have_count(0, timeout=20000)
+            await visible_svg(page)
+            await page.reload()
+            await visible_svg(page)
+            assert server.service.projects.project(pid)['version_count'] == 1
+            assert await page.get_by_role('button', name='接受为本地版本', exact=True).count() == 0
+            assert server.service.projects.project(pid)['version_count'] == 1
+            await expect(page.locator('.preview-banner')).to_have_count(0)
+            await visible_svg(page)
+            await page.reload()
+            await visible_svg(page)
+            project = server.service.projects.project(pid)
+            vid = project['active_version_id']
+            # Exercise the visible export menu with real file bytes.
+            await page.locator('.export-menu summary').click()
+            async with page.expect_download() as download_info:
+                await page.locator('.export-menu').get_by_role('link').filter(has=page.get_by_text('程序 CSV', exact=True)).click()
+            download = await download_info.value
+            assert download.suggested_filename.endswith('.csv')
+            path = await download.path()
+            assert Path(path).read_bytes() == server.service.projects.artifact(pid, vid, 'program_csv').read_bytes()
+            for width in (1920, 1366, 1024):
+                await page.set_viewport_size({'width': width, 'height': 950})
+                await expect(page.locator('.project-toolbar')).to_be_visible()
+                assert await page.locator('.project-toolbar').evaluate('el => el.scrollWidth <= el.clientWidth + 1')
+                assert await page.locator('.project-toolbar').get_by_role('button', name='刷新结果 / 重绘梯形图').count() == 1
+            if fault is None and not legacy_contract:
+                evidence = Path(os.environ['GX_DELIVERY_EVIDENCE_DIR'])
+                await page.set_viewport_size({'width': 1600, 'height': 1000})
+                await page.screenshot(path=str(evidence / 'autosaved-toolbar.png'), full_page=True)
+                await page.locator('.approval-mode-indicator').click()
+                await expect(page.get_by_role('radio', name='替我审批', exact=False)).to_be_visible()
+                await page.get_by_role('radio', name='替我审批', exact=False).check()
+                await page.get_by_role('button', name='保存审批模式', exact=True).click()
+                await expect(page.get_by_text('审批模式已保存，仅影响后续请求。', exact=True)).to_be_visible()
+                assert server.service.approval.read()['mode'] == 'auto'
+                await page.get_by_role('radio', name='完全访问', exact=False).check()
+                await expect(page.get_by_role('button', name='保存审批模式', exact=True)).to_be_disabled()
+                await page.get_by_role('checkbox', name='我允许工作台自动执行已支持的 GX、仿真和调试操作。', exact=True).check()
+                await page.get_by_role('button', name='保存审批模式', exact=True).click()
+                await expect(page.locator('.approval-mode-indicator')).to_have_text('完全访问')
+                assert server.service.approval.read()['mode'] == 'full'
+                await page.screenshot(path=str(evidence / 'approval-settings.png'), full_page=True)
+                await page.get_by_role('radio', name='逐项审批', exact=False).check()
+                await page.get_by_role('button', name='保存审批模式', exact=True).click()
+                await expect(page.locator('.approval-mode-indicator')).to_have_text('逐项审批')
+                await page.keyboard.press('Escape')
+            artifacts = project['versions'][0]['artifacts']
+            assert {'ir','json','svg','program_csv','st_from_ir'} <= {a['id'] for a in artifacts if a['available']}
+            assert server.service.proposals.get(output['proposal_id'])['status'] == 'accepted'
+            # Delete just the derived SVG in the disposable fixture. The new
+            # button must recover pixels from canonical IR, without changing
+            # the saved version or invoking a second generation.
+            saved_svg = server.service.projects.artifact(pid, vid, 'svg')
+            saved_svg.unlink()
+            await page.reload()
+            await expect(page.locator('.preview-banner')).to_have_count(0)
+            await expect(page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True)).to_be_enabled()
+            before = {str(p): p.read_bytes() for p in server.service.store.base_dir.rglob('*') if p.is_file()}
+            await page.get_by_role('button', name='刷新结果 / 重绘梯形图', exact=True).click()
+            await expect(page.get_by_text('预览已刷新，未调用模型或修改程序。', exact=True)).to_be_visible()
+            await visible_svg(page)
+            assert before == {str(p): p.read_bytes() for p in server.service.store.base_dir.rglob('*') if p.is_file()}
+            assert not saved_svg.exists() and server.service.projects.project(pid)['version_count'] == 1
+            expected_calls = 1 if legacy_contract else 2
+            assert provider.calls == expected_calls or live
             assert not page_errors, page_errors
             assert not server.executions, 'Test attempted a native GX operation'
             assert not server.api_errors, server.api_errors
             return {'name': name, 'passed': True, 'model_requests': provider.calls,
-                    'usage': provider.usage, 'blocked': blocked, 'real_http': True,
+                    'usage': provider.usage, 'legacy_contract': legacy_contract, 'real_http': True,
                     'svg_decoded': True, 'manual_redraw_without_model_call': True,
                     'model_mocked': live is None}
         except Exception:
@@ -327,20 +312,19 @@ async def exercise(args, root, live, results=None):
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
         try:
-            if args.baseline:
-                return [await run_case(browser, root / 'baseline', args.web_dist, 'blocked outcome baseline', blocked=True, baseline=True)]
             if live:
                 return [await run_case(browser, root / 'live', args.web_dist, 'DeepSeek simple control', live=live)]
             cases = results if results is not None else []
-            for name, blocked, fault in [
+            for name, legacy_contract, fault in [
                 ('analysis-confirm-generation-autosave-export-reload', False, None),
-                ('blocked-approach-visible-without-approval', True, None),
+                ('legacy-confirmed-approach-is-context-not-gate', True, None),
                 ('delayed-project-and-proposal-reads', False, 'delayed-reads'),
                 ('transient-preview-failure-can-retry', False, 'preview-once'),
                 ('polling-completion-without-SSE', False, 'no-sse'),
             ]:
                 print('START:', name, flush=True)
-                result = await run_case(browser, root / name, args.web_dist, name, blocked=blocked, fault=fault)
+                result = await run_case(browser, root / name, args.web_dist, name,
+                                        legacy_contract=legacy_contract, fault=fault)
                 cases.append(result)
                 print('PASS:', name, flush=True)
             return cases
@@ -352,15 +336,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--web-dist', type=Path, default=ROOT / 'web/dist')
     parser.add_argument('--report', type=Path, default=Path('generation-delivery-e2e.json'))
-    parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--live', action='store_true', help='Use a real DeepSeek API key; incurs API usage')
     args = parser.parse_args()
     args.web_dist = args.web_dist.resolve()
     os.environ['GX_DELIVERY_EVIDENCE_DIR'] = str(args.report.resolve().parent)
     if not (args.web_dist / 'index.html').is_file():
         parser.error('Build web/dist first')
-    if args.live and args.baseline:
-        parser.error('Live testing cannot reproduce the old blocked fixture')
     live = None
     if args.live:
         # No credential in CLI arguments, config files, GitHub files or reports.
