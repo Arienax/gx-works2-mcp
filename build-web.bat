@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 title GXWorks Agent - Build Web Source Runtime
@@ -16,13 +16,13 @@ echo   GXWorks Agent - Web source build
 echo ==============================================
 
 if not defined FRONTEND_ONLY (
-    set "WEB_PYTHON=%CD%\.venv\Scripts\python.exe"
-    if not exist "%CD%\requirements\web.txt" (
+    set "WEB_PYTHON=!CD!\.venv\Scripts\python.exe"
+    if not exist "!CD!\requirements\web.txt" (
         echo [ERROR] Missing requirements\web.txt.
         goto :fail
     )
 
-    if not exist "%WEB_PYTHON%" (
+    if not exist "!WEB_PYTHON!" (
         echo [1/4] Creating Python Web environment in .venv ...
         set "BOOTSTRAP_PYTHON="
         where py.exe >nul 2>&1
@@ -36,12 +36,12 @@ if not defined FRONTEND_ONLY (
             echo Install Python 3.10 or newer, then run build-web.bat again.
             goto :fail
         )
-        %BOOTSTRAP_PYTHON% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+        !BOOTSTRAP_PYTHON! -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
         if errorlevel 1 (
             echo [ERROR] Python 3.10+ is required for the Web runtime.
             goto :fail
         )
-        %BOOTSTRAP_PYTHON% -m venv "%CD%\.venv"
+        !BOOTSTRAP_PYTHON! -m venv "!CD!\.venv"
         if errorlevel 1 (
             echo [ERROR] Failed to create .venv.
             goto :fail
@@ -50,7 +50,7 @@ if not defined FRONTEND_ONLY (
         echo [1/4] Using existing Python Web environment: .venv
     )
 
-    "%WEB_PYTHON%" -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+    "!WEB_PYTHON!" -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
     if errorlevel 1 (
         echo [ERROR] Existing .venv uses Python older than 3.10.
         echo Remove .venv and run build-web.bat again, or recreate it with Python 3.10+.
@@ -58,13 +58,13 @@ if not defined FRONTEND_ONLY (
     )
 
     echo       Installing/updating Web and MCP runtime dependencies ...
-    "%WEB_PYTHON%" -m pip install -r "%CD%\requirements\web.txt"
+    "!WEB_PYTHON!" -m pip install -r "!CD!\requirements\web.txt"
     if errorlevel 1 (
         echo [ERROR] Failed to install requirements\web.txt into .venv.
         goto :fail
     )
 
-    "%WEB_PYTHON%" -c "import fastapi, uvicorn, openai, numpy, mcp"
+    "!WEB_PYTHON!" -c "import fastapi, uvicorn, openai, numpy, mcp"
     if errorlevel 1 (
         echo [ERROR] Web runtime dependency verification failed.
         goto :fail
@@ -90,7 +90,7 @@ if not exist "web\package-lock.json" (
 )
 
 for /f "delims=" %%V in ('node --version') do set "NODE_VERSION=%%V"
-echo [INFO] Node: %NODE_VERSION%
+echo [INFO] Node: !NODE_VERSION!
 echo.
 
 pushd web
@@ -118,10 +118,10 @@ endlocal
 exit /b 0
 
 :build_fail
-set "BUILD_EXIT=%ERRORLEVEL%"
+set "BUILD_EXIT=!ERRORLEVEL!"
 popd
 echo.
-echo [ERROR] Frontend build failed with exit code %BUILD_EXIT%.
+echo [ERROR] Frontend build failed with exit code !BUILD_EXIT!.
 goto :fail_code
 
 :fail
