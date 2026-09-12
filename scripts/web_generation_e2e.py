@@ -34,7 +34,7 @@ from integrations.web.app import create_app
 from model_provider import TextDelta, Usage, ModelProviderError, OpenAICompatibleProvider
 
 
-LADDER = {'device_comments': {'X0': '输入', 'Y0': '输出'}, 'rungs': [
+LADER = {'device_comments': {'X0': '输入', 'Y0': '输出'}, 'rungs': [
     {'rung_id': 1, 'header_element': None, 'shared_inputs': [], 'branches': [
         {'branch_id': 1, 'y_offset_level': 0, 'inputs': [{'type': 'NO', 'address': 'X0', 'label': '输入'}],
          'outputs': [{'type': 'COIL', 'address': 'Y0', 'label': '输出'}]}]}]}
@@ -56,7 +56,7 @@ class Provider:
                     self.usage.append({'input_tokens': event.input_tokens, 'output_tokens': event.output_tokens})
                 yield event
         else:
-            raw = json.dumps(ANALYSIS if request.response_contract.name == 'analysis' else LADDER, ensure_ascii=False)
+            raw = json.dumps(ANALYSIS if request.response_contract.name == 'analysis' else LADER, ensure_ascii=False)
             # Exercise actual streamed text acceptance and persistent job events.
             for start in range(0, len(raw), 70):
                 yield TextDelta(raw[start:start + 70])
@@ -164,12 +164,12 @@ async def open_page(browser, server, pid):
 
 
 async def visible_svg(page):
-    image = page.locator('.ladder-svg')
+    image = page.locator('.program-explorer .explorer-drawing img')
     # Check pixels were decoded, not merely that a URL or <svg string exists.
     if await image.count() == 0:
-        image = page.locator('.canvas-shell img')
+        image = page.locator('.canvas-shell img, img.ladder-svg').first
     await expect(image).to_be_visible(timeout=20000)
-    await page.wait_for_function("() => { const i=document.querySelector('.canvas-shell img'); return i && i.complete && i.naturalWidth>0 && i.naturalHeight>0; }", timeout=20000)
+    await page.wait_for_function("() => { const i=document.querySelector('.program-explorer .explorer-drawing img, .canvas-shell img, img.ladder-svg'); return i && i.complete && i.naturalWidth>0 && i.naturalHeight>0; }", timeout=20000)
 
 
 async def wait_job(server, pid):
