@@ -89,8 +89,8 @@ def main(argv=None) -> int:
 
     try:
         with redirect_stdout(sys.stderr):
-            import anyio
             if standalone:
+                import anyio
                 from .context_provider import SessionToolContextProvider
                 from .server import serve_stdio
 
@@ -98,8 +98,7 @@ def main(argv=None) -> int:
                 runner, runner_args = serve_stdio, (provider,)
                 check_result = None
             else:
-                from .service_client import ApplicationServiceClient, ServiceMCPToolAdapter
-                from .server import serve_service_stdio
+                from .service_client import ApplicationServiceClient
 
                 service_url, token, project_id = _service_connection(args, raw_args, parser)
                 client = ApplicationServiceClient(service_url, token)
@@ -113,6 +112,10 @@ def main(argv=None) -> int:
                     }
                     runner = runner_args = None
                 else:
+                    import anyio
+                    from .service_client import ServiceMCPToolAdapter
+                    from .server import serve_service_stdio
+
                     if not project_id:
                         parser.error("No MCP project is bound. Open Web → Settings → Integrations / MCP and connect the current project once.")
                     ServiceMCPToolAdapter(client, project_id, args.version)
