@@ -10,9 +10,10 @@ inspect this repository to discover how GXWorks MCP should be started.
 3. Click **测试 MCP 连接**. This binds the selected project and verifies the
    actual product launcher, Windows Credential Manager lookup, Agent
    authentication and tool discovery.
-4. Click **连接 Codex**. GXWorks Agent registers/replaces the fixed `gxworks`
-   MCP entry through the local Codex CLI. The complete prior Codex config is
-   restored if registration fails.
+4. Click **连接 Codex**. GXWorks Agent atomically adds or replaces only the
+   `[mcp_servers.gxworks]` table in the user's Codex `config.toml`. Existing
+   model/provider settings, project trust entries and other MCP servers are
+   preserved. Codex CLI does not need to be in `PATH`.
 5. In Codex, ask for the engineering task directly, for example:
 
 > 用 gxworks 给当前工程生成一个三菱起保停程序：X0 启动，X1 停止，Y0 电机，自锁。
