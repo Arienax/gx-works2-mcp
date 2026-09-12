@@ -47,10 +47,10 @@ In **Integrations / MCP**:
    product launcher with `--check`. A successful result proves that launcher
    discovery, local credential lookup, Agent authentication and tool discovery
    all work.
-2. **连接 Codex** performs the same check, then registers the fixed GXWorks MCP
-   launcher with the local Codex CLI. If an older `gxworks` entry exists, only
-   that named entry is replaced; if registration fails, the original Codex
-   config bytes are restored.
+2. **连接 Codex** performs the same check, then atomically adds or replaces only
+   the `[mcp_servers.gxworks]` table in the user's Codex `config.toml`. Model
+   selection/provider settings, project trust entries and every other MCP server
+   are left unchanged. This does not require the Codex CLI to be in `PATH`.
 3. After that, Codex can be prompted directly, for example: `用 gxworks 给当前工程生成一个起保停`.
    The user should not paste MCP TOML into the model or ask the model to inspect
    this repository merely to discover how to connect.
