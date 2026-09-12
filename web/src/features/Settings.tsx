@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Json, ModelSettings } from "../api/client";
 import { Button, Badge } from "../components/ui";
@@ -19,6 +19,25 @@ type Discovery = {
   note?: string;
 };
 
+type McpStatus = {
+  service_url?: string;
+  project_id?: string;
+  bound_project_id?: string | null;
+  credential_ready?: boolean;
+  launcher_ready?: boolean;
+  codex_cli_available?: boolean;
+  codex_command?: string | null;
+};
+
+type McpResult = {
+  status?: string;
+  message?: string;
+  project_id?: string;
+  tool_count?: number;
+  codex_connected?: boolean;
+  replaced_existing?: boolean;
+};
+
 const currentProjectId = () =>
   new URLSearchParams(window.location.search).get("project") || "";
 
@@ -31,73 +50,136 @@ function parseDiscovery(message: string): Discovery | null {
   }
 }
 
-function McpIntegrations({ t }: { t: (s: string) => string }) {
-  const [client, setClient] = useState<"codex" | "claude" | "cursor">("codex");
+function McpIntegrations({
+  t,
+  disabled,
+}: {
+  t: (s: string) => string;
+  disabled: boolean;
+}) {
   const projectId = currentProjectId();
-  const serviceUrl = window.location.origin;
-  const args = ["--project", projectId || "<project-id>", "--service-url", serviceUrl];
-  const token = "<paste PLC_WEB_AGENT_TOKEN>";
-  const config = useMemo(() => {
-    if (client === "codex") {
-      return `[mcp_servers.gxworks]\ncommand = "gxworks-agent-mcp"\nargs = [${args.map((item) => JSON.stringify(item)).join(", ")}]\nenv = { PLC_WEB_AGENT_TOKEN = ${JSON.stringify(token)} }\nstartup_timeout_sec = 30\ntool_timeout_sec = 120`;
+  const [status, setStatus] = useState<McpStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const refresh = async () => {
+    if (!projectId) {
+      setStatus(null);
+      return;
     }
-    return JSON.stringify(
-      {
-        mcpServers: {
-          gxworks: {
-            command: "gxworks-agent-mcp",
-            args,
-            env: { PLC_WEB_AGENT_TOKEN: token },
-          },
-        },
-      },
-      null,
-      2,
+    const value = await api<McpStatus>(
+      `/integrations/mcp?project_id=${encodeURIComponent(projectId)}`,
     );
-  }, [client, projectId, serviceUrl]);
-  const copy = async () => navigator.clipboard.writeText(config);
+    setStatus(value);
+  };
+
+  useEffect(() => {
+    let stopped = false;
+    if (!projectId) return;
+    api<McpStatus>(`/integrations/mcp?project_id=${encodeURIComponent(projectId)}`)
+      .then((value) => !stopped && setStatus(value))
+      .catch((e) => !stopped && setError((e as Error).message));
+    return () => {
+      stopped = true;
+    };
+  }, [projectId]);
+
+  const run = async (path: string) => {
+    if (!projectId || busy || disabled) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<McpResult>(path, "POST", { project_id: projectId });
+      if (result.status === "failed") throw new Error(result.message || t("连接失败"));
+      setMessage(result.message || t("连接成功"));
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const manualConfig = `[mcp_servers.gxworks]\ncommand = "gxworks-agent-mcp"\nstartup_timeout_sec = 30\ntool_timeout_sec = 120`;
+
   return (
     <div className="form settings-form">
       <div className="notice">
         <strong>GXWorks Agent MCP</strong>
         <p>
-          {t("默认通过正在运行的 Web 服务连接当前工程。Standalone SessionStore 模式仅用于高级/headless 场景。")}
+          {t("Web 会把 MCP 服务地址和独立 Agent 凭据保存到 Windows Credential Manager。连接完成后，Codex 只需启动本机 launcher，不再需要复制 token、service-url 或工程 ID。")}
         </p>
       </div>
+
+      <div className="context-chips">
+        <Badge tone={status?.credential_ready ? "good" : "warn"}>
+          {t(status?.credential_ready ? "本机凭据已就绪" : "本机凭据未就绪")}
+        </Badge>
+        <Badge tone={status?.launcher_ready ? "good" : "warn"}>
+          {t(status?.launcher_ready ? "MCP launcher 已就绪" : "MCP launcher 不可用")}
+        </Badge>
+        <Badge tone={status?.codex_cli_available ? "good" : "warn"}>
+          {t(status?.codex_cli_available ? "已检测到 Codex" : "未检测到 Codex CLI")}
+        </Badge>
+      </div>
+
       <label>
         {t("当前工程")}
         <input readOnly value={projectId || t("未选择工程")} />
       </label>
       <label>
         Service URL
-        <input readOnly value={serviceUrl} />
+        <input readOnly value={status?.service_url || window.location.origin} />
       </label>
-      <label>
-        {t("客户端")}
-        <select value={client} onChange={(e) => setClient(e.target.value as typeof client)}>
-          <option value="codex">Codex</option>
-          <option value="claude">Claude</option>
-          <option value="cursor">Cursor</option>
-        </select>
-      </label>
-      <p className="muted">
-        {t("Web 启动时会启用独立 Agent token。若未预先设置 PLC_WEB_AGENT_TOKEN，请从 Web 启动终端复制一次性显示的 MCP agent token，并替换下方占位符。")}
-      </p>
-      <label>
-        {t("生成的 MCP 配置")}
-        <textarea className="mono" readOnly rows={13} value={config} />
-      </label>
+      {status?.bound_project_id && (
+        <p className="muted">
+          {t("MCP 当前绑定工程")}: <span className="mono">{status.bound_project_id}</span>
+        </p>
+      )}
+
       <div className="form-actions">
-        <Button disabled={!projectId} onClick={() => void copy()}>
-          {t("复制配置")}
+        <Button
+          variant="primary"
+          disabled={!projectId || busy || disabled || !status?.credential_ready || !status?.launcher_ready}
+          onClick={() => void run("/integrations/mcp/codex/connect")}
+        >
+          {t(busy ? "处理中…" : "连接 Codex")}
+        </Button>
+        <Button
+          disabled={!projectId || busy || disabled || !status?.credential_ready || !status?.launcher_ready}
+          onClick={() => void run("/integrations/mcp/test")}
+        >
+          {t("测试 MCP 连接")}
         </Button>
       </div>
-      <details>
-        <summary>{t("Advanced / Headless")}</summary>
+
+      {!status?.credential_ready && (
         <p className="muted">
-          {t("只有无 Web 服务的 CI/headless 场景才使用 --standalone --workspace。普通 Codex/Claude/Cursor 用户不需要 SessionStore 路径、PYTHONPATH 或 python -m integrations.mcp。")}
+          {t("请先用当前版本重新启动 Web 工作台。启动器会自动生成并保存 MCP Agent 凭据，不再在终端要求手工复制 token。")}
         </p>
-        <pre className="mono">gxworks-agent-mcp --standalone --workspace &lt;workspace&gt; --project {projectId || "<project-id>"}</pre>
+      )}
+      {message && <p role="status">{message}</p>}
+      {error && <p role="alert" className="error-text">{error}</p>}
+
+      <div className="notice">
+        <strong>{t("连接后怎么用")}</strong>
+        <p>{t("以后在 Codex 中直接说“用 gxworks 给当前工程生成起保停”即可。不要再把 MCP 配置粘贴给模型，也不需要让模型读取本仓库来研究接入方式。")}</p>
+      </div>
+
+      <details>
+        <summary>{t("Advanced / 其他 MCP 客户端")}</summary>
+        <p className="muted">
+          {t("Claude/Cursor 等客户端也可以直接启动同一个 launcher。先点击“测试 MCP 连接”绑定当前工程；正常 Windows 使用不需要 env、service-url、PYTHONPATH 或 python -m integrations.mcp。")}
+        </p>
+        <pre className="mono">{manualConfig}</pre>
+        <Button onClick={() => void navigator.clipboard.writeText(manualConfig)}>
+          {t("复制高级配置")}
+        </Button>
+        <p className="muted">
+          {t("无 Web 服务的 CI/headless 场景仍可使用：gxworks-agent-mcp --standalone --workspace <workspace> --project <project-id>。")}
+        </p>
       </details>
     </div>
   );
@@ -186,7 +268,7 @@ export function Settings({
           <Button variant="ghost" onClick={() => setPage("models")}>{t("模型 API")}</Button>
           <Button variant="primary">Integrations / MCP</Button>
         </nav>
-        <McpIntegrations t={t} />
+        <McpIntegrations t={t} disabled={disabled} />
       </div>
     );
   }
