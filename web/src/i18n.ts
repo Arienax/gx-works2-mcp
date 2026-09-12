@@ -40,6 +40,7 @@ const words: Record<string, [string, string]> = {
   "未选择工程": ["No project selected", "プロジェクト未選択"],
   "已连接工程": ["Connected project", "接続済みプロジェクト"],
   "连接 Codex": ["Connect Codex", "Codexを接続"],
+  "支持本机 Codex App，无需安装 Codex CLI。首次连接后，请重新启动 Codex App 以加载连接。": ["Works with the Codex App on this computer; Codex CLI is not required. After connecting for the first time, restart the Codex App to load the connection.", "このコンピューターのCodex Appに対応しています。Codex CLIは不要です。初回接続後、Codex Appを再起動して接続を読み込んでください。"],
   "测试 MCP 连接": ["Test MCP connection", "MCP接続をテスト"],
   "连接尚未就绪。请重新启动工作台，再尝试连接。": ["The connection is not ready. Restart the workbench, then try connecting again.", "接続の準備ができていません。ワークベンチを再起動してから、もう一度接続してください。"],
   "开始工程任务": ["Start a project task", "プロジェクトの作業を始める"],

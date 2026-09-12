@@ -1604,6 +1604,45 @@ export interface components {
             /** Project Id */
             project_id: string;
         };
+        /** MCPIntegrationResult */
+        MCPIntegrationResult: {
+            /** Codex Connected */
+            codex_connected?: boolean | null;
+            /** Message */
+            message: string;
+            /** Project Id */
+            project_id: string;
+            /** Replaced Existing */
+            replaced_existing?: boolean | null;
+            /** Service Url */
+            service_url?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "failed";
+            /** Tool Count */
+            tool_count?: number | null;
+        };
+        /** MCPIntegrationStatus */
+        MCPIntegrationStatus: {
+            /** Bound Project Id */
+            bound_project_id: string | null;
+            /** Codex Cli Available */
+            codex_cli_available: boolean;
+            /** Codex Command */
+            codex_command: string | null;
+            /** Codex Configured */
+            codex_configured: boolean;
+            /** Credential Ready */
+            credential_ready: boolean;
+            /** Launcher Ready */
+            launcher_ready: boolean;
+            /** Project Id */
+            project_id: string;
+            /** Service Url */
+            service_url: string;
+        };
         /** ModelConnectionResult */
         ModelConnectionResult: {
             /** Error Code */
@@ -2364,7 +2403,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicObject"];
+                    "application/json": components["schemas"]["MCPIntegrationStatus"];
                 };
             };
             /** @description Validation Error */
@@ -2397,7 +2436,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicObject"];
+                    "application/json": components["schemas"]["MCPIntegrationResult"];
                 };
             };
             /** @description Validation Error */
@@ -2430,7 +2469,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicObject"];
+                    "application/json": components["schemas"]["MCPIntegrationResult"];
                 };
             };
             /** @description Validation Error */

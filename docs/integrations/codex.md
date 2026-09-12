@@ -2,8 +2,8 @@
 
 ## Recommended: connect from the Web workbench
 
-For normal Windows use, do not paste MCP TOML into Codex and do not ask Codex to
-inspect this repository to discover how GXWorks MCP should be started.
+The Windows Web workbench can connect to the Codex App on the same computer.
+It saves the local MCP configuration for you; installing Codex CLI is optional.
 
 1. Start GXWorks Agent Web and open the target project.
 2. Open **Settings → Model → Integrations / MCP**.
@@ -14,7 +14,8 @@ inspect this repository to discover how GXWorks MCP should be started.
    `[mcp_servers.gxworks]` table in the user's Codex `config.toml`. Existing
    model/provider settings, project trust entries and other MCP servers are
    preserved. Codex CLI does not need to be in `PATH`.
-5. In Codex, ask for the engineering task directly, for example:
+5. After the first connection, restart the Codex App to load the new MCP server.
+6. In Codex, ask for the engineering task directly, for example:
 
 > 用 gxworks 给当前工程生成一个三菱起保停程序：X0 启动，X1 停止，Y0 电机，自锁。
 

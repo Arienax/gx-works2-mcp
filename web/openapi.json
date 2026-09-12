@@ -1801,6 +1801,142 @@
         "title": "MCPIntegrationCommand",
         "type": "object"
       },
+      "MCPIntegrationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "codex_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codex Connected"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "replaced_existing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Existing"
+          },
+          "service_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Url"
+          },
+          "status": {
+            "enum": [
+              "connected",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Count"
+          }
+        },
+        "required": [
+          "status",
+          "project_id",
+          "message"
+        ],
+        "title": "MCPIntegrationResult",
+        "type": "object"
+      },
+      "MCPIntegrationStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "bound_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bound Project Id"
+          },
+          "codex_cli_available": {
+            "title": "Codex Cli Available",
+            "type": "boolean"
+          },
+          "codex_command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codex Command"
+          },
+          "codex_configured": {
+            "title": "Codex Configured",
+            "type": "boolean"
+          },
+          "credential_ready": {
+            "title": "Credential Ready",
+            "type": "boolean"
+          },
+          "launcher_ready": {
+            "title": "Launcher Ready",
+            "type": "boolean"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "service_url": {
+            "title": "Service Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_url",
+          "project_id",
+          "bound_project_id",
+          "credential_ready",
+          "launcher_ready",
+          "codex_configured",
+          "codex_cli_available",
+          "codex_command"
+        ],
+        "title": "MCPIntegrationStatus",
+        "type": "object"
+      },
       "ModelConnectionResult": {
         "additionalProperties": false,
         "properties": {
@@ -3793,7 +3929,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicObject"
+                  "$ref": "#/components/schemas/MCPIntegrationStatus"
                 }
               }
             },
@@ -3831,7 +3967,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicObject"
+                  "$ref": "#/components/schemas/MCPIntegrationResult"
                 }
               }
             },
@@ -3869,7 +4005,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicObject"
+                  "$ref": "#/components/schemas/MCPIntegrationResult"
                 }
               }
             },

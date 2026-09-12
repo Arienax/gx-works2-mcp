@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Json, ModelSettings } from "../api/client";
+import type { components } from "../api/generated";
 import { Button, Badge } from "../components/ui";
 
 type Profile = NonNullable<ModelSettings["profiles"]>[number] & {
@@ -19,24 +20,8 @@ type Discovery = {
   note?: string;
 };
 
-type McpStatus = {
-  service_url?: string;
-  project_id?: string;
-  bound_project_id?: string | null;
-  credential_ready?: boolean;
-  launcher_ready?: boolean;
-  codex_cli_available?: boolean;
-  codex_command?: string | null;
-};
-
-type McpResult = {
-  status?: string;
-  message?: string;
-  project_id?: string;
-  tool_count?: number;
-  codex_connected?: boolean;
-  replaced_existing?: boolean;
-};
+type McpStatus = components["schemas"]["MCPIntegrationStatus"];
+type McpResult = components["schemas"]["MCPIntegrationResult"];
 
 const currentProjectId = () =>
   new URLSearchParams(window.location.search).get("project") || "";
@@ -111,6 +96,7 @@ function McpIntegrations({
         <p>
           {t("先打开工程，再点击“连接 Codex”。连接完成后，可在 Codex 中查看程序、提出修改和设计测试。使用期间请保持工作台运行。")}
         </p>
+        <p>{t("支持本机 Codex App，无需安装 Codex CLI。首次连接后，请重新启动 Codex App 以加载连接。")}</p>
       </div>
 
       <div className="context-chips">
