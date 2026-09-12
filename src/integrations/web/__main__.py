@@ -44,8 +44,12 @@ def main(argv=None):
 
     credential_published = False
     try:
-        from integrations.mcp.service_credentials import save_service_binding
-        credential_published = save_service_binding(origin, agent_token)
+        from integrations.mcp.service_credentials import load_service_binding, save_service_binding
+        previous = load_service_binding() or {}
+        previous_project = previous.get("project_id")
+        known_projects = {str(item.get("id") or "") for item in app.state.service.projects.list_projects()}
+        project_binding = previous_project if previous_project in known_projects else None
+        credential_published = save_service_binding(origin, agent_token, project_binding)
     except Exception:
         # Credential publication is convenience only; never prevent the local
         # engineering service from starting when Windows Credential Manager is
