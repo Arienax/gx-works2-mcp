@@ -254,7 +254,7 @@ class SettingsService:
 
     def test_connection(self, profile_id, *, profile=None, api_key=None):
         from config_manager import get_model_profile
-        from model_provider import create_provider
+        from model_provider import create_provider, test_model_profile
         from application.model_detection import inspect_openai_compatible
         with _SETTINGS_LOCK:
             config = self.read_config()
@@ -266,17 +266,24 @@ class SettingsService:
                 return {"status": "failed", "message": "请先配置 API Key。", "error_code": "missing_key"}
             frozen = copy.deepcopy(selected)
         try:
-            provider = create_provider(frozen, key)
-            inspection = inspect_openai_compatible(
-                provider,
-                str(frozen.get("model") or ""),
-                frozen.get("capabilities") or {},
-            )
+            # Preserve the existing connection-test behavior and error mapping.
+            message = test_model_profile(copy.deepcopy(frozen), key)
+            try:
+                provider = create_provider(frozen, key)
+                inspection = inspect_openai_compatible(
+                    provider,
+                    str(frozen.get("model") or ""),
+                    frozen.get("capabilities") or {},
+                )
+            except Exception:
+                # Some compatible services expose a usable selected model but do
+                # not support model listing or one of the optional probes.
+                return {"status": "connected", "message": message}
             return {
                 "status": "connected",
                 # Keep the public response contract stable for one release.
                 # The Web client recognizes this JSON payload and falls back to
-                # ordinary text for older backends.
+                # ordinary text for older/non-discoverable backends.
                 "message": json.dumps({
                     "kind": "model_discovery_v1",
                     **inspection,
